@@ -2,6 +2,7 @@
 
 from unicodedata import lookup as emojilookup
 import asyncio
+import signal
 import time
 import math
 
@@ -91,8 +92,15 @@ class Gestalt(discord.Client):
             await asyncio.sleep(PURGE_TIMEOUT)
 
 
+    def handler(self):
+        self.loop.create_task(self.close())
+        conn.commit()
+
+
     async def on_ready(self):
         print('Logged in as {0}, id {1}!'.format(self.user, self.user.id))
+        self.loop.add_signal_handler(signal.SIGINT, self.handler)
+        self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + "help"))
 
