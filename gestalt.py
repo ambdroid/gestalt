@@ -98,7 +98,8 @@ class Gestalt(discord.Client):
 
 
     async def on_ready(self):
-        print('Logged in as %s, id %d!' % (self.user, self.user.id))
+        print('Logged in as %s, id %d!' % (self.user, self.user.id),
+                flush = True)
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         await self.change_presence(status = discord.Status.online,
