@@ -98,7 +98,7 @@ class Gestalt(discord.Client):
 
 
     async def on_ready(self):
-        print('Logged in as {0}, id {1}!'.format(self.user, self.user.id))
+        print('Logged in as %s, id %d!' % (self.user, self.user.id))
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         await self.change_presence(status = discord.Status.online,
@@ -203,7 +203,7 @@ class Gestalt(discord.Client):
     async def on_raw_reaction_add(self, payload):
         # first, make sure this is one of ours
         row = cur.execute(
-            "select authid, authname from history where msgid = ? limit 1",
+            "select authname, authid from history where msgid = ? limit 1",
             (payload.message_id,)).fetchone()
         if row == None:
             return
@@ -220,8 +220,7 @@ class Gestalt(discord.Client):
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
             try:
-                await reactor.send(
-                        "Message sent by " + row[1] + " id " + str(row[0]))
+                await reactor.send("Message sent by %s, id %d" % row)
             except discord.Forbidden:
                 pass
             await message.remove_reaction(payload.emoji.name, reactor)
