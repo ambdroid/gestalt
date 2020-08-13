@@ -204,7 +204,7 @@ class Gestalt(discord.Client):
     async def on_raw_reaction_add(self, payload):
         # first, make sure this is one of ours
         row = cur.execute(
-            "select authname, authid from history where msgid = ? limit 1",
+            "select authname, authid from history where msgid = ?",
             (payload.message_id,)).fetchone()
         if row == None:
             return
