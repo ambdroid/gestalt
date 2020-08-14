@@ -82,7 +82,7 @@ class Gestalt(discord.Client):
 
     async def purge_loop(self):
         # this is purely a db task, no need to wait until ready
-        while not self.is_closed():
+        while True:
             # time.time() and PURGE_AGE in seconds, snowflake timestamp in ms
             # https://discord.com/developers/docs/reference#snowflakes
             maxid = math.floor(1000*(time.time()-PURGE_AGE)-1420070400000)<<22
