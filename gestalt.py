@@ -228,7 +228,7 @@ class Gestalt(discord.Client):
 
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
-            if payload.user_id == row[0]:
+            if payload.user_id == row[1]:
                 cur.execute(
                         "update history set deleted = 1,"
                         "authname = '' where msgid = ?",
