@@ -16,7 +16,7 @@ class TestClient(discord.Client):
         self.loop.create_task(self.do_actions(actions))
 
     async def do_actions(self, actions):
-        self.waited =  tuple([(await self.do_action(*x)) for x in actions])
+        self.waited = tuple([(await self.do_action(*x)) for x in actions])
         await self.close()
 
     async def do_action(self, action, content, waitfor):
@@ -25,6 +25,7 @@ class TestClient(discord.Client):
         if action == "message":
             await channel.send(content)
         elif action == "react":
+            # content = (message # from most recent = 1, reaction)
             message = (await channel.history(limit = content[0]).flatten())[-1]
             await message.add_reaction(emojilookup(content[1]))
         if waitfor:
@@ -40,6 +41,7 @@ class TestClient(discord.Client):
 
 def test(bot, actions):
     ret = TestClient(actions).run(auth.bots[bot])
+    # client.close() closes the event loop, so make another
     asyncio.set_event_loop(asyncio.new_event_loop())
     return ret
 
