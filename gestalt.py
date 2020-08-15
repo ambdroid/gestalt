@@ -9,6 +9,7 @@ import math
 import sqlite3 as sqlite
 import discord
 
+import testenv
 import auth
 
 
@@ -154,7 +155,8 @@ class Gestalt(discord.Client):
 
 
     async def on_message(self, message):
-        if message.author.bot or message.is_system():
+        if ((message.author.bot and not message.author.id in testenv.BOTS)
+                or message.is_system()):
             return
 
         cur.execute("insert or ignore into users values (?, NULL, 0)",
@@ -220,8 +222,9 @@ class Gestalt(discord.Client):
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
+            sendto = channel if reactor.id in testenv.BOTS else reactor
             try:
-                await reactor.send("Message sent by %s, id %d" % row)
+                await sendto.send("Message sent by %s, id %d" % row)
             except discord.Forbidden:
                 pass
             await message.remove_reaction(payload.emoji.name, reactor)
