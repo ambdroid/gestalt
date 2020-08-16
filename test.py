@@ -1,10 +1,10 @@
 #!/usr/bin/python3.7
 
-from unicodedata import lookup as emojilookup
 import asyncio
 
 import discord
 
+import gestalt
 import testenv
 import auth
 
@@ -27,7 +27,7 @@ class TestClient(discord.Client):
         elif action == "react":
             # content = (message # from most recent = 1, reaction)
             message = (await channel.history(limit = content[0]).flatten())[-1]
-            await message.add_reaction(emojilookup(content[1]))
+            await message.add_reaction(content[1])
         if waitfor:
             try:
                 return await self.wait_for(waitfor, timeout = TIMEOUT)
@@ -48,7 +48,7 @@ def test(bot, actions):
 
 print(test(0,(
     ("message", "g hello, world!", "message"),
-    ("react", (1, "BLACK QUESTION MARK ORNAMENT"), "message"),
-    ("react", (2, "CROSS MARK"), "raw_message_delete"))))
+    ("react", (1, gestalt.REACT_QUERY), "message"),
+    ("react", (2, gestalt.REACT_DELETE), "raw_message_delete"))))
 test(0,(
     ("message", "test", None),))
