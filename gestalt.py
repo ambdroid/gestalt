@@ -5,6 +5,7 @@ import asyncio
 import signal
 import time
 import math
+import sys
 
 import sqlite3 as sqlite
 import discord
@@ -243,9 +244,9 @@ class Gestalt(discord.Client):
 
 
 if __name__ == "__main__":
-    instance = Gestalt()
-
-    conn = sqlite.connect("gestalt.db")
+    dbfile = ("gestalt.db" if len(sys.argv) == 1 else (
+        ":memory:" if sys.argv[1] == "test" else sys.argv[1]))
+    conn = sqlite.connect(dbfile)
     cur = conn.cursor()
     cur.execute(
             "create table if not exists history("
@@ -262,6 +263,7 @@ if __name__ == "__main__":
             "auto integer)")
     cur.execute("pragma secure_delete")
 
+    instance = Gestalt()
     try:
         instance.run(auth.token)
     except RuntimeError:
