@@ -242,30 +242,31 @@ class Gestalt(discord.Client):
 
 
 
-instance = Gestalt()
+if __name__ == "__main__":
+    instance = Gestalt()
 
-conn = sqlite.connect("gestalt.db")
-cur = conn.cursor()
-cur.execute(
-	"create table if not exists history("
-        "msgid integer primary key,"
-        "chanid integer,"
-        "authid integer,"
-        "authname text,"
-        "content text,"
-        "deleted integer)")
-cur.execute(
-	"create table if not exists users("
-        "userid integer primary key,"
-        "prefix text,"
-        "auto integer)")
-cur.execute("pragma secure_delete")
+    conn = sqlite.connect("gestalt.db")
+    cur = conn.cursor()
+    cur.execute(
+            "create table if not exists history("
+            "msgid integer primary key,"
+            "chanid integer,"
+            "authid integer,"
+            "authname text,"
+            "content text,"
+            "deleted integer)")
+    cur.execute(
+            "create table if not exists users("
+            "userid integer primary key,"
+            "prefix text,"
+            "auto integer)")
+    cur.execute("pragma secure_delete")
 
-try:
-    instance.run(auth.token)
-except RuntimeError:
-    print("Runtime error.")
+    try:
+        instance.run(auth.token)
+    except RuntimeError:
+        print("Runtime error.")
 
-print("Shutting down.")
-conn.commit()
-conn.close()
+    print("Shutting down.")
+    conn.commit()
+    conn.close()
