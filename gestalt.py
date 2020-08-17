@@ -5,12 +5,22 @@ import asyncio
 import signal
 import time
 import math
+import re
 
 import sqlite3 as sqlite
 import discord
 
 import auth
 
+
+REPLACE_DICT = {re.compile(x, re.IGNORECASE): y for x, y in {
+    "\\bi\\s+am\\b": "We are",
+    "\\bi'm\\b": "We're",
+    "\\bi\\b": "We",
+    "\\bme\\b": "Us",
+    "\\bmy\\b": "Our",
+    "\\bmine\\b": "Ours",
+    }.items()}
 
 REACT_QUERY = emojilookup("BLACK QUESTION MARK ORNAMENT")
 REACT_DELETE = emojilookup("CROSS MARK")
@@ -181,6 +191,9 @@ class Gestalt(discord.Client):
         auto = row[1]
         if not (offset == 0) == (auto == 0):
             proxy = message.content[offset:].strip()
+            for x, y in REPLACE_DICT.items():
+                proxy = x.sub(y, proxy)
+
             msgfile = None
             if (len(message.attachments) > 0
                     and message.attachments[0].size <= MAX_FILE_SIZE):
