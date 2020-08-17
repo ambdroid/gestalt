@@ -16,7 +16,7 @@ import auth
 REPLACE_DICT = {re.compile(x, re.IGNORECASE): y for x, y in {
     "\\bi\\s+am\\b": "We are",
     "\\bi'm\\b": "We're",
-    "\\bi\\b": "We",
+    "\\bi\\b": "We", # also corrects I'll, I'd, I've
     "\\bme\\b": "Us",
     "\\bmy\\b": "Our",
     "\\bmine\\b": "Ours",
