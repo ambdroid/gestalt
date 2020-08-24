@@ -5,11 +5,13 @@ import asyncio
 import signal
 import time
 import math
+import sys
 import re
 
 import sqlite3 as sqlite
 import discord
 
+import testenv
 import auth
 
 
@@ -165,7 +167,8 @@ class Gestalt(discord.Client):
 
 
     async def on_message(self, message):
-        if message.author.bot or message.is_system():
+        if ((message.author.bot and not message.author.id in testenv.BOTS)
+                or message.is_system()):
             return
 
         cur.execute("insert or ignore into users values (?, NULL, 0)",
@@ -234,8 +237,9 @@ class Gestalt(discord.Client):
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
+            sendto = channel if reactor.id in testenv.BOTS else reactor
             try:
-                await reactor.send("Message sent by %s, id %d" % row)
+                await sendto.send("Message sent by %s, id %d" % row)
             except discord.Forbidden:
                 pass
             await message.remove_reaction(payload.emoji.name, reactor)
@@ -253,30 +257,32 @@ class Gestalt(discord.Client):
 
 
 
-instance = Gestalt()
+if __name__ == "__main__":
+    dbfile = ("gestalt.db" if len(sys.argv) == 1 else (
+        ":memory:" if sys.argv[1] == "test" else sys.argv[1]))
+    conn = sqlite.connect(dbfile)
+    cur = conn.cursor()
+    cur.execute(
+            "create table if not exists history("
+            "msgid integer primary key,"
+            "chanid integer,"
+            "authid integer,"
+            "authname text,"
+            "content text,"
+            "deleted integer)")
+    cur.execute(
+            "create table if not exists users("
+            "userid integer primary key,"
+            "prefix text,"
+            "auto integer)")
+    cur.execute("pragma secure_delete")
 
-conn = sqlite.connect("gestalt.db")
-cur = conn.cursor()
-cur.execute(
-	"create table if not exists history("
-        "msgid integer primary key,"
-        "chanid integer,"
-        "authid integer,"
-        "authname text,"
-        "content text,"
-        "deleted integer)")
-cur.execute(
-	"create table if not exists users("
-        "userid integer primary key,"
-        "prefix text,"
-        "auto integer)")
-cur.execute("pragma secure_delete")
+    instance = Gestalt()
+    try:
+        instance.run(auth.token)
+    except RuntimeError:
+        print("Runtime error.")
 
-try:
-    instance.run(auth.token)
-except RuntimeError:
-    print("Runtime error.")
-
-print("Shutting down.")
-conn.commit()
-conn.close()
+    print("Shutting down.")
+    conn.commit()
+    conn.close()

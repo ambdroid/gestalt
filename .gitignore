@@ -1,3 +1,5 @@
 auth.py
+testenv.py
 gestalt.db
+gestalt.db-journal
 __pycache__/
