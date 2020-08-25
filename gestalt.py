@@ -11,7 +11,6 @@ import re
 import sqlite3 as sqlite
 import discord
 
-import testenv
 import auth
 
 
@@ -88,9 +87,33 @@ def is_admin(message):
 
 
 class Gestalt(discord.Client):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *, dbfile, **kwargs):
+        super().__init__(**kwargs)
+
+        self.conn = sqlite.connect(dbfile)
+        self.cur = self.conn.cursor()
+        self.cur.execute(
+                "create table if not exists history("
+                "msgid integer primary key,"
+                "chanid integer,"
+                "authid integer,"
+                "authname text,"
+                "content text,"
+                "deleted integer)")
+        self.cur.execute(
+                "create table if not exists users("
+                "userid integer primary key,"
+                "prefix text,"
+                "auto integer)")
+        self.cur.execute("pragma secure_delete")
+
         self.loop.create_task(self.purge_loop())
+
+
+    def __del__(self):
+        print("Closing database.")
+        self.conn.commit()
+        self.conn.close()
 
 
     async def purge_loop(self):
@@ -99,15 +122,16 @@ class Gestalt(discord.Client):
             # time.time() and PURGE_AGE in seconds, snowflake timestamp in ms
             # https://discord.com/developers/docs/reference#snowflakes
             maxid = math.floor(1000*(time.time()-PURGE_AGE)-1420070400000)<<22
-            cur.execute("delete from history where deleted = 1 and msgid < ?",
+            self.cur.execute(
+                    "delete from history where deleted = 1 and msgid < ?",
                     (maxid,))
-            conn.commit()
+            self.conn.commit()
             await asyncio.sleep(PURGE_TIMEOUT)
 
 
     def handler(self):
         self.loop.create_task(self.close())
-        conn.commit()
+        self.conn.commit()
 
 
     async def on_ready(self):
@@ -126,7 +150,8 @@ class Gestalt(discord.Client):
             msgid = (await message.channel.send(HELPMSG)).id
             if is_text(message):
                 # put this in the history db so it can be deleted if desired
-                cur.execute("insert into history values (?, 0, ?, '', '', 0)",
+                self.cur.execute(
+                        "insert into history values (?, 0, ?, '', '', 0)",
                         (msgid, message.author.id))
 
         elif begins(cmd, "prefix") and arg not in ["", '""']:
@@ -136,23 +161,22 @@ class Gestalt(discord.Client):
             if arg == "delete":
                 arg = None
 
-            cur.execute("update users set prefix = ? where userid = ?",
+            self.cur.execute("update users set prefix = ? where userid = ?",
                     (arg, message.author.id))
 
-            conn.commit()
             await message.add_reaction(REACT_CONFIRM)
 
         elif begins(cmd, "auto"):
             userid = message.author.id
             if arg == "":
-                cur.execute("update users set auto = (1-auto) where userid = ?",
+                self.cur.execute(
+                        "update users set auto = (1-auto) where userid = ?",
                         (userid,))
             else:
                 if arg not in AUTO_KEYWORDS:
                     return
-                cur.execute("update users set auto = ? where userid = ?",
+                self.cur.execute("update users set auto = ? where userid = ?",
                         (AUTO_KEYWORDS[arg], userid))
-            conn.commit()
             await message.add_reaction(REACT_CONFIRM)
 
         elif begins(cmd, "nick"):
@@ -167,11 +191,12 @@ class Gestalt(discord.Client):
 
 
     async def on_message(self, message):
-        if ((message.author.bot and not message.author.id in testenv.BOTS)
-                or message.is_system()):
+        if message.type != discord.MessageType.default:
+            return
+        if message.author.bot and not TESTING:
             return
 
-        cur.execute("insert or ignore into users values (?, NULL, 0)",
+        self.cur.execute("insert or ignore into users values (?, NULL, 0)",
                 (message.author.id,))
 
         # end of prefix or 0
@@ -182,7 +207,8 @@ class Gestalt(discord.Client):
             return
 
         # guaranteed to exist due to above
-        row = cur.execute("select prefix, auto from users where userid = ?",
+        row = self.cur.execute(
+                "select prefix, auto from users where userid = ?",
                 (message.author.id,)).fetchone()
 
         # if no prefix set, use default
@@ -212,7 +238,7 @@ class Gestalt(discord.Client):
             authid = message.author.id
             chanid = message.channel.id
             authname = message.author.name + "#" + message.author.discriminator
-            cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
+            self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
                     (msgid, chanid, authid, authname, proxy)) # deleted = 0
             await message.delete()
 
@@ -220,7 +246,7 @@ class Gestalt(discord.Client):
     # on_reaction_add doesn't catch everything
     async def on_raw_reaction_add(self, payload):
         # first, make sure this is one of ours
-        row = cur.execute(
+        row = self.cur.execute(
             "select authname, authid from history where msgid = ?",
             (payload.message_id,)).fetchone()
         if row == None:
@@ -237,8 +263,9 @@ class Gestalt(discord.Client):
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
-            sendto = channel if reactor.id in testenv.BOTS else reactor
             try:
+                # tragically, bots cannot DM other bots :(
+                sendto = channel if TESTING else reactor
                 await sendto.send("Message sent by %s, id %d" % row)
             except discord.Forbidden:
                 pass
@@ -247,7 +274,7 @@ class Gestalt(discord.Client):
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
             if payload.user_id == row[1]:
-                cur.execute(
+                self.cur.execute(
                         "update history set deleted = 1,"
                         "authname = '' where msgid = ?",
                         (payload.message_id,))
@@ -258,31 +285,16 @@ class Gestalt(discord.Client):
 
 
 if __name__ == "__main__":
-    dbfile = ("gestalt.db" if len(sys.argv) == 1 else (
-        ":memory:" if sys.argv[1] == "test" else sys.argv[1]))
-    conn = sqlite.connect(dbfile)
-    cur = conn.cursor()
-    cur.execute(
-            "create table if not exists history("
-            "msgid integer primary key,"
-            "chanid integer,"
-            "authid integer,"
-            "authname text,"
-            "content text,"
-            "deleted integer)")
-    cur.execute(
-            "create table if not exists users("
-            "userid integer primary key,"
-            "prefix text,"
-            "auto integer)")
-    cur.execute("pragma secure_delete")
+    TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
+    if TESTING:
+        print("Running in test mode!")
 
-    instance = Gestalt()
+    instance = Gestalt(dbfile = ":memory:" if TESTING else (
+            sys.argv[1] if len(sys.argv) > 1 else "gestalt.db"))
+
     try:
         instance.run(auth.token)
     except RuntimeError:
         print("Runtime error.")
 
     print("Shutting down.")
-    conn.commit()
-    conn.close()
