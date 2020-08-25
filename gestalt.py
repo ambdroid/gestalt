@@ -71,7 +71,7 @@ AUTO_KEYWORDS = {
 
 
 def begins(text, prefix):
-    return len(prefix) if text[:len(prefix)] == prefix else 0
+    return len(prefix) if text.startswith(prefix) else 0
 
 
 def is_text(message):
