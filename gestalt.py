@@ -101,6 +101,15 @@ class Gestalt(discord.Client):
                 "userid integer primary key,"
                 "prefix text,"
                 "auto integer)")
+        self.cur.execute(
+                "create table if not exists webhooks("
+                "chanid integer primary key,"
+                "hookid integer,"
+                "token text)")
+        self.cur.execute(
+                "create table if not exists swaps("
+                "userid1 integer unique,"
+                "userid2 integer unique)")
         self.cur.execute("pragma secure_delete")
 
         self.loop.create_task(self.purge_loop())
