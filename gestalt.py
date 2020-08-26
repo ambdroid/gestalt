@@ -190,6 +190,29 @@ class Gestalt(discord.Client):
             await message.add_reaction(REACT_CONFIRM)
 
 
+    async def do_proxy(self, message, proxy):
+        for x, y in REPLACE_DICT.items():
+            proxy = x.sub(y, proxy)
+
+        msgfile = None
+        if (len(message.attachments) > 0
+                and message.attachments[0].size <= MAX_FILE_SIZE):
+            # only copy the first attachment
+            msgfile = await message.attachments[0].to_file()
+            # lets mobile users upload with spoilers
+            if proxy.lower().find("spoiler") != -1:
+                msgfile.filename = "SPOILER_" + msgfile.filename
+
+        msgid = (await message.channel.send(content = proxy,
+            file = msgfile)).id
+        authid = message.author.id
+        chanid = message.channel.id
+        authname = message.author.name + "#" + message.author.discriminator
+        self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
+                (msgid, chanid, authid, authname, proxy)) # deleted = 0
+        await message.delete()
+
+
     async def on_message(self, message):
         if message.type != discord.MessageType.default:
             return
@@ -222,26 +245,7 @@ class Gestalt(discord.Client):
         auto = row[1]
         if not (offset == 0) == (auto == 0):
             proxy = message.content[offset:].strip()
-            for x, y in REPLACE_DICT.items():
-                proxy = x.sub(y, proxy)
-
-            msgfile = None
-            if (len(message.attachments) > 0
-                    and message.attachments[0].size <= MAX_FILE_SIZE):
-                # only copy the first attachment
-                msgfile = await message.attachments[0].to_file()
-                # lets mobile users upload with spoilers
-                if proxy.lower().find("spoiler") != -1:
-                    msgfile.filename = "SPOILER_" + msgfile.filename
-
-            msgid = (await message.channel.send(content = proxy,
-                file = msgfile)).id
-            authid = message.author.id
-            chanid = message.channel.id
-            authname = message.author.name + "#" + message.author.discriminator
-            self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
-                    (msgid, chanid, authid, authname, proxy)) # deleted = 0
-            await message.delete()
+            await self.do_proxy(message, proxy)
 
 
     # on_reaction_add doesn't catch everything
