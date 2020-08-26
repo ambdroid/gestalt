@@ -82,10 +82,6 @@ def is_dm(message):
     return message.channel.type == discord.ChannelType.private
 
 
-def is_admin(message):
-    return message.author.permissions_in(message.channel).administrator
-
-
 class Gestalt(discord.Client):
     def __init__(self, *, dbfile, **kwargs):
         super().__init__(**kwargs)
@@ -143,6 +139,8 @@ class Gestalt(discord.Client):
                 activity = discord.Game(name = COMMAND_PREFIX + "help"))
 
 
+    # discord.py commands extension throws out bot messages
+    # this is incompatible with the test framework so process commands manually
     async def do_command(self, message, cmd):
         # add an empty string to take place of arg if none given
         arg = (cmd.split(maxsplit=1)+[""])[1]
@@ -177,6 +175,7 @@ class Gestalt(discord.Client):
                     return
                 self.cur.execute("update users set auto = ? where userid = ?",
                         (AUTO_KEYWORDS[arg], userid))
+
             await message.add_reaction(REACT_CONFIRM)
 
         elif begins(cmd, "nick"):
@@ -185,9 +184,10 @@ class Gestalt(discord.Client):
                 return
             try:
                 await message.guild.get_member(self.user.id).edit(nick = arg)
-                await message.add_reaction(REACT_CONFIRM)
-            except:
-                pass
+            except: # nickname too long or otherwise invalid
+                return
+
+            await message.add_reaction(REACT_CONFIRM)
 
 
     async def on_message(self, message):
@@ -196,6 +196,7 @@ class Gestalt(discord.Client):
         if message.author.bot and not TESTING:
             return
 
+        # user id, no prefix, autoproxy off
         self.cur.execute("insert or ignore into users values (?, NULL, 0)",
                 (message.author.id,))
 
