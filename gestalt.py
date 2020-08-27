@@ -64,6 +64,7 @@ HELPMSG = ("By default, I will proxy any message that begins "
         "One last thing: if you upload a photo and put `spoiler` "
         "somewhere in the message body, I'll spoiler it for you.\n"
         "This is useful if you're on mobile.")
+ERROR_DM = "I can only do that in a server!"
 
 AUTO_KEYWORDS = {
         "on": 1,
@@ -200,7 +201,7 @@ class Gestalt(discord.Client):
 
         elif begins(cmd, "nick"):
             if is_dm(message):
-                await message.author.send("I can only do that in a server!");
+                await message.author.send(ERROR_DM);
                 return
 
             try:
@@ -212,7 +213,7 @@ class Gestalt(discord.Client):
 
         elif begins(cmd, "swap"):
             if is_dm(message):
-                await message.author.send("I can only do that in a server!");
+                await message.author.send(ERROR_DM);
                 return
 
             # discord.ext includes a MemberConverter but that needs a Context
