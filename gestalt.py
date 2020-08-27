@@ -244,7 +244,7 @@ class Gestalt(discord.Client):
                 msgfile.filename = "SPOILER_" + msgfile.filename
 
         authid = message.author.id
-        chanid = message.channel.id
+        channel = message.channel
 
         row = self.cur.execute(
                 "select * from swaps where userid1 = ? or userid2 = ?",
@@ -253,21 +253,25 @@ class Gestalt(discord.Client):
         if row != None:
             # select the other member in the row
             otherid = row[1] if row[0] == authid else row[0]
-            member = message.channel.guild.get_member(otherid)
+            member = channel.guild.get_member(otherid)
+            # if the guild is large, the member may not be in cache
+            if member == None and channel.guild.large:
+                member = await channel.guild.fetch_member(otherid)
+                # put this member in the cache (is this necessary?)
+                channel.guild._add_member(member)
 
         if member == None:
             for x, y in REPLACE_DICT.items():
                 proxy = x.sub(y, proxy)
 
-            msgid = (await message.channel.send(content = proxy,
-                file = msgfile)).id
+            msgid = (await channel.send(content = proxy, file = msgfile)).id
         else:
             row = self.cur.execute("select * from webhooks where chanid = ?",
-                    (chanid,)).fetchone()
+                    (channel.id,)).fetchone()
             if row == None:
-                hook = await message.channel.create_webhook(name = WEBHOOK_NAME)
+                hook = await channel.create_webhook(name = WEBHOOK_NAME)
                 self.cur.execute("insert into webhooks values (?, ?, ?)",
-                        (chanid, hook.id, hook.token))
+                        (channel.id, hook.id, hook.token))
             else:
                 hook = discord.Webhook.partial(row[1], row[2],
                         adapter = discord.AsyncWebhookAdapter(self.sesh))
@@ -280,7 +284,7 @@ class Gestalt(discord.Client):
         authname = message.author.name + "#" + message.author.discriminator
 
         self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
-                (msgid, chanid, authid, authname, proxy)) # deleted = 0
+                (msgid, channel.id, authid, authname, proxy)) # deleted = 0
         await message.delete()
 
 
