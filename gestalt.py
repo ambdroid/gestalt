@@ -98,6 +98,7 @@ class Gestalt(discord.Client):
                 "chanid integer,"
                 "authid integer,"
                 "authname text,"
+                "otherid text,"
                 "content text,"
                 "deleted integer)")
         self.cur.execute(
@@ -168,7 +169,7 @@ class Gestalt(discord.Client):
             if is_text(message):
                 # put this in the history db so it can be deleted if desired
                 self.cur.execute(
-                        "insert into history values (?, 0, ?, '', '', 0)",
+                        "insert into history values (?, 0, ?, '', 0, '', 0)",
                         (msgid, message.author.id))
 
         elif begins(cmd, "prefix") and arg not in ["", '""']:
@@ -283,9 +284,11 @@ class Gestalt(discord.Client):
                         format = "png", size = 1024))).id
 
         authname = message.author.name + "#" + message.author.discriminator
+        otherid = 0 if member == None else member.id
 
-        self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
-                (msgid, channel.id, authid, authname, proxy)) # deleted = 0
+        # deleted = 0
+        self.cur.execute("insert into history values (?, ?, ?, ?, ?, ?, 0)",
+                (msgid, channel.id, authid, authname, otherid, proxy))
         await message.delete()
 
 
