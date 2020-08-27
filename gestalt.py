@@ -9,10 +9,13 @@ import sys
 import re
 
 import sqlite3 as sqlite
+import aiohttp
 import discord
 
 import auth
 
+
+WEBHOOK_NAME = "Gestalt webhook"
 
 REPLACE_DICT = {re.compile(x, re.IGNORECASE): y for x, y in {
     "\\bi\\s+am\\b": "We are",
@@ -29,6 +32,7 @@ REACT_DELETE = emojilookup("CROSS MARK")
 # originally "BALLOT BOX WITH CHECK"
 # but this has visibility issues on ultradark theme
 REACT_CONFIRM = emojilookup("WHITE HEAVY CHECK MARK")
+REACT_DENY = emojilookup("NEGATIVE SQUARED CROSS MARK")
 
 COMMAND_PREFIX = "gs;"
 MAX_FILE_SIZE = 8*1024*1024
@@ -142,10 +146,16 @@ class Gestalt(discord.Client):
     async def on_ready(self):
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
+        self.sesh = aiohttp.ClientSession()
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + "help"))
+
+
+    async def close(self):
+        await super().close()
+        await self.sesh.close()
 
 
     # discord.py commands extension throws out bot messages
@@ -191,6 +201,7 @@ class Gestalt(discord.Client):
             if is_dm(message):
                 await message.author.send("I can only do that in a server!");
                 return
+
             try:
                 await message.guild.get_member(self.user.id).edit(nick = arg)
             except: # nickname too long or otherwise invalid
@@ -198,11 +209,31 @@ class Gestalt(discord.Client):
 
             await message.add_reaction(REACT_CONFIRM)
 
+        elif begins(cmd, "swap"):
+            if is_dm(message):
+                await message.author.send("I can only do that in a server!");
+                return
+
+            # discord.ext includes a MemberConverter but that needs a Context
+            # and that's only available whem using discord.ext Command
+            member = (message.mentions[0] if len(message.mentions) > 0 else
+                    message.channel.guild.get_member_named(arg))
+            if member == None:
+                await message.add_reaction(REACT_DENY)
+                return
+
+            authid = message.author.id
+            self.cur.execute(
+                    "delete from swaps where userid1 = ? or userid2 = ?",
+                    (authid, authid))
+            self.cur.execute(
+                    "insert into swaps values (?, ?)",
+                    (authid, member.id))
+
+            await message.add_reaction(REACT_CONFIRM)
+
 
     async def do_proxy(self, message, proxy):
-        for x, y in REPLACE_DICT.items():
-            proxy = x.sub(y, proxy)
-
         msgfile = None
         if (len(message.attachments) > 0
                 and message.attachments[0].size <= MAX_FILE_SIZE):
@@ -212,11 +243,42 @@ class Gestalt(discord.Client):
             if proxy.lower().find("spoiler") != -1:
                 msgfile.filename = "SPOILER_" + msgfile.filename
 
-        msgid = (await message.channel.send(content = proxy,
-            file = msgfile)).id
         authid = message.author.id
         chanid = message.channel.id
+
+        row = self.cur.execute(
+                "select * from swaps where userid1 = ? or userid2 = ?",
+                (authid, authid)).fetchone()
+        member = None
+        if row != None:
+            # select the other member in the row
+            otherid = row[1] if row[0] == authid else row[0]
+            member = message.channel.guild.get_member(otherid)
+
+        if member == None:
+            for x, y in REPLACE_DICT.items():
+                proxy = x.sub(y, proxy)
+
+            msgid = (await message.channel.send(content = proxy,
+                file = msgfile)).id
+        else:
+            row = self.cur.execute("select * from webhooks where chanid = ?",
+                    (chanid,)).fetchone()
+            if row == None:
+                hook = await message.channel.create_webhook(name = WEBHOOK_NAME)
+                self.cur.execute("insert into webhooks values (?, ?, ?)",
+                        (chanid, hook.id, hook.token))
+            else:
+                hook = discord.Webhook.partial(row[1], row[2],
+                        adapter = discord.AsyncWebhookAdapter(self.sesh))
+
+            msgid = (await hook.send(wait = True, content = proxy, file=msgfile,
+                    username = member.nick,
+                    avatar_url = member.avatar_url_as(
+                        format = "png", size = 1024))).id
+
         authname = message.author.name + "#" + message.author.discriminator
+
         self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
                 (msgid, chanid, authid, authname, proxy)) # deleted = 0
         await message.delete()
@@ -271,9 +333,6 @@ class Gestalt(discord.Client):
         channel = self.get_channel(payload.channel_id)
         reactor = self.get_user(payload.user_id)
         message = await channel.fetch_message(payload.message_id)
-
-        if message.author.id != self.user.id:
-            raise ValueError("Something is terribly wrong.")
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
