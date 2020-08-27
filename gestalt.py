@@ -218,7 +218,7 @@ class Gestalt(discord.Client):
             # and that's only available whem using discord.ext Command
             member = (message.mentions[0] if len(message.mentions) > 0 else
                     message.channel.guild.get_member_named(arg))
-            if member == None:
+            if member == None and arg != "delete":
                 await message.add_reaction(REACT_DENY)
                 return
 
@@ -226,8 +226,8 @@ class Gestalt(discord.Client):
             self.cur.execute(
                     "delete from swaps where userid1 = ? or userid2 = ?",
                     (authid, authid))
-            self.cur.execute(
-                    "insert into swaps values (?, ?)",
+            if arg != "delete":
+                self.cur.execute("insert into swaps values (?, ?)",
                     (authid, member.id))
 
             await message.add_reaction(REACT_CONFIRM)
