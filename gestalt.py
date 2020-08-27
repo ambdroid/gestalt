@@ -32,7 +32,6 @@ REACT_DELETE = emojilookup("CROSS MARK")
 # originally "BALLOT BOX WITH CHECK"
 # but this has visibility issues on ultradark theme
 REACT_CONFIRM = emojilookup("WHITE HEAVY CHECK MARK")
-REACT_DENY = emojilookup("NEGATIVE SQUARED CROSS MARK")
 
 COMMAND_PREFIX = "gs;"
 MAX_FILE_SIZE = 8*1024*1024
@@ -115,7 +114,8 @@ class Gestalt(discord.Client):
         self.cur.execute(
                 "create table if not exists swaps("
                 "userid1 integer,"
-                "userid2 integer)")
+                "userid2 integer,"
+                "active integer)")
         self.cur.execute("pragma secure_delete")
 
         self.loop.create_task(self.purge_loop())
@@ -213,26 +213,48 @@ class Gestalt(discord.Client):
 
         elif begins(cmd, "swap"):
             if is_dm(message):
-                await message.author.send(ERROR_DM);
+                await message.author.send(ERROR_DM)
                 return
+
+            authid = message.author.id
+            if arg == "off":
+                self.cur.execute(
+                        "delete from swaps where userid1 = ? or userid2 = ?",
+                        (authid, authid))
+                await message.add_reaction(REACT_CONFIRM)
+                return
+
 
             # discord.ext includes a MemberConverter but that needs a Context
             # and that's only available whem using discord.ext Command
             member = (message.mentions[0] if len(message.mentions) > 0 else
                     message.channel.guild.get_member_named(arg))
-            if member == None and arg != "delete":
-                await message.add_reaction(REACT_DENY)
+            if member == None:
                 return
 
-            authid = message.author.id
-            self.cur.execute(
-                    "delete from swaps where userid1 = ? or userid2 = ?",
-                    (authid, authid))
-            if arg != "delete":
-                self.cur.execute("insert into swaps values (?, ?)",
+            # userid1 is initiator. if row exists (mutual consent),
+            # then mark swap active. else, create an inactive swap.
+            # TODO: 1st and 4th queries can be merged?
+            # and this is probably a race condition waiting to happen
+            row = self.cur.execute(
+                    "select * from swaps where userid1 = ? and userid2 = ?",
+                    (member.id, authid)).fetchone()
+            if row == None:
+                self.cur.execute("insert into swaps values (?, ?, 0)",
                     (authid, member.id))
+            else:
+                # mark any other active swaps inactive first
+                self.cur.executemany(
+                    "update swaps set active = 0 where "
+                    "userid1 = ? or userid2 = ?",
+                    [(authid, authid), (member.id, member.id)])
+                self.cur.execute(
+                    "update swaps set active = 1 where "
+                    "userid1 = ? and userid2 = ? limit 1",
+                    (member.id, authid))
 
             await message.add_reaction(REACT_CONFIRM)
+
 
 
     async def do_proxy(self, message, proxy):
@@ -249,7 +271,8 @@ class Gestalt(discord.Client):
         channel = message.channel
 
         row = self.cur.execute(
-                "select * from swaps where userid1 = ? or userid2 = ?",
+                "select * from swaps where (userid1 = ? or userid2 = ?) "
+                "and active = 1",
                 (authid, authid)).fetchone()
         member = None
         if row != None:
