@@ -273,7 +273,7 @@ class Gestalt(discord.Client):
                         adapter = discord.AsyncWebhookAdapter(self.sesh))
 
             msgid = (await hook.send(wait = True, content = proxy, file=msgfile,
-                    username = member.nick,
+                    username = member.display_name,
                     avatar_url = member.avatar_url_as(
                         format = "png", size = 1024))).id
 
