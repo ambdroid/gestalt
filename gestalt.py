@@ -258,7 +258,8 @@ class Gestalt(discord.Client):
             if member == None and channel.guild.large:
                 member = await channel.guild.fetch_member(otherid)
                 # put this member in the cache (is this necessary?)
-                channel.guild._add_member(member)
+                if member != None:
+                    channel.guild._add_member(member)
 
         if member == None:
             for x, y in REPLACE_DICT.items():
