@@ -112,8 +112,8 @@ class Gestalt(discord.Client):
                 "token text)")
         self.cur.execute(
                 "create table if not exists swaps("
-                "userid1 integer unique,"
-                "userid2 integer unique)")
+                "userid1 integer,"
+                "userid2 integer)")
         self.cur.execute("pragma secure_delete")
 
         self.loop.create_task(self.purge_loop())
