@@ -57,7 +57,8 @@ HELPMSG = ("By default, I will proxy any message that begins "
         "Use `swap [user]` to initiate a Swap. "
         "If the other user consents with `swap [you]`, "
         "then the Swap will be active.\n"
-        "While a Swap is active, the normal proxying behavior will be replaced by a webhook with the other user's nickname and avatar.\n"
+        "While a Swap is active, the normal proxying behavior will be replaced "
+        "by a webhook with the other user's nickname and avatar.\n"
         "Use `swap off` to deactivate a Swap.\n"
         "\n"
         "Use`" + COMMAND_PREFIX + "nick` to change my nick.\n"
@@ -260,7 +261,6 @@ class Gestalt(discord.Client):
                     (member.id, authid))
 
             await message.add_reaction(REACT_CONFIRM)
-
 
 
     async def do_proxy(self, message, proxy):
