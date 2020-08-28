@@ -34,11 +34,13 @@ REACT_DELETE = emojilookup("CROSS MARK")
 REACT_CONFIRM = emojilookup("WHITE HEAVY CHECK MARK")
 
 COMMAND_PREFIX = "gs;"
-MAX_FILE_SIZE = 8*1024*1024
 DEFAULT_PREFIX = "g "
 
 PURGE_AGE = 3600*24*7   # 1 week
 PURGE_TIMEOUT = 3600*2  # 2 hours
+
+MAX_FILE_SIZE = 8*1024*1024
+AVATAR_SIZE = 256
 
 HELPMSG = ("By default, I will proxy any message that begins "
         "with `g ` or `G `. So `g hello!` will become `hello!`\n"
@@ -313,7 +315,7 @@ class Gestalt(discord.Client):
             msgid = (await hook.send(wait = True, content = proxy, file=msgfile,
                     username = member.display_name,
                     avatar_url = member.avatar_url_as(
-                        format = "png", size = 1024))).id
+                        format = "png", size = AVATAR_SIZE))).id
 
         authname = message.author.name + "#" + message.author.discriminator
         otherid = 0 if member == None else member.id
