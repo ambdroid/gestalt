@@ -248,8 +248,9 @@ class Gestalt(discord.Client):
                     "userid1 = ? and userid2 = ? limit 1",
                     (member.id, authid)).fetchone()
             if row == None:
-                self.cur.execute("insert into swaps values (?, ?, 0)",
-                    (authid, member.id))
+                active = 1 if authid == member.id else 0
+                self.cur.execute("insert into swaps values (?, ?, ?)",
+                    (authid, member.id, active))
             else:
                 # mark any other active swaps inactive first
                 self.cur.executemany(
