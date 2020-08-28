@@ -244,7 +244,8 @@ class Gestalt(discord.Client):
             # TODO: 1st and 4th queries can be merged?
             # and this is probably a race condition waiting to happen
             row = self.cur.execute(
-                    "select * from swaps where userid1 = ? and userid2 = ?",
+                    "select * from swaps where "
+                    "userid1 = ? and userid2 = ? limit 1",
                     (member.id, authid)).fetchone()
             if row == None:
                 self.cur.execute("insert into swaps values (?, ?, 0)",
@@ -257,7 +258,7 @@ class Gestalt(discord.Client):
                     [(authid, authid), (member.id, member.id)])
                 self.cur.execute(
                     "update swaps set active = 1 where "
-                    "userid1 = ? and userid2 = ? limit 1",
+                    "userid1 = ? and userid2 = ?",
                     (member.id, authid))
 
             await message.add_reaction(REACT_CONFIRM)
