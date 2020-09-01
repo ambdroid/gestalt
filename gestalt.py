@@ -87,7 +87,7 @@ KEYWORDS = {
 class Prefs(enum.IntFlag):
     auto        = 1 << 0
     replace     = 1 << 1
-    alwaysswap  = 1 << 2
+    autoswap  = 1 << 2
 DEFAULT_PREFS = Prefs.replace
 
 
@@ -276,7 +276,7 @@ class Gestalt(discord.Client):
                 row = self.cur.execute(
                         "select prefs from users where userid = ?",
                         (member.id,)).fetchone()
-                active = (1 if row[0] & Prefs.alwaysswap or authid == member.id
+                active = (1 if row[0] & Prefs.autoswap or authid == member.id
                         else 0)
                 self.cur.execute("insert into swaps values (?, ?, ?)",
                     (authid, member.id, active))
