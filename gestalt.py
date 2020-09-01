@@ -87,7 +87,7 @@ KEYWORDS = {
 class Prefs(enum.IntFlag):
     auto        = 1 << 0
     replace     = 1 << 1
-    autoswap  = 1 << 2
+    autoswap    = 1 << 2
 DEFAULT_PREFS = Prefs.replace
 
 
