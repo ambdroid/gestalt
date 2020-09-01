@@ -20,6 +20,7 @@ WEBHOOK_NAME = "Gestalt webhook"
 
 REPLACE_DICT = {re.compile(x, re.IGNORECASE): y for x, y in {
     "\\bi\\s+am\\b": "We are",
+    "\\bi\\s+was\\b": "We were",
     "\\bi'm\\b": "We're",
     "\\bim\\b": "We're",
     "\\bi\\b": "We", # also corrects I'll, I'd, I've
