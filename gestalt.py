@@ -3,6 +3,7 @@
 from unicodedata import lookup as emojilookup
 import asyncio
 import signal
+import enum
 import time
 import math
 import sys
@@ -74,12 +75,19 @@ HELPMSG = ("By default, I will proxy any message that begins "
         "This is useful if you're on mobile.")
 ERROR_DM = "I can only do that in a server!"
 
-AUTO_KEYWORDS = {
+KEYWORDS = {
         "on": 1,
         "off": 0,
         "yes": 1,
         "no": 0
 }
+
+@enum.unique
+class Prefs(enum.IntFlag):
+    auto        = 1 << 0
+    replace     = 1 << 1
+    alwaysswap  = 1 << 2
+DEFAULT_PREFS = Prefs.replace
 
 
 
@@ -114,7 +122,7 @@ class Gestalt(discord.Client):
                 "create table if not exists users("
                 "userid integer primary key,"
                 "prefix text,"
-                "auto integer)")
+                "prefs integer)")
         self.cur.execute(
                 "create table if not exists webhooks("
                 "chanid integer primary key,"
@@ -195,16 +203,30 @@ class Gestalt(discord.Client):
             await message.add_reaction(REACT_CONFIRM)
 
         elif begins(cmd, "auto"):
+            await self.do_command(message, "prefs " + cmd)
+
+        elif begins(cmd, "prefs"):
+            arg = arg.split() # no spaces to worry about like in prefix command
+            if len(arg) == 0: # TODO: prefs-specific help message?
+                return
+            if not arg[0] in Prefs.__members__.keys():
+                return
+
+            bit = int(Prefs[arg[0]])
             userid = message.author.id
-            if arg == "":
+            if len(arg) == 1: # only "prefs" + name given. invert the thing
                 self.cur.execute(
-                        "update users set auto = (1-auto) where userid = ?",
-                        (userid,))
+                        "update users set prefs = (prefs & ~?) | (~prefs & ?)"
+                        "where userid = ?",
+                        (bit, bit, userid))
             else:
-                if arg not in AUTO_KEYWORDS:
+                if arg[1] not in KEYWORDS:
                     return
-                self.cur.execute("update users set auto = ? where userid = ?",
-                        (AUTO_KEYWORDS[arg], userid))
+                # note that KEYWORDS values are 0/1
+                self.cur.execute(
+                        "update users set prefs = (prefs & ~?) | ?"
+                        "where userid = ?",
+                        (bit, bit*KEYWORDS[arg[1]], userid))
 
             await message.add_reaction(REACT_CONFIRM)
 
@@ -250,7 +272,11 @@ class Gestalt(discord.Client):
                     "userid1 = ? and userid2 = ? limit 1",
                     (member.id, authid)).fetchone()
             if row == None:
-                active = 1 if authid == member.id else 0
+                row = self.cur.execute(
+                        "select prefs from users where userid = ?",
+                        (member.id,)).fetchone()
+                active = (1 if row[0] & Prefs.alwaysswap or authid == member.id
+                        else 0)
                 self.cur.execute("insert into swaps values (?, ?, ?)",
                     (authid, member.id, active))
             else:
@@ -267,7 +293,7 @@ class Gestalt(discord.Client):
             await message.add_reaction(REACT_CONFIRM)
 
 
-    async def do_proxy(self, message, proxy):
+    async def do_proxy(self, message, proxy, prefs):
         msgfile = None
         if (len(message.attachments) > 0
                 and message.attachments[0].size <= MAX_FILE_SIZE):
@@ -297,8 +323,9 @@ class Gestalt(discord.Client):
                     channel.guild._add_member(member)
 
         if member == None:
-            for x, y in REPLACE_DICT.items():
-                proxy = x.sub(y, proxy)
+            if prefs & Prefs.replace:
+                for x, y in REPLACE_DICT.items():
+                    proxy = x.sub(y, proxy)
 
             msgid = (await channel.send(content = proxy, file = msgfile)).id
         else:
@@ -333,8 +360,8 @@ class Gestalt(discord.Client):
             return
 
         # user id, no prefix, autoproxy off
-        self.cur.execute("insert or ignore into users values (?, NULL, 0)",
-                (message.author.id,))
+        self.cur.execute("insert or ignore into users values (?, NULL, ?)",
+                (message.author.id, DEFAULT_PREFS))
 
         # end of prefix or 0
         offset = begins(message.content.lower(), COMMAND_PREFIX)
@@ -345,7 +372,7 @@ class Gestalt(discord.Client):
 
         # guaranteed to exist due to above
         row = self.cur.execute(
-                "select prefix, auto from users where userid = ?",
+                "select prefix, prefs from users where userid = ?",
                 (message.author.id,)).fetchone()
 
         # if no prefix set, use default
@@ -355,10 +382,10 @@ class Gestalt(discord.Client):
         # don't proxy if:
         # - auto off and not prefixed
         # - auto on and prefixed
-        auto = row[1]
+        auto = row[1] & Prefs.auto
         if not (offset == 0) == (auto == 0):
             proxy = message.content[offset:].strip()
-            await self.do_proxy(message, proxy)
+            await self.do_proxy(message, proxy, row[1])
 
 
     # on_reaction_add doesn't catch everything
