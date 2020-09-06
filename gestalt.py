@@ -131,9 +131,10 @@ class Gestalt(discord.Client):
                 "token text)")
         self.cur.execute(
                 "create table if not exists swaps("
-                "userid1 integer,"
-                "userid2 integer,"
-                "active integer)")
+                "userid integer,"  # initiator
+                "otherid integer," # target
+                "active integer,"
+                "unique(userid, otherid))")
         self.cur.execute("pragma secure_delete")
 
         self.loop.create_task(self.purge_loop())
@@ -251,7 +252,7 @@ class Gestalt(discord.Client):
             authid = message.author.id
             if arg == "off":
                 self.cur.execute(
-                        "delete from swaps where userid1 = ? or userid2 = ?",
+                        "delete from swaps where userid = ? or otherid = ?",
                         (authid, authid))
                 await message.add_reaction(REACT_CONFIRM)
                 return
@@ -264,32 +265,36 @@ class Gestalt(discord.Client):
             if member == None:
                 return
 
-            # userid1 is initiator. if row exists (mutual consent),
-            # then mark swap active. else, create an inactive swap.
-            # TODO: 1st and 4th queries can be merged?
-            # and this is probably a race condition waiting to happen
-            row = self.cur.execute(
-                    "select * from swaps where "
-                    "userid1 = ? and userid2 = ? limit 1",
-                    (member.id, authid)).fetchone()
-            if row == None:
-                row = self.cur.execute(
+            # this whole thing *feels* like a race condition waiting to happen
+            # but there's no await, so there's no opportunity for interference
+
+            # to minimize queries, first try to mark the swap active in the
+            # other direction. if it succeeds, the swap is active.
+            self.cur.execute(
+                    "update swaps set active = 1 where "
+                    "userid = ? and otherid = ?",
+                    (member.id, authid))
+            if self.cur.rowcount == 1: # *must* be 0/1 due to unique constraint
+                # deactivate any other active swaps first
+                # (except for the one we want!)
+                self.cur.execute(
+                        "delete from swaps where"
+                        "(userid in (?, ?) or otherid in (?, ?))"
+                        "and not (userid = ? and otherid = ?)",
+                        (member.id, authid)*3)
+                self.cur.execute("insert or ignore into swaps values (?, ?, 1)",
+                        (authid, member.id))
+
+            else:
+                userprefs = self.cur.execute(
                         "select prefs from users where userid = ?",
                         (member.id,)).fetchone()
-                active = (1 if row[0] & Prefs.autoswap or authid == member.id
-                        else 0)
-                self.cur.execute("insert into swaps values (?, ?, ?)",
-                    (authid, member.id, active))
-            else:
-                # mark any other active swaps inactive first
-                self.cur.executemany(
-                    "update swaps set active = 0 where "
-                    "userid1 = ? or userid2 = ?",
-                    [(authid, authid), (member.id, member.id)])
+                # it's possible that the other user isn't in the users table
+                # due to not having sent a message yet
+                active = userprefs != None and userprefs[0] & Prefs.autoswap
                 self.cur.execute(
-                    "update swaps set active = 1 where "
-                    "userid1 = ? and userid2 = ?",
-                    (member.id, authid))
+                        "insert or ignore into swaps values (?, ?, ?)",
+                        (authid, member.id, bool(active)))
 
             await message.add_reaction(REACT_CONFIRM)
 
@@ -307,14 +312,21 @@ class Gestalt(discord.Client):
         authid = message.author.id
         channel = message.channel
 
+        '''row = self.cur.execute(
+                "select x.otherid from"
+                "       (select otherid from swaps where userid = ?) x"
+                "   join"
+                "       (select userid from swaps where otherid = ?)"
+                "   on"
+                "       (x.otherid = y.userid)"
+                "limit 1",
+                (authid, authid)).fetchone()'''
         row = self.cur.execute(
-                "select * from swaps where (userid1 = ? or userid2 = ?) "
-                "and active = 1",
-                (authid, authid)).fetchone()
+                "select * from swaps where userid = ? and active = 1",
+                (authid,)).fetchone()
         member = None
         if row != None:
-            # select the other member in the row
-            otherid = row[1] if row[0] == authid else row[0]
+            otherid = row[1]
             member = channel.guild.get_member(otherid)
             # if the guild is large, the member may not be in cache
             if member == None and channel.guild.large:
