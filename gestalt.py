@@ -209,13 +209,32 @@ class Gestalt(discord.Client):
 
         elif begins(cmd, "prefs"):
             arg = arg.split() # no spaces to worry about like in prefix command
-            if len(arg) == 0: # TODO: prefs-specific help message?
+            userid = message.author.id
+            if len(arg) == 0:
+                # must exist due to on_message
+                userprefs = self.cur.execute(
+                        "select prefs from users where userid = ?",
+                        (userid,)).fetchone()[0]
+                text = "\n".join(["%s: **%s**" %
+                        (pref.name, "on" if userprefs & pref else "off")
+                        for pref in Prefs])
+                msgid = (await message.channel.send(text)).id
+                self.cur.execute(
+                        "insert into history values (?, 0, ?, '', 0, '', 0)",
+                        (msgid, message.author.id))
                 return
+
+            if arg[0] in ["default", "defaults"]:
+                self.cur.execute(
+                        "update users set prefs = ? where userid = ?",
+                        (DEFAULT_PREFS, userid))
+                await message.add_reaction(REACT_CONFIRM)
+                return
+
             if not arg[0] in Prefs.__members__.keys():
                 return
 
             bit = int(Prefs[arg[0]])
-            userid = message.author.id
             if len(arg) == 1: # only "prefs" + name given. invert the thing
                 self.cur.execute(
                         "update users set prefs = (prefs & ~?) | (~prefs & ?)"
