@@ -380,7 +380,7 @@ class Gestalt(discord.Client):
         offset = begins(message.content.lower(), COMMAND_PREFIX)
         # command prefix is optional in DMs
         if offset != 0 or is_dm(message):
-            await self.do_command(message, message.content[offset:])
+            await self.do_command(message, message.content[offset:].strip())
             return
 
         # guaranteed to exist due to above
