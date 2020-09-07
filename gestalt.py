@@ -179,18 +179,22 @@ class Gestalt(discord.Client):
         await self.sesh.close()
 
 
+    async def send_embed(self, replyto, text):
+        msgid = (await replyto.channel.send(
+            embed = discord.Embed(description = text))).id
+        if is_text(replyto):
+            self.cur.execute(
+                    "insert into history values (?, 0, ?, '', 0, '', 0)",
+                    (msgid, replyto.author.id))
+
+
     # discord.py commands extension throws out bot messages
     # this is incompatible with the test framework so process commands manually
     async def do_command(self, message, cmd):
         # add an empty string to take place of arg if none given
         arg = (cmd.split(maxsplit=1)+[""])[1]
         if begins(cmd, "help"):
-            msgid = (await message.channel.send(HELPMSG)).id
-            if is_text(message):
-                # put this in the history db so it can be deleted if desired
-                self.cur.execute(
-                        "insert into history values (?, 0, ?, '', 0, '', 0)",
-                        (msgid, message.author.id))
+            await self.send_embed(message, HELPMSG)
 
         elif begins(cmd, "prefix") and arg not in ["", '""']:
             if arg[0] == '"' and arg[-1] == '"':
@@ -218,10 +222,7 @@ class Gestalt(discord.Client):
                 text = "\n".join(["%s: **%s**" %
                         (pref.name, "on" if userprefs & pref else "off")
                         for pref in Prefs])
-                msgid = (await message.channel.send(text)).id
-                self.cur.execute(
-                        "insert into history values (?, 0, ?, '', 0, '', 0)",
-                        (msgid, message.author.id))
+                await self.send_embed(message, text)
                 return
 
             if arg[0] in ["default", "defaults"]:
