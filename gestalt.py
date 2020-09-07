@@ -290,16 +290,26 @@ class Gestalt(discord.Client):
             if member == None:
                 return
 
-            # this whole thing *feels* like a race condition waiting to happen
-            # but there's no await, so there's no opportunity for interference
-
             # to minimize queries, first try to mark the swap active in the
-            # other direction. if it succeeds, the swap is active.
+            # other direction. if it succeeds, the swap will be active.
             self.cur.execute(
                     "update swaps set active = 1 where "
                     "userid = ? and otherid = ?",
                     (member.id, authid))
-            if self.cur.rowcount == 1: # *must* be 0/1 due to unique constraint
+            # *must* be 0/1 due to unique constraint
+            active = self.cur.rowcount == 1 
+
+            # if the other row didn't exist, should we insert one?
+            if not active:
+                userprefs = self.cur.execute(
+                        "select prefs from users where userid = ?",
+                        (member.id,)).fetchone()
+                # it's possible that the other user isn't in the users table
+                # due to not having sent a message yet
+                active = bool(userprefs != None and
+                        userprefs[0] & Prefs.autoswap)
+
+            if active:
                 # deactivate any other active swaps first
                 # (except for the one we want!)
                 self.cur.execute(
@@ -307,19 +317,12 @@ class Gestalt(discord.Client):
                         "(userid in (?, ?) or otherid in (?, ?))"
                         "and not (userid = ? and otherid = ?)",
                         (member.id, authid)*3)
-                self.cur.execute("insert or ignore into swaps values (?, ?, 1)",
-                        (authid, member.id))
-
-            else:
-                userprefs = self.cur.execute(
-                        "select prefs from users where userid = ?",
-                        (member.id,)).fetchone()
-                # it's possible that the other user isn't in the users table
-                # due to not having sent a message yet
-                active = userprefs != None and userprefs[0] & Prefs.autoswap
                 self.cur.execute(
-                        "insert or ignore into swaps values (?, ?, ?)",
-                        (authid, member.id, bool(active)))
+                        "insert or ignore into swaps values (?, ?, 1)",
+                        (member.id, authid))
+
+            self.cur.execute("insert or ignore into swaps values (?, ?, ?)",
+                    (authid, member.id, active))
 
             await message.add_reaction(REACT_CONFIRM)
 
