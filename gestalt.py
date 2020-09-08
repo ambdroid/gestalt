@@ -209,7 +209,7 @@ class Gestalt(discord.Client):
                 arg = None
 
             self.cur.execute("update users set prefix = ? where userid = ?",
-                    (arg, message.author.id))
+                    (arg.lower(), message.author.id))
 
             await message.add_reaction(REACT_CONFIRM)
 
