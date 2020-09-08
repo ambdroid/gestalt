@@ -10,7 +10,7 @@ import auth
 
 import unittest
 
-TIMEOUT = 3
+TIMEOUT = 1
 
 class TestClient(discord.Client):
     def  __init__(self, actions):
@@ -24,15 +24,22 @@ class TestClient(discord.Client):
     async def do_action(self, action, content, waitfor):
         await self.wait_until_ready()
         channel = self.get_channel(testenv.CHANNEL)
+        ret = None
         if action == "message":
-            await channel.send(content)
+            msgid = (await channel.send(content)).id
+            try:
+                waitmsg = await self.wait_for("message", timeout = 0.5)
+                if waitfor == "message" and waitmsg.id != msgid:
+                    await asyncio.sleep(0.2)
+                    return waitmsg
+            except:
+                pass
         elif action == "react":
             # content = (message # from most recent = 1, reaction)
             message = (await channel.history(limit = content[0]).flatten())[-1]
             await message.add_reaction(content[1])
         else:
             raise ValueError("Need a valid action!")
-        ret = None
         if waitfor:
             try:
                 ret = await self.wait_for(waitfor, timeout = TIMEOUT)
@@ -54,6 +61,46 @@ def test(bot, actions):
 
 
 class GestaltTest(unittest.TestCase):
+
+    # the swap system has an edge case that depends on one user having no entry
+    # in the users database. so it comes first
+    def test_aa_swaps(self):
+        response = test(0,(
+            ("message", "gs;swap <@!%d>" % testenv.BOTS[1], "raw_reaction_add"),
+            ("message", "g no swap",                        "message")))
+        
+        self.assertEqual(response[0].emoji.name, gestalt.REACT_CONFIRM)
+        self.assertIsNone(response[1].webhook_id)
+
+        response = test(1,(
+            ("message", "gs;swap <@!%d>" % testenv.BOTS[0], "raw_reaction_add"),
+            ("message", "g swap",                           "message"),
+            ("message", "gs;swap off",                      "raw_reaction_add"),
+            ("message", "g no swap",                        "message"),
+            ("message", "gs;prefs autoswap on",             "raw_reaction_add"),
+            ))
+        
+        for i in [0, 2, 4]:
+            self.assertEqual(response[i].emoji.name, gestalt.REACT_CONFIRM)
+        self.assertIsNotNone(response[1].webhook_id)
+        self.assertIsNone(response[3].webhook_id)
+
+        response = test(0,(
+            ("message", "g no swap",                        "message"),
+            ("message", "gs;swap <@!%d>" % testenv.BOTS[1], "raw_reaction_add"),
+            ("message", "g swap",                           "message")))
+
+        self.assertIsNone(response[0].webhook_id)
+        self.assertEqual(response[1].emoji.name, gestalt.REACT_CONFIRM)
+        self.assertIsNotNone(response[2].webhook_id)
+
+        response = test(1,(
+            ("message", "g swap",                           "message"),
+            ("message", "gs;swap off",                      "raw_reaction_add")
+            ))
+
+        self.assertIsNotNone(response[0].webhook_id)
+        self.assertEqual(response[1].emoji.name, gestalt.REACT_CONFIRM)
 
     def test_prefix_auto(self): 
         # test every combo of auto, prefix, and also the switches thereof
