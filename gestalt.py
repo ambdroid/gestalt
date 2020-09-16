@@ -201,12 +201,16 @@ class Gestalt(discord.Client):
         if begins(cmd, "help"):
             await self.send_embed(message, HELPMSG)
 
-        elif begins(cmd, "prefix") and arg not in ["", '""']:
+        elif begins(cmd, "prefix") and arg.replace("text","") not in ["", '""']:
             if arg[0] == '"' and arg[-1] == '"':
                 arg = arg[1:-1]
 
             if arg == "delete":
                 arg = None
+
+            # adapt PluralKit [text] prefix/postfix format
+            if arg.endswith("text"):
+                arg = arg[:-4]
 
             self.cur.execute("update users set prefix = ? where userid = ?",
                     (arg.lower(), message.author.id))
