@@ -469,7 +469,8 @@ class Gestalt(discord.Client):
 
 
 if __name__ == "__main__":
-    instance = Gestalt(sys.argv[1] if len(sys.argv) > 1 else "gestalt.db")
+    instance = Gestalt(
+            dbfile = sys.argv[1] if len(sys.argv) > 1 else "gestalt.db")
 
     try:
         instance.run(auth.token)
