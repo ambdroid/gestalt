@@ -389,7 +389,7 @@ class Gestalt(discord.Client):
                     avatar_url = member.avatar_url_as(
                         format = "png", size = AVATAR_SIZE))).id
 
-        authname = message.author.name + "#" + message.author.discriminator
+        authname = str(message.author)
         otherid = 0 if member == None else member.id
 
         # deleted = 0
