@@ -1,65 +1,83 @@
 #!/usr/bin/python3.7
 
-import asyncio
+from asyncio import run
+import unittest
 
 import discord
 
 import gestalt
-import testenv
-import auth
-
-import unittest
-
-TIMEOUT = 1
-
-class TestClient(discord.Client):
-    def  __init__(self, actions):
-        super().__init__(fetch_offline_members = False)
-        self.loop.create_task(self.do_actions(actions))
-
-    async def do_actions(self, actions):
-        self.response = tuple([(await self.do_action(*x)) for x in actions])
-        await self.close()
-
-    async def do_action(self, action, content, waitfor):
-        await self.wait_until_ready()
-        channel = self.get_channel(testenv.CHANNEL)
-        ret = None
-        if action == "message":
-            msgid = (await channel.send(content)).id
-            try:
-                waitmsg = await self.wait_for("message", timeout = 0.5)
-                if waitfor == "message" and waitmsg.id != msgid:
-                    await asyncio.sleep(0.2)
-                    return waitmsg
-            except:
-                pass
-        elif action == "react":
-            # content = (message # from most recent = 1, reaction)
-            message = (await channel.history(limit = content[0]).flatten())[-1]
-            await message.add_reaction(content[1])
-        else:
-            raise ValueError("Need a valid action!")
-        if waitfor:
-            try:
-                ret = await self.wait_for(waitfor, timeout = TIMEOUT)
-            except: # timeout
-                pass
-        await asyncio.sleep(0.2)
-        return ret
-
-    def run(self, token):
-        super().run(token)
-        return self.response
-
-def test(bot, actions):
-    ret = TestClient(actions).run(auth.bots[bot])
-    # client.close() closes the event loop, so make another
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    return ret
 
 
 
+class Object:
+    nextid = 0
+    def __init__(self, **kwargs):
+        Object.nextid += 1
+        self.id = Object.nextid
+        self.__dict__.update(kwargs)
+
+# for simplicity, all Users are Members, the same across all guilds
+class Member(Object):
+    def __init__(self, **kwargs):
+        self.bot = False
+        self.discriminator = "0001"
+        super().__init__(**kwargs)
+        self.display_name = self.nick = self.name
+        # self.mention = "<@!%d>" % self.id
+    async def send(self, content = None, embed = None, file = None):
+        pass
+
+class Message(Object):
+    def __init__(self, **kwargs):
+        self._deleted = False
+        self.mentions = []
+        self.attachments = []
+        self.reactions = []
+        self.type = discord.MessageType.default
+        super().__init__(**kwargs)
+    async def delete(self):
+        pass
+    async def add_reaction(self, emoji):
+        pass
+    async def remove_reaction(self, emoji, member):
+        pass
+
+class Channel(Object):
+    def __init__(self, **kwargs):
+        self._messages = []
+        self.members = []
+        self.type = discord.ChannelType.text
+        super().__init__(**kwargs)
+    async def _add(self, msg):
+        msg.channel = self
+        self._messages.append(msg)
+        await instance.on_message(msg)
+    async def create_webhook(self, name):
+        pass
+    async def fetch_message(self, id):
+        pass
+    async def send(self, content = None, embed = None, file = None):
+        msg = Message(author = user[0], content = content, embed = embed)
+        await self._add(msg)
+        return msg
+
+class GestaltTest(unittest.TestCase):
+    def test_help(self):
+        run(chan[0]._add(Message(author = user[1], content = "gs;help")))
+        self.assertIsNotNone(chan[0]._messages[-1].embed)
+
+
+user = [
+        Member(name = "Gestalt", bot = True),
+        Member(name = "test-1")
+        ]
+chan = [Channel()]
+
+instance = gestalt.Gestalt(dbfile = ":memory:", purge = False)
+unittest.main()
+instance.loop.close()
+
+'''
 class GestaltTest(unittest.TestCase):
 
     # the swap system has an edge case that depends on one user having no entry
@@ -138,6 +156,4 @@ class GestaltTest(unittest.TestCase):
         response = test(0,(
             ("react", (2, gestalt.REACT_DELETE), "raw_message_delete"),))
         self.assertIsNotNone(response[0])
-
-
-unittest.main()
+'''
