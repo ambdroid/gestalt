@@ -67,15 +67,16 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(chan[0]._messages[-1].embed)
 
 
-user = [
-        Member(name = "Gestalt", bot = True),
-        Member(name = "test-1")
-        ]
-chan = [Channel()]
+if __name__ == "__main__":
+    user = [
+            Member(name = "Gestalt", bot = True),
+            Member(name = "test-1")
+            ]
+    chan = [Channel()]
 
-instance = gestalt.Gestalt(dbfile = ":memory:", purge = False)
-unittest.main()
-instance.loop.close()
+    instance = gestalt.Gestalt(dbfile = ":memory:", purge = False)
+    unittest.main()
+    instance.loop.close()
 
 '''
 class GestaltTest(unittest.TestCase):
