@@ -208,13 +208,14 @@ class Gestalt(discord.Client):
 
             if arg == "delete":
                 arg = None
-
-            # adapt PluralKit [text] prefix/postfix format
-            if arg.endswith("text"):
-                arg = arg[:-4]
+            else:
+                arg = arg.lower()
+                # adapt PluralKit [text] prefix/postfix format
+                if arg.endswith("text"):
+                    arg = arg[:-4]
 
             self.cur.execute("update users set prefix = ? where userid = ?",
-                    (arg.lower(), message.author.id))
+                    (arg, message.author.id))
 
             await message.add_reaction(REACT_CONFIRM)
 
