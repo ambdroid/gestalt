@@ -24,6 +24,8 @@ class Member(Object):
         super().__init__(**kwargs)
         self.display_name = self.nick = self.name
         # self.mention = "<@!%d>" % self.id
+    def __str__(self):
+        return self.name + "#" + self.discriminator
     async def send(self, content = None, embed = None, file = None):
         pass
 
