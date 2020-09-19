@@ -76,7 +76,6 @@ if __name__ == "__main__":
 
     instance = gestalt.Gestalt(dbfile = ":memory:", purge = False)
     unittest.main()
-    instance.loop.close()
 
 '''
 class GestaltTest(unittest.TestCase):
