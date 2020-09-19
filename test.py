@@ -38,7 +38,8 @@ class Message(Object):
         self.type = discord.MessageType.default
         super().__init__(**kwargs)
     async def delete(self):
-        pass
+        self.channel._messages.remove(self)
+        self._deleted = True
     async def add_reaction(self, emoji):
         pass
     async def remove_reaction(self, emoji, member):
@@ -63,10 +64,36 @@ class Channel(Object):
         await self._add(msg)
         return msg
 
+def send(user, channel, contents):
+    for x in contents:
+        run(channel._add(Message(author = user, content = x)))
+    return channel._messages[-len(contents):]
+
 class GestaltTest(unittest.TestCase):
     def test_help(self):
-        run(chan[0]._add(Message(author = user[1], content = "gs;help")))
+        send(user[1], chan[0], ["gs;help"])
         self.assertIsNotNone(chan[0]._messages[-1].embed)
+
+    def test_prefix_auto(self):
+        # test every combo of auto, prefix, and also the switches thereof
+        msgs = send(user[1], chan[0],[
+            "no prefix, no auto",
+            "g default prefix",
+            "gs;prefix =",
+            "=prefix, no auto",
+            "gs;auto on",
+
+            "=prefix, auto",
+            "no prefix, auto",
+            "gs;auto",
+            "gs;prefix delete",
+            "default"])
+        # for i in [2, 4, 7, 8]:
+        #    self.assertEqual(response[i].emoji.name, gestalt.REACT_CONFIRM)
+        for i in [0, 5, 9]:
+            self.assertEqual(msgs[i].author, user[1]) # message not proxied
+        for i in [1, 3, 6]:
+            self.assertEqual(msgs[i].author, user[0]) # message proxied
 
 
 if __name__ == "__main__":
