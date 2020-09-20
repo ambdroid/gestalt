@@ -42,7 +42,6 @@ PURGE_AGE = 3600*24*7   # 1 week
 PURGE_TIMEOUT = 3600*2  # 2 hours
 
 MAX_FILE_SIZE = 8*1024*1024
-AVATAR_SIZE = 256
 
 HELPMSG = ("`" + COMMAND_PREFIX + "prefix`: **set a custom prefix**\n"
         "The default prefix is  `g ` or `G `. "
@@ -387,7 +386,7 @@ class Gestalt(discord.Client):
             msgid = (await hook.send(wait = True, content = proxy, file=msgfile,
                     username = member.display_name,
                     avatar_url = member.avatar_url_as(
-                        format = "png", size = AVATAR_SIZE))).id
+                        format = "webp"))).id
 
         authname = str(message.author)
         otherid = 0 if member == None else member.id
