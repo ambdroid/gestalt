@@ -8,6 +8,12 @@ import discord
 import gestalt
 
 
+# this test harness reimplements most relevant parts of the discord API, offline
+# the alternative involves maintaining *4* separate bots
+# and either threading (safety not guaranteed) or switching between them (sloow)
+# meanwhile, existing discord.py testing solutions don't support multiple users
+# i wish it didn't have to be this way but i promise this is the best solution
+
 
 class Object:
     nextid = 0
