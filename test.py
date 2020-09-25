@@ -20,6 +20,7 @@ class Object:
 class Member(Object):
     def __init__(self, **kwargs):
         self.bot = False
+        self.dm_channel = None
         self.discriminator = "0001"
         super().__init__(**kwargs)
         self.display_name = self.nick = self.name
@@ -27,7 +28,12 @@ class Member(Object):
     def __str__(self):
         return self.name + "#" + self.discriminator
     async def send(self, content = None, embed = None, file = None):
-        pass
+        if self.dm_channel == None:
+            self.dm_channel = Channel(type = discord.ChannelType.private,
+                    members = [self, user[0]])
+        await self.dm_channel.send(
+                content = content, embed = embed, file = file)
+
 
 class Message(Object):
     def __init__(self, **kwargs):
@@ -40,10 +46,26 @@ class Message(Object):
     async def delete(self):
         self.channel._messages.remove(self)
         self._deleted = True
+    async def _react(self, emoji, user):
+        # no more than one test user should be using the same reaction at once
+        react = discord.Reaction(message = self, emoji = emoji,
+                data = {"count": 1, "me": None})
+        if react in self.reactions:
+            raise RuntimeError("Adding a reaction more than once")
+        self.reactions.append(react)
+        await instance.on_raw_reaction_add(
+                discord.raw_models.RawReactionActionEvent(data = {
+                    "message_id": self.id,
+                    "user_id": user.id,
+                    "channel_id": self.channel.id},
+                    emoji = discord.PartialEmoji(name = emoji),
+                    event_type = None))
     async def add_reaction(self, emoji):
-        pass
+        await self._react(emoji, user[0])
     async def remove_reaction(self, emoji, member):
-        pass
+        self.reactions.remove(
+                self.reactions[[x.emoji for x in self.reactions].index(emoji)])
+
 
 class Channel(Object):
     def __init__(self, **kwargs):
@@ -58,11 +80,17 @@ class Channel(Object):
     async def create_webhook(self, name):
         pass
     async def fetch_message(self, id):
-        pass
+        return self._messages[[x.id for x in self._messages].index(id)]
     async def send(self, content = None, embed = None, file = None):
         msg = Message(author = user[0], content = content, embed = embed)
         await self._add(msg)
         return msg
+
+class TestBot(gestalt.Gestalt):
+    def get_user(self, id):
+        return user[[x.id for x in user].index(id)]
+    def get_channel(self, id):
+        return chan[[x.id for x in chan].index(id)]
 
 def send(user, channel, contents):
     for x in contents:
@@ -88,22 +116,38 @@ class GestaltTest(unittest.TestCase):
             "gs;auto",
             "gs;prefix delete",
             "default"])
-        # for i in [2, 4, 7, 8]:
-        #    self.assertEqual(response[i].emoji.name, gestalt.REACT_CONFIRM)
+        for i in [2, 4, 7, 8]:
+            self.assertEqual(len(msgs[i].reactions), 1)
+            self.assertEqual(msgs[i].reactions[0].emoji, gestalt.REACT_CONFIRM)
         for i in [0, 5, 9]:
             self.assertEqual(msgs[i].author, user[1]) # message not proxied
         for i in [1, 3, 6]:
             self.assertEqual(msgs[i].author, user[0]) # message proxied
 
+    def test_query_delete(self):
+        msg = send(user[1], chan[0], ["g reaction test"])[0]
+        run(msg._react(gestalt.REACT_QUERY, user[1]))
+        self.assertNotEqual(
+                user[1].dm_channel._messages[-1].content.find(str(user[0].id)),
+                -1)
+
+        run(msg._react(gestalt.REACT_DELETE, user[2]))
+        self.assertEqual(len(msg.reactions), 0)
+        self.assertFalse(msg._deleted)
+
+        run(msg._react(gestalt.REACT_DELETE, user[1]))
+        self.assertTrue(msg._deleted)
+
 
 if __name__ == "__main__":
     user = [
             Member(name = "Gestalt", bot = True),
-            Member(name = "test-1")
+            Member(name = "test-1"),
+            Member(name = "test-2")
             ]
     chan = [Channel()]
 
-    instance = gestalt.Gestalt(dbfile = ":memory:", purge = False)
+    instance = TestBot(dbfile = ":memory:", purge = False)
     unittest.main()
 
 '''
