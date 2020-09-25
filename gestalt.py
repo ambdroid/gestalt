@@ -455,7 +455,7 @@ class Gestalt(discord.Client):
                 await sendto.send("Message sent by %s, id %d" % row)
             except discord.Forbidden:
                 pass
-            await message.remove_reaction(payload.emoji.name, reactor)
+            await message.remove_reaction(emoji, reactor)
 
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
@@ -466,7 +466,7 @@ class Gestalt(discord.Client):
                         (payload.message_id,))
                 await message.delete()
             else:
-                await message.remove_reaction(payload.emoji.name, reactor)
+                await message.remove_reaction(emoji, reactor)
 
 
 
