@@ -69,8 +69,7 @@ class Message(Object):
     async def add_reaction(self, emoji):
         await self._react(emoji, user[0])
     async def remove_reaction(self, emoji, member):
-        self.reactions.remove(
-                self.reactions[[x.emoji for x in self.reactions].index(emoji)])
+        self.reactions.pop([x.emoji for x in self.reactions].index(emoji))
 
 
 class Channel(Object):
