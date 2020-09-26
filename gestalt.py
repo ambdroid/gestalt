@@ -41,6 +41,8 @@ DEFAULT_PREFIX = "g "
 PURGE_AGE = 3600*24*7   # 1 week
 PURGE_TIMEOUT = 3600*2  # 2 hours
 
+# hard limit for non-Nitro users
+# TODO: honor increased limits in boosted servers
 MAX_FILE_SIZE = 8*1024*1024
 
 HELPMSG = ("`" + COMMAND_PREFIX + "prefix`: **set a custom prefix**\n"
@@ -163,6 +165,7 @@ class Gestalt(discord.Client):
             await asyncio.sleep(PURGE_TIMEOUT)
 
 
+    # close on SIGINT, SIGTERM
     def handler(self):
         self.loop.create_task(self.close())
         self.conn.commit()
@@ -186,6 +189,7 @@ class Gestalt(discord.Client):
     async def send_embed(self, replyto, text):
         msgid = (await replyto.channel.send(
             embed = discord.Embed(description = text))).id
+        # insert into history to allow initiator to delete message if desired
         if is_text(replyto):
             self.cur.execute(
                     "insert into history values (?, 0, ?, '', 0, '', 0)",
@@ -227,6 +231,7 @@ class Gestalt(discord.Client):
                 userprefs = self.cur.execute(
                         "select prefs from users where userid = ?",
                         (userid,)).fetchone()[0]
+                # list current prefs in "pref: [on/off]" format
                 text = "\n".join(["%s: **%s**" %
                         (pref.name, "on" if userprefs & pref else "off")
                         for pref in Prefs])
@@ -320,10 +325,12 @@ class Gestalt(discord.Client):
                         "(userid in (?, ?) or otherid in (?, ?))"
                         "and not (userid = ? and otherid = ?)",
                         (member.id, authid)*3)
+                # if other user has autoswap on, activate other->author swap
                 self.cur.execute(
                         "insert or ignore into swaps values (?, ?, 1)",
                         (member.id, authid))
 
+            # finally, activate author->other swap
             self.cur.execute("insert or ignore into swaps values (?, ?, ?)",
                     (authid, member.id, active))
 
@@ -367,7 +374,11 @@ class Gestalt(discord.Client):
                     channel.guild._add_member(member)
 
         if member == None:
+            # don't replace stuff while in a swap
             if prefs & Prefs.replace:
+                # do these in order (or else, e.g. "I'm" could become "We'm")
+                # which is funny but not what we want here
+                #TODO: replace this with a reduce()?
                 for x, y in REPLACE_DICT.items():
                     proxy = x.sub(y, proxy)
 
@@ -385,8 +396,7 @@ class Gestalt(discord.Client):
 
             msgid = (await hook.send(wait = True, content = proxy, file=msgfile,
                     username = member.display_name,
-                    avatar_url = member.avatar_url_as(
-                        format = "webp"))).id
+                    avatar_url = member.avatar_url_as(format = "webp"))).id
 
         authname = str(message.author)
         otherid = 0 if member == None else member.id
@@ -411,6 +421,7 @@ class Gestalt(discord.Client):
         offset = begins(message.content.lower(), COMMAND_PREFIX)
         # command prefix is optional in DMs
         if offset != 0 or is_dm(message):
+            # strip() so that e.g. "gs; help" works (helpful with autocorrect)
             await self.do_command(message, message.content[offset:].strip())
             return
 
