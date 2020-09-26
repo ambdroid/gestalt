@@ -153,7 +153,8 @@ if __name__ == "__main__":
     chan = [Channel()]
 
     instance = TestBot(dbfile = ":memory:", purge = False)
-    unittest.main()
+    if unittest.main(exit = False).result.wasSuccessful():
+        print("But it isn't *really* OK, is it?")
 
 '''
 class GestaltTest(unittest.TestCase):
