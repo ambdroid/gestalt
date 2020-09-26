@@ -92,6 +92,8 @@ class Channel(Object):
         return msg
 
 class TestBot(gestalt.Gestalt):
+    def __del__(self):
+        pass # suppress "closing database" message
     def get_user(self, id):
         return user[[x.id for x in user].index(id)]
     def get_channel(self, id):
