@@ -121,14 +121,18 @@ class GestaltTest(unittest.TestCase):
             "=prefix, auto",
             "no prefix, auto",
             "gs;auto",
+            "gs;prefix =text",
+            "=pk-style prefix",
+
             "gs;prefix delete",
             "default"])
-        for i in [2, 4, 7, 8]:
+        for i in [2, 4, 7, 8, 10]:
             self.assertEqual(len(msgs[i].reactions), 1)
             self.assertEqual(msgs[i].reactions[0].emoji, gestalt.REACT_CONFIRM)
-        for i in [0, 5, 9]:
+        for i in [0, 5, 11]:
+            self.assertEqual(len(msgs[i].reactions), 0)
             self.assertEqual(msgs[i].author, user[1]) # message not proxied
-        for i in [1, 3, 6]:
+        for i in [1, 3, 6, 9]:
             self.assertEqual(msgs[i].author, user[0]) # message proxied
 
     def test_query_delete(self):
