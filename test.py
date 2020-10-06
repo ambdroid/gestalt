@@ -154,16 +154,18 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(msgs[1].webhook_id)
 
         msgs = send(user[2], chan[0], [
+            "g no swap",
             "gs;swap <@!%d>" % user[1].id,
             "g swap",
             "gs;swap off",
             "g no swap",
             "gs;prefs autoswap on"])
 
-        for i in [0, 2, 4]:
+        for i in [1, 3, 5]:
             self.assertEqual(msgs[i].reactions[0].emoji, gestalt.REACT_CONFIRM)
-        self.assertIsNotNone(msgs[1].webhook_id)
-        self.assertIsNone(msgs[3].webhook_id)
+        self.assertIsNotNone(msgs[2].webhook_id)
+        for i in [0, 4]:
+            self.assertIsNone(msgs[i].webhook_id)
 
         msgs = send(user[1], chan[0], [
             "g no swap",
@@ -176,10 +178,15 @@ class GestaltTest(unittest.TestCase):
 
         msgs = send(user[2], chan[0], [
             "g swap",
-            "gs;swap off"])
+            "gs;swap off",
+            "g no swap"])
 
         self.assertIsNotNone(msgs[0].webhook_id)
         self.assertEqual(msgs[1].reactions[0].emoji, gestalt.REACT_CONFIRM)
+        self.assertIsNone(msgs[2].webhook_id)
+
+        msgs = send(user[1], chan[0], ["g no swap"])
+        self.assertIsNone(msgs[0].webhook_id)
 
     def test_help(self):
         send(user[1], chan[0], ["gs;help"])
