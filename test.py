@@ -140,6 +140,9 @@ def send(user, channel, contents):
 
 class GestaltTest(unittest.TestCase):
 
+    def assertReacted(self, msg, reaction = gestalt.REACT_CONFIRM):
+        self.assertEqual(msg.reactions[0].emoji, reaction)
+
     # the swap system has an edge case that depends on one user having no entry
     # in the users database. so it comes first
     def test_aa_swaps(self):
@@ -152,7 +155,7 @@ class GestaltTest(unittest.TestCase):
             "gs;swap <@!%d>" % user[2].id,
             "g no swap"])
 
-        self.assertEqual(msgs[0].reactions[0].emoji, gestalt.REACT_CONFIRM)
+        self.assertReacted(msgs[0])
         self.assertIsNone(msgs[1].webhook_id)
 
         msgs = send(user[2], chan[0], [
@@ -164,7 +167,7 @@ class GestaltTest(unittest.TestCase):
             "gs;prefs autoswap on"])
 
         for i in [1, 3, 5]:
-            self.assertEqual(msgs[i].reactions[0].emoji, gestalt.REACT_CONFIRM)
+            self.assertReacted(msgs[i])
         self.assertIsNotNone(msgs[2].webhook_id)
         for i in [0, 4]:
             self.assertIsNone(msgs[i].webhook_id)
@@ -175,7 +178,7 @@ class GestaltTest(unittest.TestCase):
             "g swap"])
 
         self.assertIsNone(msgs[0].webhook_id)
-        self.assertEqual(msgs[1].reactions[0].emoji, gestalt.REACT_CONFIRM)
+        self.assertReacted(msgs[1])
         self.assertIsNotNone(msgs[2].webhook_id)
 
         msgs = send(user[2], chan[0], [
@@ -184,7 +187,7 @@ class GestaltTest(unittest.TestCase):
             "g no swap"])
 
         self.assertIsNotNone(msgs[0].webhook_id)
-        self.assertEqual(msgs[1].reactions[0].emoji, gestalt.REACT_CONFIRM)
+        self.assertReacted(msgs[1])
         self.assertIsNone(msgs[2].webhook_id)
 
         msgs = send(user[1], chan[0], ["g no swap"])
@@ -193,6 +196,7 @@ class GestaltTest(unittest.TestCase):
     def test_help(self):
         msg = send(user[1], chan[0], ["gs;help"])[0]
         self.assertIsNotNone(chan[0]._messages[-1].embed)
+        self.assertReacted(msg, gestalt.REACT_DELETE)
         run(msg._react(gestalt.REACT_DELETE, user[1]))
         self.assertTrue(msg._deleted)
 
@@ -214,8 +218,7 @@ class GestaltTest(unittest.TestCase):
             "gs;prefix delete",
             "default"])
         for i in [2, 4, 7, 8, 10]:
-            self.assertEqual(len(msgs[i].reactions), 1)
-            self.assertEqual(msgs[i].reactions[0].emoji, gestalt.REACT_CONFIRM)
+            self.assertReacted(msgs[i])
         for i in [0, 5, 11]:
             self.assertEqual(len(msgs[i].reactions), 0)
             self.assertEqual(msgs[i].author, user[1]) # message not proxied
