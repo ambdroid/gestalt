@@ -162,7 +162,6 @@ class GestaltTest(unittest.TestCase):
 
         for i in [0, 2, 4]:
             self.assertEqual(msgs[i].reactions[0].emoji, gestalt.REACT_CONFIRM)
-        print(msgs[i])
         self.assertIsNotNone(msgs[1].webhook_id)
         self.assertIsNone(msgs[3].webhook_id)
 
