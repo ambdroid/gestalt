@@ -460,6 +460,8 @@ class Gestalt(discord.Client):
         # so fetch the channel first, and use *that* to fetch the message.
         channel = self.get_channel(payload.channel_id)
         reactor = self.get_user(payload.user_id)
+        if reactor.bot:
+            return
         message = await channel.fetch_message(payload.message_id)
 
         emoji = payload.emoji.name
