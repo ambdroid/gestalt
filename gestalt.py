@@ -111,7 +111,7 @@ def is_dm(message):
 
 
 class Gestalt(discord.Client):
-    def __init__(self, *, dbfile, **kwargs):
+    def __init__(self, *, dbfile, purge = True, **kwargs):
         super().__init__(**kwargs)
 
         self.conn = sqlite.connect(dbfile)
@@ -143,7 +143,8 @@ class Gestalt(discord.Client):
                 "unique(userid, otherid))")
         self.cur.execute("pragma secure_delete")
 
-        self.loop.create_task(self.purge_loop())
+        if purge:
+            self.loop.create_task(self.purge_loop())
 
 
     def __del__(self):
@@ -210,13 +211,14 @@ class Gestalt(discord.Client):
 
             if arg == "delete":
                 arg = None
-
-            # adapt PluralKit [text] prefix/postfix format
-            if arg.endswith("text"):
-                arg = arg[:-4]
+            else:
+                arg = arg.lower()
+                # adapt PluralKit [text] prefix/postfix format
+                if arg.endswith("text"):
+                    arg = arg[:-4]
 
             self.cur.execute("update users set prefix = ? where userid = ?",
-                    (arg.lower(), message.author.id))
+                    (arg, message.author.id))
 
             await message.add_reaction(REACT_CONFIRM)
 
@@ -408,9 +410,7 @@ class Gestalt(discord.Client):
 
 
     async def on_message(self, message):
-        if message.type != discord.MessageType.default:
-            return
-        if message.author.bot and not TESTING:
+        if message.type != discord.MessageType.default or message.author.bot:
             return
 
         # user id, no prefix, autoproxy off
@@ -461,9 +461,7 @@ class Gestalt(discord.Client):
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
             try:
-                # tragically, bots cannot DM other bots :(
-                sendto = channel if TESTING else reactor
-                await sendto.send("Message sent by %s, id %d" % row)
+                await reactor.send("Message sent by %s, id %d" % row)
             except discord.Forbidden:
                 pass
             await message.remove_reaction(emoji, reactor)
@@ -482,12 +480,8 @@ class Gestalt(discord.Client):
 
 
 if __name__ == "__main__":
-    TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
-    if TESTING:
-        print("Running in test mode!")
-
-    instance = Gestalt(dbfile = ":memory:" if TESTING else (
-            sys.argv[1] if len(sys.argv) > 1 else "gestalt.db"))
+    instance = Gestalt(
+            dbfile = sys.argv[1] if len(sys.argv) > 1 else "gestalt.db")
 
     try:
         instance.run(auth.token)
