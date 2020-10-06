@@ -188,13 +188,14 @@ class Gestalt(discord.Client):
 
 
     async def send_embed(self, replyto, text):
-        msgid = (await replyto.channel.send(
-            embed = discord.Embed(description = text))).id
+        msg = await replyto.channel.send(
+                embed = discord.Embed(description = text))
+        await msg.add_reaction(REACT_DELETE)
         # insert into history to allow initiator to delete message if desired
         if is_text(replyto):
             self.cur.execute(
                     "insert into history values (?, 0, ?, '', 0, '', 0)",
-                    (msgid, replyto.author.id))
+                    (msg.id, replyto.author.id))
 
 
     # discord.py commands extension throws out bot messages
@@ -445,6 +446,9 @@ class Gestalt(discord.Client):
 
     # on_reaction_add doesn't catch everything
     async def on_raw_reaction_add(self, payload):
+        if payload.user_id == self.user.id:
+            return
+
         # first, make sure this is one of ours
         row = self.cur.execute(
             "select authname, authid from history where msgid = ?",

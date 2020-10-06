@@ -64,12 +64,11 @@ class Message(Object):
         self.channel._messages.remove(self)
         self._deleted = True
     async def _react(self, emoji, user):
-        # no more than one test user should be using the same reaction at once
         react = discord.Reaction(message = self, emoji = emoji,
                 data = {"count": 1, "me": None})
-        if react in self.reactions:
-            raise RuntimeError("Adding a reaction more than once")
-        self.reactions.append(react)
+        if react not in self.reactions:
+            # FIXME when more than one user adds the same reaction
+            self.reactions.append(react)
         await instance.on_raw_reaction_add(
                 discord.raw_models.RawReactionActionEvent(data = {
                     "message_id": self.id,
@@ -126,6 +125,9 @@ class Guild:
 class TestBot(gestalt.Gestalt):
     def __del__(self):
         pass # suppress "closing database" message
+    @property
+    def user(self):
+        return user[0]
     def get_user(self, id):
         return user[[x.id for x in user].index(id)]
     def get_channel(self, id):
@@ -189,8 +191,10 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(msgs[0].webhook_id)
 
     def test_help(self):
-        send(user[1], chan[0], ["gs;help"])
+        msg = send(user[1], chan[0], ["gs;help"])[0]
         self.assertIsNotNone(chan[0]._messages[-1].embed)
+        run(msg._react(gestalt.REACT_DELETE, user[1]))
+        self.assertTrue(msg._deleted)
 
     def test_prefix_auto(self):
         # test every combo of auto, prefix, and also the switches thereof
