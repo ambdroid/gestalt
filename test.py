@@ -227,10 +227,9 @@ class GestaltTest(unittest.TestCase):
 
     def test_query_delete(self):
         msg = send(user[1], chan[0], ["g reaction test"])[0]
-        run(msg._react(gestalt.REACT_QUERY, user[1]))
+        run(msg._react(gestalt.REACT_QUERY, user[2]))
         self.assertNotEqual(
-                user[1].dm_channel._messages[-1].content.find(str(user[0].id)),
-                -1)
+                user[2].dm_channel._messages[-1].content.find(user[1].name), -1)
 
         run(msg._react(gestalt.REACT_DELETE, user[2]))
         self.assertEqual(len(msg.reactions), 0)
