@@ -353,15 +353,6 @@ class Gestalt(discord.Client):
         authid = message.author.id
         channel = message.channel
 
-        '''row = self.cur.execute(
-                "select x.otherid from"
-                "       (select otherid from swaps where userid = ?) x"
-                "   join"
-                "       (select userid from swaps where otherid = ?)"
-                "   on"
-                "       (x.otherid = y.userid)"
-                "limit 1",
-                (authid, authid)).fetchone()'''
         row = self.cur.execute(
                 "select * from swaps where userid = ? and active = 1",
                 (authid,)).fetchone()
