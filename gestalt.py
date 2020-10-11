@@ -134,6 +134,19 @@ class CommandReader:
         return ret
 
 
+class ProxyControl:
+    def __init__(self, cursor):
+        self.cur = cursor
+
+    def from_row(self, row):
+        return Proxy(row, self.cur)
+
+    def by_id(self, proxid):
+        row = self.cur.execute("select * from proxies where proxid = ?",
+                (proxid,)).fetchone()
+        return None if row == None else self.from_row(row)
+
+
 class Proxy:
     @enum.unique
     class type(enum.IntEnum):
@@ -141,9 +154,25 @@ class Proxy:
         collective  = 1
         swap        = 2
 
-    def __init__(self, row):
+    def __init__(self, row, cursor):
+        self.cur = cursor
         (self.proxid, self.userid, self.guildid, self.prefix, self.type,
-            self.extraid, self.auto, self.active) = row
+                self.extraid, self.auto, self.active) = row
+
+    def set_prefix(self, prefix):
+        self.prefix = prefix
+        self.cur.execute("update proxies set prefix = ? where proxid = ?",
+                (prefix, self.proxid))
+
+    def set_auto(self, auto):
+        self.auto = auto
+        self.cur.execute("update proxies set auto = ? where proxid = ?",
+                (auto, self.proxid))
+
+    def set_active(self, active):
+        self.active = active
+        self.cur.execute("update proxies set active = ? where proxid = ?",
+                (active, self.proxid))
 
 
 def is_text(message):
@@ -198,6 +227,8 @@ class Gestalt(discord.Client):
                 "avatar text,"
                 "unique(guildid, roleid))")
         self.cur.execute("pragma secure_delete")
+
+        self.proxctl = ProxyControl(self.cur)
 
         if purge:
             self.loop.create_task(self.purge_loop())
@@ -271,7 +302,7 @@ class Gestalt(discord.Client):
 
     def check_prefix_collisions(self, userid, guildid, prefix, existing = None):
         match = (self.cur.execute(
-                "select * from proxies where ("
+                "select proxid from proxies where ("
                     "(userid = ?)"
                     "and ("
                         # if prefix is to be global, check everything
@@ -287,7 +318,7 @@ class Gestalt(discord.Client):
                 ")",
                 (userid,)+(guildid,)*3+(prefix,)*3)
                 .fetchall())
-        if len(match) == 1 and Proxy(match[0]).proxid == existing:
+        if len(match) == 1 and match[0][0] == existing:
             return True
         return len(match) == 0
 
@@ -328,14 +359,10 @@ class Gestalt(discord.Client):
 
 
     def sync_member(self, guild, member):
-        # TODO: unsure of Member's relation to guild immediately after leaving
-        if guild not in member.mutual_guilds:
-            return # they might come back, don't do anything
-
         # first, check if they have any proxies they shouldn't
         # right now, this only applies to collectives
         rows = self.cur.execute(
-                "select proxid, extraid from proxies"
+                "select proxid, extraid from proxies "
                 "where (userid, guildid, type) = (?, ?, ?)",
                 (member.id, guild.id, Proxy.type.collective)).fetchall()
         roleids = [x.id for x in member.roles]
@@ -354,7 +381,7 @@ class Gestalt(discord.Client):
                     "insert or ignore into proxies values "
                     "(?, ?, ?, NULL, ?, ?, 0, 0)",
                     (self.gen_id(), member.id, guild.id,
-                        Proxies.type.collective, role.id))
+                        Proxy.type.collective, role.id))
 
 
     async def on_guild_role_update(self, before, after):
@@ -370,6 +397,7 @@ class Gestalt(discord.Client):
     async def do_command(self, message, cmd):
         reader = CommandReader(message, cmd)
         arg = reader.read_word().lower()
+        authid = message.author.id
 
         if arg == "debug":
             for table in ["proxies", "collectives"]:
@@ -389,7 +417,7 @@ class Gestalt(discord.Client):
                 rows = self.cur.execute(
                         "select * from proxies where userid = ?"
                         "order by type asc",
-                        (message.author.id,)).fetchall()
+                        (authid,)).fetchall()
                 text = "\n".join(["`%s`%s: prefix `%s` auto **%s**" %
                         (row[0], # proxy id
                             # if attached to a guild, add " in (guild)"
@@ -398,10 +426,13 @@ class Gestalt(discord.Client):
                             row[3], #prefix
                             "on" if row[6] else "off") # auto
                         for row in rows])
-                await self.send_embed(message, text)
-                return
+                return await self.send_embed(message, text)
 
-            elif arg == "prefix":
+            proxy = self.proxctl.by_id(proxid)
+            if proxy == None or proxy.userid != authid:
+                raise RuntimeError("You do not have a proxy with that ID.")
+
+            if arg == "prefix":
                 arg = reader.read_quote().lower()
                 if arg.replace("text","") == "":
                     raise RuntimeError("Please provide a valid prefix.")
@@ -412,45 +443,30 @@ class Gestalt(discord.Client):
                     arg = arg[:-4]
 
                 # check if the new prefix conflicts with anything else
-                row = self.cur.execute(
-                        "select guildid from proxies "
-                        "where (proxid, userid) == (?, ?)",
-                        (proxid, message.author.id)).fetchone()
-                if row == None:
-                    raise RuntimeError("You do not have a proxy with that ID!")
-                if not self.check_prefix_collisions(message.author.id, row[0],
-                        arg, proxid):
+                if not self.check_prefix_collisions(authid, proxy.guildid, arg,
+                        proxid):
                     raise RuntimeError(
                             "That prefix conflicts with another proxy.")
 
-                self.cur.execute("update proxies "
-                        "set prefix = ?,"
-                        # setting a prefix activates a collective proxy
-                        "active = case type when ? then 1 else active end "
-                        "where (proxid, userid) = (?, ?)",
-                        (arg, Proxy.type.collective, proxid, message.author.id))
+                proxy.set_prefix(arg)
+                if proxy.type == Proxy.type.collective:
+                    proxy.set_active(1)
 
-                if self.cur.rowcount == 1:
-                    await message.add_reaction(REACT_CONFIRM)
+                await message.add_reaction(REACT_CONFIRM)
 
             elif arg == "auto":
+                if proxy.type == Proxy.type.override:
+                    raise RuntimeError("You cannot autoproxy your override.")
+
                 arg = reader.read_word().lower()
                 if arg == "":
-                    self.cur.execute("update proxies set auto = 1 - auto "
-                            "where (proxid, userid) = (?, ?)"
-                            "and type != ?",
-                            (proxid, message.author.id, Proxy.type.override))
+                    proxy.set_auto(1-proxy.auto)
                 else:
                     if arg not in KEYWORDS:
                         raise RuntimeError("Please specify 'on' or 'off'.")
-                    self.cur.execute("update proxies set auto = ? "
-                            "where (proxid, userid) = (?, ?)"
-                            "and type != ?",
-                            (KEYWORDS[arg], proxid, message.author.id,
-                                Proxy.type.override))
+                    proxy.set_auto(KEYWORDS[arg])
 
-                if self.cur.rowcount == 1:
-                    await message.add_reaction(REACT_CONFIRM)
+                await message.add_reaction(REACT_CONFIRM)
 
         elif arg in ["collective", "c"]:
             if is_dm(message):
@@ -543,12 +559,11 @@ class Gestalt(discord.Client):
 
         elif arg == "prefs":
             arg = reader.read_word()
-            userid = message.author.id
             if len(arg) == 0:
                 # must exist due to on_message
                 userprefs = self.cur.execute(
                         "select prefs from users where userid = ?",
-                        (userid,)).fetchone()[0]
+                        (authid,)).fetchone()[0]
                 # list current prefs in "pref: [on/off]" format
                 text = "\n".join(["%s: **%s**" %
                         (pref.name, "on" if userprefs & pref else "off")
@@ -558,7 +573,7 @@ class Gestalt(discord.Client):
             if arg in ["default", "defaults"]:
                 self.cur.execute(
                         "update users set prefs = ? where userid = ?",
-                        (DEFAULT_PREFS, userid))
+                        (DEFAULT_PREFS, authid))
                 return await message.add_reaction(REACT_CONFIRM)
 
             if not arg in Prefs.__members__.keys():
@@ -570,7 +585,7 @@ class Gestalt(discord.Client):
                 self.cur.execute(
                         "update users set prefs = (prefs & ~?) | (~prefs & ?)"
                         "where userid = ?",
-                        (bit, bit, userid))
+                        (bit, bit, authid))
             else:
                 if value not in KEYWORDS:
                     raise RuntimeError("Please specify 'on' or 'off'.")
@@ -578,7 +593,7 @@ class Gestalt(discord.Client):
                 self.cur.execute(
                         "update users set prefs = (prefs & ~?) | ?"
                         "where userid = ?",
-                        (bit, bit*KEYWORDS[value], userid))
+                        (bit, bit*KEYWORDS[value], authid))
 
             await message.add_reaction(REACT_CONFIRM)
 
@@ -600,7 +615,6 @@ class Gestalt(discord.Client):
                 if membername == "": # prefix absorbed member name
                     raise RuntimeError(
                             "Please provide a prefix after the user.")
-                authid = message.author.id
                 if not self.check_prefix_collisions(authid, 0, prefix):
                     raise RuntimeError(
                             "That prefix conflicts with another proxy.")
@@ -628,7 +642,7 @@ class Gestalt(discord.Client):
                 swap = self.cur.execute(
                         "select * from proxies "
                         "where (userid, proxid, type) = (?, ?, ?)",
-                        (message.author.id, swapname, Proxy.type.swap)
+                        (authid, swapname, Proxy.type.swap)
                         ).fetchone()
                 if swap == None:
                     raise RuntimeError("You do not have a swap with that ID.")
@@ -636,7 +650,7 @@ class Gestalt(discord.Client):
                         (swapname,))
                 self.cur.execute("delete from proxies "
                         "where (userid, extraid, type) = (?, ?, ?)",
-                        (swap[5], message.author.id, Proxy.type.swap))
+                        (swap[5], authid, Proxy.type.swap))
                 await message.add_reaction(REACT_CONFIRM)
 
 
@@ -752,7 +766,7 @@ class Gestalt(discord.Client):
         # return if no matches or matches override
         if match == None:
             return
-        match = Proxy(match)
+        match = self.proxctl.from_row(match)
         if match.type == Proxy.type.override:
             return
         content = (message.content[0 if match.auto else len(match.prefix):]
