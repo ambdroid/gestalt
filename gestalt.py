@@ -219,6 +219,23 @@ class Gestalt(discord.Client):
                 "active integer,"           # 0/1
                 "unique(userid, extraid))") # note that NULL bypasses unique
         self.cur.execute(
+                # NB: this does not trigger if a proxy is inserted with auto = 1
+                # including "insert or replace"
+                "create trigger if not exists exclusive_auto "
+                "after update of auto on proxies when (new.auto = 1) "
+                "begin "
+                    "update proxies set auto = 0 where ("
+                        "(userid = new.userid) and (proxid != new.proxid) and ("
+                            # if updated proxy is global, remove all other auto
+                                "(new.guildid == 0)"
+                            "or"
+                            # else, remove auto from global and same guild
+                                "((new.guildid != 0) and "
+                                "(guildid in (0, new.guildid)))"
+                        ")"
+                    ");"
+                "end")
+        self.cur.execute(
                 "create table if not exists collectives("
                 "collid text primary key,"
                 "guildid integer,"
