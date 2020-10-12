@@ -522,20 +522,14 @@ class Gestalt(discord.Client):
 
                 guild = message.channel.guild
                 rolename = reader.read_remainder()
-                if rolename == "everyone":
+                if len(message.role_mentions) > 0:
+                    role = message.role_mentions[0]
+                elif rolename == "everyone":
                     role = guild.default_role
-                # is it a role mention?
-                elif re.match("\<\@\&[0-9]+\>", rolename):
-                    if len(message.role_mentions) > 0:
-                        role = message.role_mentions[0]
-                    else:
-                        # this shouldn't happen but just in case
-                        raise RuntimeError("Not sure what happened here. "
-                                "Try again?")
                 else:
-                    raise RuntimeError("Please provide a role.")
-                if role.guild != guild:
-                    raise RuntimeError("Uhh... That role isn't in this guild?")
+                    role = discord.utils.get(guild.roles, name = rolename)
+                    if role == None:
+                        raise RuntimeError("Please provide a role.")
 
                 # new collective with name of role and no avatar
                 self.cur.execute("insert or ignore into collectives values"
