@@ -684,8 +684,9 @@ class Gestalt(discord.Client):
 
 
     async def do_proxy(self, message, content, proxy):
-        prefs = self.cur.execute("select prefs from users where userid = ?",
-                (message.author.id,)).fetchone()[0]
+        authid = message.author.id
+        channel = message.channel
+        prefs = self.trans.user_by_id(authid).prefs
         msgfile = None
 
         if (len(message.attachments) > 0
@@ -695,9 +696,6 @@ class Gestalt(discord.Client):
             # lets mobile users upload with spoilers
             if content.lower().find("spoiler") != -1:
                 msgfile.filename = "SPOILER_" + msgfile.filename
-
-        authid = message.author.id
-        channel = message.channel
 
         if proxy.type == Proxy.type.swap:
             otherid = proxy.extraid
@@ -753,15 +751,16 @@ class Gestalt(discord.Client):
             return
 
         authid = message.author.id
-        row = (self.cur.execute("select prefs from users where userid = ?",
-            (authid,)).fetchone())
+        row = self.trans.user_by_id(authid)
         if row == None:
             self.cur.execute("insert into users values (?, ?)",
                     (message.author.id, DEFAULT_PREFS))
             self.cur.execute("insert into proxies values"
                     "(?, ?, 0, NULL, ?, NULL, 0, 0)",
                     (self.gen_id(), authid, Proxy.type.override))
-            row = (DEFAULT_PREFS,)
+            errors = DEFAULT_PREFS & Prefs.errors
+        else:
+            errors = row.prefs & Prefs.errors
 
         # end of prefix or 0
         offset = (len(COMMAND_PREFIX)
@@ -772,7 +771,7 @@ class Gestalt(discord.Client):
             try:
                 await self.do_command(message, message.content[offset:].strip())
             except RuntimeError as e:
-                if row[0] & Prefs.errors:
+                if errors:
                     await self.send_embed(message, e.args[0])
             return
 
