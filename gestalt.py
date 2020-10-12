@@ -85,13 +85,6 @@ HELPMSG = ("`{p}prefix`: **set a custom prefix**\n"
 ERROR_DM = "You need to be in a server to do that!"
 ERROR_MANAGE_ROLES = "You need `Manage Roles` permission to do that!"
 
-KEYWORDS = {
-        "on": 1,
-        "off": 0,
-        "yes": 1,
-        "no": 0
-}
-
 @enum.unique
 class Prefs(enum.IntFlag):
 #   auto        = 1 << 0
@@ -103,9 +96,23 @@ DEFAULT_PREFS = Prefs.replace | Prefs.errors
 
 
 class CommandReader:
+    BOOL_KEYWORDS = {
+        "on": 1,
+        "off": 0,
+        "yes": 1,
+        "no": 0,
+        "true": 1,
+        "false": 0,
+        "0": 0,
+        "1": 1
+    }
+
     def __init__(self, msg, cmd):
         self.msg = msg
         self.cmd = cmd
+
+    def is_empty(self):
+        return self.cmd == ""
 
     def read_word(self):
         # add empty strings to pad array if string empty or no split
@@ -125,6 +132,12 @@ class CommandReader:
         ret = self.read_quote()[::-1]
         self.cmd = self.cmd[::-1]
         return ret
+
+    def read_bool_int(self):
+        word = self.read_word().lower()
+        if word not in CommandReader.BOOL_KEYWORDS:
+            return None
+        return CommandReader.BOOL_KEYWORDS[word]
 
     def read_remainder(self):
         ret = self.cmd
@@ -417,7 +430,7 @@ class Gestalt(discord.Client):
         authid = message.author.id
 
         if arg == "debug":
-            for table in ["proxies", "collectives"]:
+            for table in ["users", "proxies", "collectives"]:
                 await self.send_embed(message, "```%s```" % "\n".join(
                     ["|".join([str(i) for i in x]) for x in self.cur.execute(
                         "select * from %s" % table).fetchall()]))
@@ -475,13 +488,13 @@ class Gestalt(discord.Client):
                 if proxy.type == Proxy.type.override:
                     raise RuntimeError("You cannot autoproxy your override.")
 
-                arg = reader.read_word().lower()
-                if arg == "":
+                if reader.is_empty():
                     proxy.set_auto(1-proxy.auto)
                 else:
-                    if arg not in KEYWORDS:
+                    arg = reader.read_bool_int()
+                    if arg == None:
                         raise RuntimeError("Please specify 'on' or 'off'.")
-                    proxy.set_auto(KEYWORDS[arg])
+                    proxy.set_auto(arg)
 
                 await message.add_reaction(REACT_CONFIRM)
 
@@ -597,20 +610,19 @@ class Gestalt(discord.Client):
                 raise RuntimeError("That preference does not exist.")
 
             bit = int(Prefs[arg])
-            value = reader.read_word()
-            if value == "": # only "prefs" + name given. invert the thing
+            if reader.is_empty(): # only "prefs" + name given. invert the thing
                 self.cur.execute(
                         "update users set prefs = (prefs & ~?) | (~prefs & ?)"
                         "where userid = ?",
                         (bit, bit, authid))
             else:
-                if value not in KEYWORDS:
+                value = reader.read_bool_int()
+                if value == None:
                     raise RuntimeError("Please specify 'on' or 'off'.")
-                # note that KEYWORDS values are 0/1
                 self.cur.execute(
                         "update users set prefs = (prefs & ~?) | ?"
                         "where userid = ?",
-                        (bit, bit*KEYWORDS[value], authid))
+                        (bit, bit*value, authid))
 
             await message.add_reaction(REACT_CONFIRM)
 
