@@ -376,10 +376,7 @@ class Gestalt(discord.Client):
         if role == None:
             self.cur.execute("delete from collectives where roleid = ?",
                     (roleid,))
-            self.cur.execute(
-                    "delete from proxies"
-                    "where (type, extraid) = (?, ?)",
-                    (Proxy.type.collective, roleid))
+            self.cur.execute("delete from proxies where extraid = ?", (roleid,))
             return
 
         userids = [x.id for x in role.members]
@@ -657,8 +654,8 @@ class Gestalt(discord.Client):
                 # first try to activate the other->author swap.
                 self.cur.execute(
                         "update proxies set active = 1 where "
-                        "(type, userid, extraid) = (?, ?, ?)",
-                        (Proxy.type.swap, member.id, authid))
+                        "(userid, extraid) = (?, ?)",
+                        (member.id, authid))
                 # *must* be 0/1 due to unique constraint
                 active = self.cur.rowcount == 1 
                 # activate author->other swap
@@ -674,18 +671,15 @@ class Gestalt(discord.Client):
                 swapname = reader.read_word()
                 if swapname == "":
                     raise RuntimeError("Please provide a swap.")
-                swap = self.cur.execute(
-                        "select * from proxies "
-                        "where (userid, proxid, type) = (?, ?, ?)",
-                        (authid, swapname, Proxy.type.swap)
-                        ).fetchone()
-                if swap == None:
+                swap = self.trans.proxy_by_id(swapname)
+                if (swap == None or swap.userid != authid
+                        or swap.type != Proxy.type.swap):
                     raise RuntimeError("You do not have a swap with that ID.")
                 self.cur.execute("delete from proxies where proxid = ?",
                         (swapname,))
                 self.cur.execute("delete from proxies "
-                        "where (userid, extraid, type) = (?, ?, ?)",
-                        (swap[5], authid, Proxy.type.swap))
+                        "where (userid, extraid) = (?, ?)",
+                        (swap.extraid, authid))
                 await message.add_reaction(REACT_CONFIRM)
 
 
