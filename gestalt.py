@@ -147,17 +147,33 @@ class CommandReader:
         return ret
 
 
-class ProxyControl:
+class Translator:
     def __init__(self, cursor):
         self.cur = cursor
 
-    def from_row(self, row):
-        return Proxy(row, self.cur)
+    def user_by_id(self, userid):
+        row = self.cur.execute("select * from users where userid = ?",
+                (userid,)).fetchone()
+        return None if row == None else GestaltUser(self.cur, row)
 
-    def by_id(self, proxid):
+    def proxy_from_row(self, row):
+        return Proxy(self.cur, row)
+
+    def proxy_by_id(self, proxid):
         row = self.cur.execute("select * from proxies where proxid = ?",
                 (proxid,)).fetchone()
-        return None if row == None else self.from_row(row)
+        return None if row == None else self.proxy_from_row(row)
+
+
+class GestaltUser:
+    def __init__(self, cursor, row):
+        self.cur = cursor
+        (self.userid, self.prefs) = row
+
+    def set_prefs(self, prefs):
+        self.prefs = prefs
+        self.cur.execute("update users set prefs = ? where userid = ?",
+                (prefs, self.userid))
 
 
 class Proxy:
@@ -167,7 +183,7 @@ class Proxy:
         collective  = 1
         swap        = 2
 
-    def __init__(self, row, cursor):
+    def __init__(self, cursor, row):
         self.cur = cursor
         (self.proxid, self.userid, self.guildid, self.prefix, self.type,
                 self.extraid, self.auto, self.active) = row
@@ -258,7 +274,7 @@ class Gestalt(discord.Client):
                 "unique(guildid, roleid))")
         self.cur.execute("pragma secure_delete")
 
-        self.proxctl = ProxyControl(self.cur)
+        self.trans = Translator(self.cur)
 
         if purge:
             self.loop.create_task(self.purge_loop())
@@ -458,7 +474,7 @@ class Gestalt(discord.Client):
                         for row in rows])
                 return await self.send_embed(message, text)
 
-            proxy = self.proxctl.by_id(proxid)
+            proxy = self.trans.proxy_by_id(proxid)
             if proxy == None or proxy.userid != authid:
                 raise RuntimeError("You do not have a proxy with that ID.")
 
@@ -588,22 +604,18 @@ class Gestalt(discord.Client):
                         await message.add_reaction(REACT_CONFIRM)
 
         elif arg == "prefs":
+            # user must exist due to on_message
+            user = self.trans.user_by_id(authid)
             arg = reader.read_word()
             if len(arg) == 0:
-                # must exist due to on_message
-                userprefs = self.cur.execute(
-                        "select prefs from users where userid = ?",
-                        (authid,)).fetchone()[0]
                 # list current prefs in "pref: [on/off]" format
                 text = "\n".join(["%s: **%s**" %
-                        (pref.name, "on" if userprefs & pref else "off")
+                        (pref.name, "on" if user.prefs & pref else "off")
                         for pref in Prefs])
                 return await self.send_embed(message, text)
 
             if arg in ["default", "defaults"]:
-                self.cur.execute(
-                        "update users set prefs = ? where userid = ?",
-                        (DEFAULT_PREFS, authid))
+                user.set_prefs(DEFAULT_PREFS)
                 return await message.add_reaction(REACT_CONFIRM)
 
             if not arg in Prefs.__members__.keys():
@@ -611,18 +623,12 @@ class Gestalt(discord.Client):
 
             bit = int(Prefs[arg])
             if reader.is_empty(): # only "prefs" + name given. invert the thing
-                self.cur.execute(
-                        "update users set prefs = (prefs & ~?) | (~prefs & ?)"
-                        "where userid = ?",
-                        (bit, bit, authid))
+                user.set_prefs(user.prefs ^ bit)
             else:
                 value = reader.read_bool_int()
                 if value == None:
                     raise RuntimeError("Please specify 'on' or 'off'.")
-                self.cur.execute(
-                        "update users set prefs = (prefs & ~?) | ?"
-                        "where userid = ?",
-                        (bit, bit*value, authid))
+                user.set_prefs((user.prefs & ~bit) | (bit * value))
 
             await message.add_reaction(REACT_CONFIRM)
 
@@ -795,7 +801,7 @@ class Gestalt(discord.Client):
         # return if no matches or matches override
         if match == None:
             return
-        match = self.proxctl.from_row(match)
+        match = self.trans.proxy_from_row(match)
         if match.type == Proxy.type.override:
             return
         content = (message.content[0 if match.auto else len(match.prefix):]
