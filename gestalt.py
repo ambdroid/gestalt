@@ -250,9 +250,8 @@ class Gestalt(discord.Client):
         self.cur.execute(
                 # NB: this does not trigger if a proxy is inserted with auto = 1
                 # including "insert or replace"
-                "create trigger if not exists exclusive_auto "
-                "after update of auto on proxies when (new.auto = 1) "
-                "begin "
+                "create trigger if not exists auto_exclusive "
+                "after update of auto on proxies when (new.auto = 1) begin "
                     "update proxies set auto = 0 where ("
                         "(userid = new.userid) and (proxid != new.proxid) and ("
                             # if updated proxy is global, remove all other auto
@@ -262,6 +261,37 @@ class Gestalt(discord.Client):
                                 "((new.guildid != 0) and "
                                 "(guildid in (0, new.guildid)))"
                         ")"
+                    ");"
+                "end")
+        # these next three link swaps together such that:
+        # - when a swap is inserted, activate the opposite if it exists
+        # - when a swap is updated, activate the opposite if it exists
+        # - when a swap is deleted, delete the opposite swap
+        # the first two work together such that if (a,b) is inserted and (b,a)
+        # exists, then first (b,a) is updated, then the update trigger kicks in
+        # and updates the original (a,b) swap, resulting in both activated.
+        # note that these won't work on other swaps because they rely on
+        # extraid being a user id.
+        self.cur.execute(
+                "create trigger if not exists swap_active_insert "
+                "after insert on proxies begin "
+                    "update proxies set active = 1 where ("
+                        "(userid, extraid) = (new.extraid, new.userid)"
+                    ");"
+                "end")
+        self.cur.execute(
+                "create trigger if not exists swap_active_update "
+                "after update of active on proxies begin "
+                    "update proxies set active = 1 where ("
+                        "(active != 1)" # infinite recursion is bad
+                        "and (userid, extraid) = (new.extraid, new.userid)"
+                    ");"
+                "end")
+        self.cur.execute(
+                "create trigger if not exists swap_delete "
+                "after delete on proxies begin "
+                    "delete from proxies where ("
+                        "(userid, extraid) = (old.extraid, old.userid)"
                     ");"
                 "end")
         self.cur.execute(
@@ -645,22 +675,17 @@ class Gestalt(discord.Client):
                     raise RuntimeError(
                             "That prefix conflicts with another proxy.")
 
-                # first try to activate the other->author swap.
-                self.cur.execute(
-                        "update proxies set active = 1 where "
-                        "(userid, extraid) = (?, ?)",
-                        (member.id, authid))
-                # *must* be 0/1 due to unique constraint
-                active = self.cur.rowcount == 1 
                 # activate author->other swap
                 self.cur.execute("insert or ignore into proxies values"
-                        # auth, guild, id, prefix, type, member, auto, active
-                        "(?, ?, 0, ?, ?, ?, 0, ?)",
+                        # id, auth, guild, prefix, type, member, auto, active
+                        "(?, ?, 0, ?, ?, ?, 0, 0)",
                         (self.gen_id(), authid, prefix, Proxy.type.swap,
-                            member.id, active))
+                            member.id))
+                # triggers will take care of activation if necessary
 
                 if self.cur.rowcount == 1:
                     await message.add_reaction(REACT_CONFIRM)
+
             elif arg == "close":
                 swapname = reader.read_word()
                 if swapname == "":
