@@ -687,18 +687,17 @@ class Gestalt(discord.Client):
                     await message.add_reaction(REACT_CONFIRM)
 
             elif arg == "close":
-                swapname = reader.read_word()
+                swapname = reader.read_quote().lower()
                 if swapname == "":
-                    raise RuntimeError("Please provide a swap.")
-                swap = self.trans.proxy_by_id(swapname)
-                if (swap == None or swap.userid != authid
-                        or swap.type != Proxy.type.swap):
-                    raise RuntimeError("You do not have a swap with that ID.")
-                self.cur.execute("delete from proxies where proxid = ?",
-                        (swapname,))
-                self.cur.execute("delete from proxies "
-                        "where (userid, extraid) = (?, ?)",
-                        (swap.extraid, authid))
+                    raise RuntimeError("Please provide a swap ID or prefix.")
+
+                self.cur.execute(
+                        "delete from proxies where "
+                        "(userid, type) = (?, ?) and (? in (proxid, prefix))",
+                        (authid, Proxy.type.swap, swapname))
+                if self.cur.rowcount == 0:
+                    raise RuntimeError(
+                            "You do not have a swap with that ID or prefix.")
                 await message.add_reaction(REACT_CONFIRM)
 
 
