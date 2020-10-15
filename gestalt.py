@@ -248,6 +248,34 @@ class Gestalt(discord.Client):
                 "active integer,"           # 0/1
                 "unique(userid, extraid))") # note that NULL bypasses unique
         self.cur.execute(
+                # this is a no-op to kick in the update trigger
+                "create trigger if not exists proxy_prefix_conflict_insert "
+                "after insert on proxies begin "
+                    "update proxies set prefix = new.prefix "
+                    "where proxid = new.proxid"
+                "; end")
+        self.cur.execute(
+                "create trigger if not exists proxy_prefix_conflict_update "
+                "after update of prefix on proxies when (exists("
+                    "select * from proxies where ("
+                        "(userid == new.userid) and (proxid != new.proxid)"
+                        "and ("
+                            # if prefix is to be global, check everything
+                            # if not, check only the same guild
+                                "(new.guildid == 0)"
+                            "or"
+                                "((new.guildid != 0)"
+                                "and (guildid in (0, new.guildid)))"
+                        ") and ("
+                                "(substr(prefix,0,length(new.prefix)+1)"
+                                "== new.prefix)"
+                            "or"
+                                "(substr(new.prefix,0,length(prefix)+1)"
+                                "== prefix)"
+                        ")"
+                    ")"
+                ")) begin select (raise(abort, 'prefix conflict')); end")
+        self.cur.execute(
                 # NB: this does not trigger if a proxy is inserted with auto = 1
                 # including "insert or replace"
                 "create trigger if not exists auto_exclusive "
@@ -376,29 +404,6 @@ class Gestalt(discord.Client):
                 return id
 
 
-    def check_prefix_collisions(self, userid, guildid, prefix, existing = None):
-        match = (self.cur.execute(
-                "select proxid from proxies where ("
-                    "(userid = ?)"
-                    "and ("
-                        # if prefix is to be global, check everything
-                        # if not, check only the same guild
-                            "(? == 0)"
-                        "or"
-                            "((? != 0) and (guildid in (0, ?)))"
-                    ") and ("
-                            "(substr(?,0,length(prefix)+1) == prefix)"
-                        "or"
-                            "(substr(prefix,0,length(?)+1) == ?)"
-                    ")"
-                ")",
-                (userid,)+(guildid,)*3+(prefix,)*3)
-                .fetchall())
-        if len(match) == 1 and match[0][0] == existing:
-            return True
-        return len(match) == 0
-
-
     # called on role delete
     def sync_role(self, guild, roleid):
         role = guild.get_role(roleid)
@@ -515,13 +520,11 @@ class Gestalt(discord.Client):
                 if arg.endswith("text"):
                     arg = arg[:-4]
 
-                # check if the new prefix conflicts with anything else
-                if not self.check_prefix_collisions(authid, proxy.guildid, arg,
-                        proxid):
+                try:
+                    proxy.set_prefix(arg)
+                except:
                     raise RuntimeError(
                             "That prefix conflicts with another proxy.")
-
-                proxy.set_prefix(arg)
                 if proxy.type == Proxy.type.collective:
                     proxy.set_active(1)
 
@@ -671,16 +674,17 @@ class Gestalt(discord.Client):
                 if membername == "": # prefix absorbed member name
                     raise RuntimeError(
                             "Please provide a prefix after the user.")
-                if not self.check_prefix_collisions(authid, 0, prefix):
-                    raise RuntimeError(
-                            "That prefix conflicts with another proxy.")
 
                 # activate author->other swap
-                self.cur.execute("insert or ignore into proxies values"
+                try:
+                    self.cur.execute("insert or ignore into proxies values"
                         # id, auth, guild, prefix, type, member, auto, active
-                        "(?, ?, 0, ?, ?, ?, 0, 0)",
-                        (self.gen_id(), authid, prefix, Proxy.type.swap,
-                            member.id))
+                            "(?, ?, 0, ?, ?, ?, 0, 0)",
+                            (self.gen_id(), authid, prefix, Proxy.type.swap,
+                                member.id))
+                except:
+                     raise RuntimeError(
+                            "That prefix conflicts with another proxy.")
                 # triggers will take care of activation if necessary
 
                 if self.cur.rowcount == 1:
