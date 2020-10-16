@@ -147,24 +147,6 @@ class CommandReader:
         return ret
 
 
-class Translator:
-    def __init__(self, cursor):
-        self.cur = cursor
-
-    def user_by_id(self, userid):
-        row = self.cur.execute("select * from users where userid = ?",
-                (userid,)).fetchone()
-        return None if row == None else GestaltUser(self.cur, row)
-
-    def proxy_from_row(self, row):
-        return Proxy(self.cur, row)
-
-    def proxy_by_id(self, proxid):
-        row = self.cur.execute("select * from proxies where proxid = ?",
-                (proxid,)).fetchone()
-        return None if row == None else self.proxy_from_row(row)
-
-
 class GestaltUser:
     def __init__(self, cursor, row):
         self.cur = cursor
@@ -183,10 +165,15 @@ class Proxy:
         collective  = 1
         swap        = 2
 
-    def __init__(self, cursor, row):
-        self.cur = cursor
+    def __init__(self, trans, row):
+        self.trans = trans
+        self.cur = trans.cur
         (self.proxid, self.userid, self.guildid, self.prefix, self.type,
                 self.extraid, self.auto, self.active) = row
+
+    # this base class version shouldn't be called normally
+    async def send(self, webhook, message, content, attachment):
+        return message.send(content, file = attachment)
 
     def set_prefix(self, prefix):
         self.prefix = prefix
@@ -202,6 +189,77 @@ class Proxy:
         self.active = active
         self.cur.execute("update proxies set active = ? where proxid = ?",
                 (active, self.proxid))
+
+
+class ProxyOverride(Proxy):
+    async def send(self, webhook, message, content, attachment):
+        raise RuntimeError("Attempted to send a message with an override proxy")
+
+
+class ProxyCollective(Proxy):
+    async def send(self, webhook, message, content, attachment):
+        authid = message.author.id
+        prefs = self.trans.user_by_id(authid).prefs
+        present = self.cur.execute("select nick, avatar from collectives "
+                "where roleid = ?",
+                (self.extraid,)).fetchone()
+        if present == None:
+            return super().send(webhook, message, content, attachment)
+
+        if prefs & Prefs.replace:
+            # do these in order (or else, e.g. "I'm" could become "We'm")
+            # which is funny but not what we want here
+            # TODO: replace this with a reduce()?
+            for x, y in REPLACE_DICT.items():
+                content = x.sub(y, content)
+
+        return await webhook.send(wait = True, content = content,
+                file=attachment, username = present[0],
+                avatar_url = present[1])
+
+
+class ProxySwap(Proxy):
+    async def send(self, webhook, message, content, attachment):
+        guild = message.guild
+        member = guild.get_member(self.extraid)
+        # if the guild is large, the member may not be in cache
+        if member == None and guild.large:
+            member = await guild.fetch_member(self.extraid)
+            # put this member in the cache (is this necessary?)
+            if member != None:
+                guild._add_member(member)
+        if member == None:
+            return
+
+        return await webhook.send(wait = True, content = content,
+                file = attachment, username = member.display_name,
+                avatar_url = member.avatar_url_as(format = "webp"))
+
+
+class Translator:
+    type_mapping = {
+            0: ProxyOverride,
+            1: ProxyCollective,
+            2: ProxySwap,
+    }
+
+    def __init__(self, cursor):
+        self.cur = cursor
+
+    def user_by_id(self, userid):
+        row = self.cur.execute("select * from users where userid = ?",
+                (userid,)).fetchone()
+        return None if row == None else GestaltUser(self.cur, row)
+
+    def proxy_from_row(self, row):
+        if row[4] not in Translator.type_mapping:
+            return Proxy(self, row)
+        return Translator.type_mapping[row[4]](self, row)
+
+    def proxy_by_id(self, proxid):
+        row = self.cur.execute("select * from proxies where proxid = ?",
+                (proxid,)).fetchone()
+        return None if row == None else self.proxy_from_row(row)
 
 
 def is_text(message):
@@ -703,7 +761,6 @@ class Gestalt(discord.Client):
     async def do_proxy(self, message, content, proxy):
         authid = message.author.id
         channel = message.channel
-        prefs = self.trans.user_by_id(authid).prefs
         msgfile = None
 
         if (len(message.attachments) > 0
@@ -713,35 +770,6 @@ class Gestalt(discord.Client):
             # lets mobile users upload with spoilers
             if content.lower().find("spoiler") != -1:
                 msgfile.filename = "SPOILER_" + msgfile.filename
-
-        if proxy.type == Proxy.type.swap:
-            otherid = proxy.extraid
-            member = channel.guild.get_member(otherid)
-            # if the guild is large, the member may not be in cache
-            if member == None and channel.guild.large:
-                member = await channel.guild.fetch_member(otherid)
-                # put this member in the cache (is this necessary?)
-                if member != None:
-                    channel.guild._add_member(member)
-            if member == None:
-                return
-            present = (member.display_name,
-                    member.avatar_url_as(format = "webp"))
-
-        else: # currently only collective
-            present = self.cur.execute("select nick, avatar from collectives "
-                    "where roleid = ?",
-                    (proxy.extraid,)).fetchone()
-            if present == None:
-                return
-
-            # don't replace stuff while in a swap
-            if prefs & Prefs.replace:
-                # do these in order (or else, e.g. "I'm" could become "We'm")
-                # which is funny but not what we want here
-                # TODO: replace this with a reduce()?
-                for x, y in REPLACE_DICT.items():
-                    content = x.sub(y, content)
 
         row = self.cur.execute("select * from webhooks where chanid = ?",
                 (channel.id,)).fetchone()
@@ -753,8 +781,7 @@ class Gestalt(discord.Client):
             hook = discord.Webhook.partial(row[1], row[2],
                     adapter = discord.AsyncWebhookAdapter(self.sesh))
 
-        msgid = (await hook.send(wait = True, content = content, file=msgfile,
-                username = present[0], avatar_url = present[1])).id
+        msgid = (await proxy.send(hook, message, content, msgfile)).id
 
         authname = str(message.author)
         # deleted = 0
