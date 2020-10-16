@@ -274,7 +274,10 @@ class Gestalt(discord.Client):
                                 "== prefix)"
                         ")"
                     ")"
-                ")) begin select (raise(abort, 'prefix conflict')); end")
+                # this exception will be passed to the user
+                ")) begin select (raise(abort,"
+                    "'That prefix conflicts with another proxy.'"
+                ")); end")
         self.cur.execute(
                 # NB: this does not trigger if a proxy is inserted with auto = 1
                 # including "insert or replace"
@@ -520,11 +523,7 @@ class Gestalt(discord.Client):
                 if arg.endswith("text"):
                     arg = arg[:-4]
 
-                try:
-                    proxy.set_prefix(arg)
-                except:
-                    raise RuntimeError(
-                            "That prefix conflicts with another proxy.")
+                proxy.set_prefix(arg)
                 if proxy.type == Proxy.type.collective:
                     proxy.set_active(1)
 
@@ -676,15 +675,11 @@ class Gestalt(discord.Client):
                             "Please provide a prefix after the user.")
 
                 # activate author->other swap
-                try:
-                    self.cur.execute("insert or ignore into proxies values"
+                self.cur.execute("insert or ignore into proxies values"
                         # id, auth, guild, prefix, type, member, auto, active
-                            "(?, ?, 0, ?, ?, ?, 0, 0)",
-                            (self.gen_id(), authid, prefix, Proxy.type.swap,
-                                member.id))
-                except:
-                     raise RuntimeError(
-                            "That prefix conflicts with another proxy.")
+                        "(?, ?, 0, ?, ?, ?, 0, 0)",
+                        (self.gen_id(), authid, prefix, Proxy.type.swap,
+                            member.id))
                 # triggers will take care of activation if necessary
 
                 if self.cur.rowcount == 1:
@@ -792,7 +787,7 @@ class Gestalt(discord.Client):
             # strip() so that e.g. "gs; help" works (helpful with autocorrect)
             try:
                 await self.do_command(message, message.content[offset:].strip())
-            except RuntimeError as e:
+            except (RuntimeError, sqlite.IntegrityError) as e:
                 if errors:
                     await self.send_embed(message, e.args[0])
             return
