@@ -18,6 +18,8 @@ import discord
 import auth
 
 
+PERMS_BITS = 604040256
+
 WEBHOOK_NAME = "Gestalt webhook"
 
 REPLACE_DICT = {re.compile(x, re.IGNORECASE): y for x, y in {
@@ -432,6 +434,7 @@ class Gestalt(discord.Client):
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + "help"))
+        self.invite = (await self.application_info()).bot_public
 
 
     async def close(self):
@@ -547,6 +550,12 @@ class Gestalt(discord.Client):
 
         if arg == "help":
             await self.send_embed(message, HELPMSG)
+
+        elif arg == "invite" and self.invite:
+            await self.send_embed(message,
+                    "https://discord.com/api/oauth2/authorize?"
+                    "client_id=%i&permissions=%i&scope=bot"
+                    % (self.user.id, PERMS_BITS))
 
         elif arg in ["proxy", "p"]:
             proxid = reader.read_word().lower()
