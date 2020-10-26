@@ -18,7 +18,14 @@ import discord
 import auth
 
 
-PERMS_BITS = 604040256
+PERMS = discord.permissions.Permissions(
+        add_reactions = True,
+        read_messages = True,
+        send_messages = True,
+        manage_messages = True,
+        embed_links = True,
+        attach_files = True,
+        manage_webhooks = True)
 
 WEBHOOK_NAME = "Gestalt webhook"
 
@@ -555,7 +562,7 @@ class Gestalt(discord.Client):
             await self.send_embed(message,
                     "https://discord.com/api/oauth2/authorize?"
                     "client_id=%i&permissions=%i&scope=bot"
-                    % (self.user.id, PERMS_BITS))
+                    % (self.user.id, PERMS.value))
 
         elif arg in ["proxy", "p"]:
             proxid = reader.read_word().lower()
