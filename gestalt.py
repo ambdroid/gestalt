@@ -564,6 +564,44 @@ class Gestalt(discord.Client):
                     "client_id=%i&permissions=%i&scope=bot"
                     % (self.user.id, PERMS.value))
 
+        elif arg == "permcheck":
+            guildid = reader.read_word()
+            if (guildid == "" and (is_dm(message)
+                    or not re.match("[0-9]*", guildid))):
+                raise RuntimeError("Please provide a valid guild ID.")
+            guildid = message.guild.id if guildid == "" else int(guildid)
+            guild = self.get_guild(guildid)
+            if guild == None:
+                raise RuntimeError(
+                        "That guild does not exist or I am not in it.")
+            memberbot = guild.get_member(self.user.id)
+            # get_member can't be trusted, apparently
+            memberauth = await guild.fetch_member(authid)
+            if memberauth == None:
+                raise RuntimeError("You are not a member of that guild.")
+
+            text = "**%s**:\n" % guild.name
+            noaccess = False
+            for chan in guild.text_channels:
+                if not memberauth.permissions_in(chan).view_channel:
+                    noaccess = True
+                    continue
+
+                errors = []
+                for p in PERMS: # p = ("name", bool)
+                    if p[1] and not p in list(memberbot.permissions_in(chan)):
+                        errors += [p[0]]
+
+                # lack of access implies lack of other perms, so leave them out
+                if "read_messages" in errors:
+                    errors = ["read_messages"]
+                errors = REACT_CONFIRM if errors == [] else ", ".join(errors)
+                text += "`#%s`: %s\n" % (chan.name, errors)
+
+            if noaccess:
+                text += "Some channels you can't see are omitted."
+            await self.send_embed(message, text)
+
         elif arg in ["proxy", "p"]:
             proxid = reader.read_word().lower()
             arg = reader.read_word().lower()
