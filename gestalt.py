@@ -25,6 +25,7 @@ PERMS = discord.permissions.Permissions(
         manage_messages = True,
         embed_links = True,
         attach_files = True,
+        use_external_emojis = True,
         manage_webhooks = True)
 
 WEBHOOK_NAME = "Gestalt webhook"
