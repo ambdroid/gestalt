@@ -35,6 +35,7 @@ REPLACE_DICT = {re.compile(x, re.IGNORECASE): y for x, y in {
     "\\bi\\s+was\\b": "We were",
     "\\bi'm\\b": "We're",
     "\\bim\\b": "We're",
+    "\\bam\\s+i\\b": "are We",
     "\\bi\\b": "We", # also corrects I'll, I'd, I've
     "\\bme\\b": "Us",
     "\\bmy\\b": "Our",
