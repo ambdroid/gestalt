@@ -160,7 +160,7 @@ class CommandReader:
 class GestaltUser:
     def __init__(self, cursor, row):
         self.cur = cursor
-        (self.userid, self.prefs) = row
+        (self.userid, self.username, self.prefs) = row
 
     def set_prefs(self, prefs):
         self.prefs = prefs
@@ -291,13 +291,13 @@ class Gestalt(discord.Client):
                 "msgid integer primary key,"
                 "chanid integer,"
                 "authid integer,"
-                "authname text,"
                 "otherid text,"
                 "content text,"
                 "deleted integer)")
         self.cur.execute(
                 "create table if not exists users("
                 "userid integer primary key,"
+                "username text,"
                 "prefs integer)")
         self.cur.execute(
                 "create table if not exists webhooks("
@@ -457,7 +457,7 @@ class Gestalt(discord.Client):
         # insert into history to allow initiator to delete message if desired
         if is_text(replyto):
             self.cur.execute(
-                    "insert into history values (?, 0, ?, '', 0, '', 0)",
+                    "insert into history values (?, 0, ?, 0, '', 0)",
                     (msg.id, replyto.author.id))
 
 
@@ -838,10 +838,9 @@ class Gestalt(discord.Client):
 
         msgid = (await proxy.send(hook, message, content, msgfile)).id
 
-        authname = str(message.author)
         # deleted = 0
-        self.cur.execute("insert into history values (?, ?, ?, ?, ?, ?, 0)",
-                (msgid, channel.id, authid, authname, proxy.extraid, content))
+        self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
+                (msgid, channel.id, authid, proxy.extraid, content))
         await message.delete()
 
 
@@ -850,16 +849,20 @@ class Gestalt(discord.Client):
             return
 
         authid = message.author.id
-        row = self.trans.user_by_id(authid)
-        if row == None:
-            self.cur.execute("insert into users values (?, ?)",
-                    (message.author.id, DEFAULT_PREFS))
+        author = self.trans.user_by_id(authid)
+        if author == None:
+            self.cur.execute("insert into users values (?, ?, ?)",
+                    (message.author.id, str(message.author), DEFAULT_PREFS))
             self.cur.execute("insert into proxies values"
                     "(?, ?, 0, NULL, ?, NULL, 0, 0)",
                     (self.gen_id(), authid, Proxy.type.override))
             errors = DEFAULT_PREFS & Prefs.errors
         else:
-            errors = row.prefs & Prefs.errors
+            if author.username != str(message.author):
+                self.cur.execute(
+                        "update users set username = ? where userid = ?",
+                        (str(message.author), authid))
+            errors = author.prefs & Prefs.errors
 
         # end of prefix or 0
         offset = (len(COMMAND_PREFIX)
@@ -910,7 +913,7 @@ class Gestalt(discord.Client):
 
         # first, make sure this is one of ours
         row = self.cur.execute(
-            "select authname, authid from history where msgid = ?",
+            "select authid from history where msgid = ?",
             (payload.message_id,)).fetchone()
         if row == None:
             return
@@ -925,18 +928,23 @@ class Gestalt(discord.Client):
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
+            # use message.author? but not sure what a deleted user looks like
+            author = self.trans.user_by_id(row[0])
             try:
-                await reactor.send("Message sent by %s, id %d" % row)
+                await reactor.send(
+                        "Message sent by %s, id %d"
+                        % (author.username, author.userid))
             except discord.Forbidden:
-                pass
+                pass # user doesn't accept new messages from us
             await message.remove_reaction(emoji, reactor)
 
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
             if payload.user_id == row[1]:
+                # don't delete the entry immediately.
+                # purge_loop will take care of it later.
                 self.cur.execute(
-                        "update history set deleted = 1,"
-                        "authname = '' where msgid = ?",
+                        "update history set deleted = 1 where msgid = ?",
                         (payload.message_id,))
                 await message.delete()
             else:
