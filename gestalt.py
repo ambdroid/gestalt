@@ -929,7 +929,6 @@ class Gestalt(discord.Client):
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
-            # use message.author? but not sure what a deleted user looks like
             author = self.trans.user_by_id(row[0])
             try:
                 await reactor.send(
