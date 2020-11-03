@@ -828,6 +828,9 @@ class Gestalt(discord.Client):
             # lets mobile users upload with spoilers
             if content.lower().find("spoiler") != -1:
                 msgfile.filename = "SPOILER_" + msgfile.filename
+        # avoid error when user proxies empty message with invalid attachment
+        if msgfile == None and content == "":
+            return
 
         row = self.cur.execute("select * from webhooks where chanid = ?",
                 (channel.id,)).fetchone()
@@ -904,7 +907,7 @@ class Gestalt(discord.Client):
             return
         content = (message.content[0 if match.auto else len(match.prefix):]
                 .strip())
-        if content == "":
+        if content == "" and len(message.attachments) == 0:
             return
         await self.do_proxy(message, content, match)
 
