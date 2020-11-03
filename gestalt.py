@@ -60,9 +60,12 @@ COMMAND_PREFIX = "gs;"
 PURGE_AGE = 3600*24*7   # 1 week
 PURGE_TIMEOUT = 3600*2  # 2 hours
 
-# hard limit for non-Nitro users
-# TODO: honor increased limits in boosted servers
-MAX_FILE_SIZE = 8*1024*1024
+# limits for non-Nitro users by boost level
+MAX_FILE_SIZE = [
+        8*1024*1024,
+        8*1024*1024,
+        50*1024*1024,
+        100*1024*1024]
 
 HELPMSG = ("`{p}prefix`: **set a custom prefix**\n"
         "The default prefix is  `g ` or `G `. "
@@ -818,7 +821,8 @@ class Gestalt(discord.Client):
         msgfile = None
 
         if (len(message.attachments) > 0
-                and message.attachments[0].size <= MAX_FILE_SIZE):
+                and message.attachments[0].size
+                <= MAX_FILE_SIZE[message.guild.premium_tier]):
             # only copy the first attachment
             msgfile = await message.attachments[0].to_file()
             # lets mobile users upload with spoilers
