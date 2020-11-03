@@ -18,6 +18,12 @@ import discord
 import auth
 
 
+INTENTS = discord.Intents(
+        guilds = True,
+        members = True,
+        messages = True,
+        reactions = True)
+
 PERMS = discord.permissions.Permissions(
         add_reactions = True,
         read_messages = True,
@@ -231,14 +237,7 @@ class ProxyCollective(Proxy):
 
 class ProxySwap(Proxy):
     async def send(self, webhook, message, content, attachment):
-        guild = message.guild
-        member = guild.get_member(self.extraid)
-        # if the guild is large, the member may not be in cache
-        if member == None and guild.large:
-            member = await guild.fetch_member(self.extraid)
-            # put this member in the cache (is this necessary?)
-            if member != None:
-                guild._add_member(member)
+        member = message.guild.get_member(self.extraid)
         if member == None:
             return
 
@@ -282,8 +281,8 @@ def is_dm(message):
 
 
 class Gestalt(discord.Client):
-    def __init__(self, *, dbfile, purge = True, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *, dbfile, purge = True):
+        super().__init__(intents = INTENTS)
 
         self.conn = sqlite.connect(dbfile)
         self.cur = self.conn.cursor()
@@ -577,8 +576,7 @@ class Gestalt(discord.Client):
                 raise RuntimeError(
                         "That guild does not exist or I am not in it.")
             memberbot = guild.get_member(self.user.id)
-            # get_member can't be trusted, apparently
-            memberauth = await guild.fetch_member(authid)
+            memberauth = guild.get_member(authid)
             if memberauth == None:
                 raise RuntimeError("You are not a member of that guild.")
 
