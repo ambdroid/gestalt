@@ -126,6 +126,9 @@ class Guild:
         return Member.users[user_id]
 
 class TestBot(gestalt.Gestalt):
+    def __init__(self):
+        super().__init__(dbfile = ":memory:", purge = False)
+        self.invite = True
     def __del__(self):
         pass # suppress "closing database" message
     @property
@@ -248,6 +251,6 @@ if __name__ == "__main__":
     beta = Member(name = "test-beta")
     chan = Channel()
 
-    instance = TestBot(dbfile = ":memory:", purge = False)
+    instance = TestBot()
     if unittest.main(exit = False).result.wasSuccessful():
         print("But it isn't *really* OK, is it?")
