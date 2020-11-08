@@ -769,17 +769,31 @@ class Gestalt(discord.Client):
         if msgfile == None and content == "":
             return
 
-        row = self.cur.execute("select * from webhooks where chanid = ?",
-                (channel.id,)).fetchone()
-        if row == None:
-            hook = await channel.create_webhook(name = WEBHOOK_NAME)
-            self.cur.execute("insert into webhooks values (?, ?, ?)",
-                    (channel.id, hook.id, hook.token))
-        else:
-            hook = discord.Webhook.partial(row[1], row[2],
-                    adapter = discord.AsyncWebhookAdapter(self.sesh))
+        # this should never loop infinitely but just in case
+        for ignored in range(2):
+            row = self.cur.execute("select * from webhooks where chanid = ?",
+                    (channel.id,)).fetchone()
+            if row == None:
+                try:
+                    hook = await channel.create_webhook(name = WEBHOOK_NAME)
+                except discord.errors.Forbidden:
+                    return # welp
+                self.cur.execute("insert into webhooks values (?, ?, ?)",
+                        (channel.id, hook.id, hook.token))
+            else:
+                hook = discord.Webhook.partial(row[1], row[2],
+                        adapter = discord.AsyncWebhookAdapter(self.sesh))
 
-        msg = await proxy.send(hook, message, content, msgfile)
+            try:
+                msg = await proxy.send(hook, message, content, msgfile)
+            except discord.errors.NotFound:
+                # webhook is deleted. delete entry and return to top of loop
+                self.cur.execute("delete from webhooks where chanid = ?",
+                        (channel.id,))
+                continue
+            else:
+                break
+
         # in case e.g. it's a swap but the other user isn't in the guild
         if msg == None:
             return
@@ -788,7 +802,10 @@ class Gestalt(discord.Client):
         self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
                 (msg.id, channel.id, authid, proxy.extraid, content))
 
-        await message.delete()
+        try:
+            await message.delete()
+        except discord.errors.Forbidden:
+            pass
 
 
     async def on_message(self, message):
