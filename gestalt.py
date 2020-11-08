@@ -779,11 +779,15 @@ class Gestalt(discord.Client):
             hook = discord.Webhook.partial(row[1], row[2],
                     adapter = discord.AsyncWebhookAdapter(self.sesh))
 
-        msgid = (await proxy.send(hook, message, content, msgfile)).id
+        msg = await proxy.send(hook, message, content, msgfile)
+        # in case e.g. it's a swap but the other user isn't in the guild
+        if msg == None:
+            return
 
         # deleted = 0
         self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
-                (msgid, channel.id, authid, proxy.extraid, content))
+                (msg.id, channel.id, authid, proxy.extraid, content))
+
         await message.delete()
 
 
