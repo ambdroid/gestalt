@@ -894,24 +894,31 @@ class Gestalt(discord.Client):
         if emoji == REACT_QUERY:
             author = self.trans.user_by_id(row[0])
             try:
+                # this can fail depending on user's DM settings & prior messages
                 await reactor.send(
                         "Message sent by %s, id %d"
                         % (author.username, author.userid))
-            except discord.Forbidden:
-                pass # user doesn't accept new messages from us
-            await message.remove_reaction(emoji, reactor)
+                await message.remove_reaction(emoji, reactor)
+            except discord.errors.Forbidden:
+                pass
 
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
             if payload.user_id == row[1]:
+                try:
+                    await message.delete()
+                except discord.errors.Forbidden:
+                    return
                 # don't delete the entry immediately.
                 # purge_loop will take care of it later.
                 self.cur.execute(
                         "update history set deleted = 1 where msgid = ?",
                         (payload.message_id,))
-                await message.delete()
             else:
-                await message.remove_reaction(emoji, reactor)
+                try:
+                    await message.remove_reaction(emoji, reactor)
+                except discord.errors.Forbidden:
+                    pass
 
 
 
