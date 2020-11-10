@@ -501,9 +501,7 @@ class Gestalt(discord.Client):
 
         elif arg == "invite" and self.invite:
             await self.send_embed(message,
-                    "https://discord.com/api/oauth2/authorize?"
-                    "client_id=%i&permissions=%i&scope=bot"
-                    % (self.user.id, PERMS.value))
+                    discord.utils.oauth_url(self.user.id, permissions = PERMS))
 
         elif arg == "permcheck":
             guildid = reader.read_word()
