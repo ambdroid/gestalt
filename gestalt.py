@@ -904,7 +904,7 @@ class Gestalt(discord.Client):
 
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
-            if payload.user_id == row[1]:
+            if payload.user_id == row[0]:
                 try:
                     await message.delete()
                 except discord.errors.Forbidden:
