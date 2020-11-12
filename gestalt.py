@@ -598,8 +598,7 @@ class Gestalt(discord.Client):
                 raise RuntimeError(ERROR_DM)
             arg = reader.read_word().lower()
             if arg in ["new", "create"]:
-                if not (message.author.permissions_in(message.channel)
-                        .manage_roles):
+                if not message.author.guild_permissions.manage_roles:
                     raise RuntimeError(ERROR_MANAGE_ROLES)
 
                 guild = message.channel.guild
@@ -647,8 +646,8 @@ class Gestalt(discord.Client):
                         raise RuntimeError("That role no longer exists?")
 
                     member = message.author # Member because this isn't a DM
-                    if not (role in member.roles or member.permissions_in(
-                        message.channel).manage_roles):
+                    if not (role in member.roles
+                            or member.guild_permissions.manage_roles):
                         raise RuntimeError(
                                 "You don't have access to that collective!")
 
@@ -661,8 +660,7 @@ class Gestalt(discord.Client):
                         await message.add_reaction(REACT_CONFIRM)
 
                 elif action == "delete":
-                    if not (message.author.permissions_in(message.channel)
-                            .manage_roles):
+                    if not message.author.guild_permissions.manage_roles:
                         raise RuntimeError(ERROR_MANAGE_ROLES)
 
                     # all the more reason to delete it then, right?
