@@ -98,7 +98,7 @@ class CommandReader:
 
     def read_remainder(self):
         ret = self.cmd
-        if len(ret) > 1 and ret[1] == ret[-1] == '"':
+        if len(ret) > 1 and ret[0] == ret[-1] == '"':
             ret = ret[1:-1]
         self.cmd = ""
         return ret
