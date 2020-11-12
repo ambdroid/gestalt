@@ -377,7 +377,7 @@ class Gestalt(discord.Client):
     async def on_ready(self):
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
-        self.sesh = aiohttp.ClientSession()
+        self.adapter = discord.AsyncWebhookAdapter(aiohttp.ClientSession())
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         await self.change_presence(status = discord.Status.online,
@@ -387,7 +387,7 @@ class Gestalt(discord.Client):
 
     async def close(self):
         await super().close()
-        await self.sesh.close()
+        await self.adapter.session.close()
 
 
     async def send_embed(self, replyto, text):
@@ -775,7 +775,7 @@ class Gestalt(discord.Client):
                         (channel.id, hook.id, hook.token))
             else:
                 hook = discord.Webhook.partial(row[1], row[2],
-                        adapter = discord.AsyncWebhookAdapter(self.sesh))
+                        adapter = self.adapter)
 
             try:
                 msg = await proxy.send(hook, message, content, msgfile)
