@@ -637,9 +637,8 @@ class Gestalt(discord.Client):
                             % self.get_guild(row[0]).name)
 
                 if action in ["name", "avatar"]:
+                    # this can be empty. it doesn't cause any errors
                     arg = reader.read_remainder()
-                    if arg == "":
-                        raise RuntimeError("Please provide a new " + action)
 
                     role = guild.get_role(row[1])
                     if role == None:
