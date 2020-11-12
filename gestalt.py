@@ -624,26 +624,28 @@ class Gestalt(discord.Client):
             else: # arg is collective ID
                 collid = arg
                 action = reader.read_word().lower()
+                row = self.cur.execute(
+                        "select guildid, roleid from collectives "
+                        "where collid = ?",
+                        (collid,)).fetchone()
+                if row == None:
+                    raise RuntimeError("Invalid collective ID!")
+
+                guild = message.channel.guild
+                if row[0] != guild.id:
+                    # TODO allow commands outside server
+                    raise RuntimeError("Please try that again in %s"
+                            % self.get_guild(row[0]).name)
+
                 if action in ["name", "avatar"]:
                     arg = reader.read_remainder()
                     if arg == "":
-                        raise RuntimeError("Please provide a " + action)
-
-                    row = self.cur.execute(
-                            "select guildid, roleid from collectives "
-                            "where collid = ?",
-                            (collid,)).fetchone()
-                    if row == None:
-                        raise RuntimeError("Invalid collective ID!")
-                    guild = message.channel.guild
-                    if row[0] != guild.id:
-                        # TODO allow commands outside server
-                        raise RuntimeError("Please try that again in %s"
-                                % self.get_guild(row[0]).name)
+                        raise RuntimeError("Please provide a new " + action)
 
                     role = guild.get_role(row[1])
                     if role == None:
                         raise RuntimeError("That role no longer exists?")
+
                     member = message.author # Member because this isn't a DM
                     if not (role in member.roles or member.permissions_in(
                         message.channel).manage_roles):
@@ -662,11 +664,7 @@ class Gestalt(discord.Client):
                     if not (message.author.permissions_in(message.channel)
                             .manage_roles):
                         raise RuntimeError(ERROR_MANAGE_ROLES)
-                    row = self.cur.execute("select guildid, roleid from "
-                            "collectives where collid = ?",
-                            (collid,)).fetchone()
-                    if row == None:
-                        raise RuntimeError("Invalid collective ID!")
+
                     # all the more reason to delete it then, right?
                     # if guild.get_role(row[1]) == None:
                     self.cur.execute("delete from proxies where extraid = ?",
