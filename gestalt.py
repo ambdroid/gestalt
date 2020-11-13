@@ -793,7 +793,8 @@ class Gestalt(discord.Client):
 
         # deleted = 0
         self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
-                (msg.id, channel.id, authid, proxy.extraid, content))
+                (msg.id, channel.id, authid, proxy.extraid,
+                    content if LOG_MESSAGE_CONTENT else ""))
 
         try:
             await message.delete()

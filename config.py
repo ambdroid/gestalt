@@ -2,6 +2,8 @@ from unicodedata import lookup as emojilookup
 import re
 
 
+LOG_MESSAGE_CONTENT = True
+
 REPLACE_DICT = {re.compile(x, re.IGNORECASE): y for x, y in {
     "\\bi\\s+am\\b": "We are",
     "\\bi\\s+was\\b": "We were",
