@@ -114,6 +114,11 @@ class GestaltUser:
         self.cur.execute("update users set prefs = ? where userid = ?",
                 (prefs, self.userid))
 
+    def set_username(self, username):
+        self.username = username
+        self.cur.execute("update users set username = ? where userid = ?",
+                (username, self.userid))
+
 
 class Proxy:
     @enum.unique
@@ -817,9 +822,7 @@ class Gestalt(discord.Client):
             errors = DEFAULT_PREFS & Prefs.errors
         else:
             if author.username != str(message.author):
-                self.cur.execute(
-                        "update users set username = ? where userid = ?",
-                        (str(message.author), authid))
+                author.set_username(str(message.author))
             errors = author.prefs & Prefs.errors
 
         # end of prefix or 0
