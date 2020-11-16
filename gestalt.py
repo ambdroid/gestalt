@@ -421,14 +421,10 @@ class Gestalt(discord.Client):
                 return id
 
 
-    # called on role delete
-    def sync_role(self, guild, roleid):
-        role = guild.get_role(roleid)
-        # check if it's deleted and act accordingly
-        if role == None:
-            self.cur.execute("delete from collectives where roleid = ?",
-                    (roleid,))
-            self.cur.execute("delete from proxies where extraid = ?", (roleid,))
+    def sync_role(self, role):
+        # is this role attached to a collective?
+        if (self.cur.execute("select * from collectives where roleid = ?",
+            (role.id,)).fetchone() == None):
             return
 
         userids = [x.id for x in role.members]
@@ -438,33 +434,35 @@ class Gestalt(discord.Client):
             self.cur.execute(
                     "insert or ignore into proxies values "
                     "(?, ?, ?, NULL, ?, ?, 0, 0)",
-                    (self.gen_id(), userid, guild.id,
-                        Proxy.type.collective, roleid))
+                    (self.gen_id(), userid, role.guild.id,
+                        Proxy.type.collective, role.id))
 
         # is there anyone with the proxy who shouldn't?
         rows = self.cur.execute(
-                "select proxid, userid from proxies "
-                "where extraid = ?",
-                (roleid,)).fetchall()
+                "select * from proxies where extraid = ?",
+                (role.id,)).fetchall()
 
         for row in rows:
-            if row[1] not in userids:
+            proxy = self.trans.proxy_from_row(row)
+            if proxy.userid not in userids:
                 self.cur.execute("delete from proxies where proxid = ?",
-                        (row[0],))
+                        (proxy.proxid,))
 
 
-    def sync_member(self, guild, member):
+    def sync_member(self, member):
+        guild = member.guild
         # first, check if they have any proxies they shouldn't
         # right now, this only applies to collectives
         rows = self.cur.execute(
-                "select proxid, extraid from proxies "
+                "select * from proxies "
                 "where (userid, guildid, type) = (?, ?, ?)",
                 (member.id, guild.id, Proxy.type.collective)).fetchall()
         roleids = [x.id for x in member.roles]
         for row in rows:
-            if row[1] not in roleids:
+            proxy = self.trans.proxy_from_row(row)
+            if proxy.extraid not in roleids:
                 self.cur.execute("delete from proxies where proxid = ?",
-                        (row[0],))
+                        (proxy.proxid,))
 
         # now check if they don't have any proxies they should
         for role in member.roles:
@@ -479,12 +477,18 @@ class Gestalt(discord.Client):
                         Proxy.type.collective, role.id))
 
 
+    async def on_guild_role_delete(self, role):
+        roleid = role.id
+        self.cur.execute("delete from collectives where roleid = ?", (roleid,))
+        self.cur.execute("delete from proxies where extraid = ?", (roleid,))
+
+
     async def on_guild_role_update(self, before, after):
-        self.sync_role(after.guild, after)
+        self.sync_role(after)
 
 
     async def on_member_update(self, before, after):
-        self.sync_member(after.guild, after)
+        self.sync_member(after)
 
 
     # discord.py commands extension throws out bot messages
@@ -622,7 +626,7 @@ class Gestalt(discord.Client):
                         "(?, ?, ?, ?, NULL)",
                         (self.gen_id(), guild.id, role.id, role.name))
                 if self.cur.rowcount == 1:
-                    self.sync_role(guild, role.id)
+                    self.sync_role(role)
                     await message.add_reaction(REACT_CONFIRM)
 
             else: # arg is collective ID
