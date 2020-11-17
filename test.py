@@ -245,7 +245,7 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(msg._deleted)
 
 
-if __name__ == "__main__":
+def main():
     bot = Member(name = "Gestalt", bot = True)
     alpha = Member(name = "test-alpha")
     beta = Member(name = "test-beta")
@@ -254,3 +254,7 @@ if __name__ == "__main__":
     instance = TestBot()
     if unittest.main(exit = False).result.wasSuccessful():
         print("But it isn't *really* OK, is it?")
+
+if __name__ == "__main__":
+    main()
+

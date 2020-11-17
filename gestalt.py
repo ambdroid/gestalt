@@ -922,7 +922,7 @@ class Gestalt(discord.Client):
 
 
 
-if __name__ == "__main__":
+def main():
     instance = Gestalt(
             dbfile = sys.argv[1] if len(sys.argv) > 1 else "gestalt.db")
 
@@ -932,3 +932,7 @@ if __name__ == "__main__":
         print("Runtime error.")
 
     print("Shutting down.")
+
+if __name__ == "__main__":
+    main()
+
