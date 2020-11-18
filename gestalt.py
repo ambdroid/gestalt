@@ -604,8 +604,26 @@ class Gestalt(discord.Client):
         elif arg in ["collective", "c"]:
             if is_dm(message):
                 raise RuntimeError(ERROR_DM)
+            guild = message.guild
             arg = reader.read_word().lower()
-            if arg in ["new", "create"]:
+
+            if arg == "":
+                rows = self.cur.execute(
+                        "select * from collectives where guildid = ?",
+                        (guild.id,)).fetchall()
+                text = "\n".join(["`%s`: %s %s" %
+                        (row[0], # collective id
+                            "**%s**" % row[3] if row[3] else "*(no name)*",
+                            # @everyone.mention shows up as @@everyone. weird!
+                            # note that this is an embed; mentions don't work
+                            ("@everyone" if row[2] == guild.id
+                                else guild.get_role(row[2]).mention))
+                        for row in rows])
+                if not text:
+                    text = "This guild does not have any collectives."
+                return await self.send_embed(message, text)
+
+            elif arg in ["new", "create"]:
                 if not message.author.guild_permissions.manage_roles:
                     raise RuntimeError(ERROR_MANAGE_ROLES)
 
@@ -638,7 +656,6 @@ class Gestalt(discord.Client):
                 if row == None:
                     raise RuntimeError("Invalid collective ID!")
 
-                guild = message.channel.guild
                 if row[0] != guild.id:
                     # TODO allow commands outside server
                     raise RuntimeError("Please try that again in %s"
