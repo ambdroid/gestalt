@@ -421,6 +421,8 @@ class Gestalt(discord.Client):
                 return id
 
 
+    # this is called manually in do_command(), not attached to an event
+    # because users being added/removed from a role activates on_member_update()
     def sync_role(self, role):
         # is this role attached to a collective?
         if (self.cur.execute("select * from collectives where roleid = ?",
@@ -429,24 +431,27 @@ class Gestalt(discord.Client):
 
         userids = [x.id for x in role.members]
 
-        # is there anyone without the proxy who should?
-        for userid in userids: 
-            self.cur.execute(
-                    "insert or ignore into proxies values "
-                    "(?, ?, ?, NULL, ?, ?, 0, 0)",
-                    (self.gen_id(), userid, role.guild.id,
-                        Proxy.type.collective, role.id))
-
         # is there anyone with the proxy who shouldn't?
-        rows = self.cur.execute(
-                "select * from proxies where extraid = ?",
+        rows = self.cur.execute("select * from proxies where extraid = ?",
                 (role.id,)).fetchall()
-
         for row in rows:
             proxy = self.trans.proxy_from_row(row)
             if proxy.userid not in userids:
                 self.cur.execute("delete from proxies where proxid = ?",
                         (proxy.proxid,))
+
+        # is there anyone without the proxy who should?
+        # do this second; no need to check a proxy that's just been added
+        rows = [rows[5] for x in rows] # [(..,userid,..),..] -> [userid,..]
+        for userid in userids:
+            # don't just "insert or ignore"; gen_id() is expensive
+            if userid not in rows:
+                self.cur.execute(
+                        # prefix = NULL, auto = 0, active = 0
+                        "insert into proxies values "
+                        "(?, ?, ?, NULL, ?, ?, 0, 0)",
+                        (self.gen_id(), userid, role.guild.id,
+                            Proxy.type.collective, role.id))
 
 
     def sync_member(self, member):
@@ -465,6 +470,7 @@ class Gestalt(discord.Client):
                         (proxy.proxid,))
 
         # now check if they don't have any proxies they should
+        # do this second; no need to check a proxy that's just been added
         for role in member.roles:
             coll = self.cur.execute(
                     "select * from collectives where roleid = ?",
@@ -480,10 +486,6 @@ class Gestalt(discord.Client):
     async def on_guild_role_delete(self, role):
         self.cur.execute("delete from collectives where roleid = ?", (role.id,))
         self.cur.execute("delete from proxies where extraid = ?", (role.id,))
-
-
-    async def on_guild_role_update(self, before, after):
-        self.sync_role(after)
 
 
     async def on_member_update(self, before, after):
