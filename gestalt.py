@@ -434,11 +434,14 @@ class Gestalt(discord.Client):
         # is there anyone with the proxy who shouldn't?
         rows = self.cur.execute("select * from proxies where extraid = ?",
                 (role.id,)).fetchall()
+        # currently unused
+        '''
         for row in rows:
             proxy = self.trans.proxy_from_row(row)
             if proxy.userid not in userids:
                 self.cur.execute("delete from proxies where proxid = ?",
                         (proxy.proxid,))
+        '''
 
         # is there anyone without the proxy who should?
         # do this second; no need to check a proxy that's just been added
