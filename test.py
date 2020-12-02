@@ -53,11 +53,11 @@ class Member:
     async def _add_role(self, role):
         self.roles.append(role)
         role.members.append(self)
-        await inst.on_member_update(None, self)
+        await instance.on_member_update(None, self)
     async def _del_role(self, role):
         self.roles.remove(role)
         role.remove(self)
-        await inst.on_member_update(None, self)
+        await instance.on_member_update(None, self)
     @property
     def id(self): return self.user.id
     @property
@@ -72,6 +72,7 @@ class Message(Object):
     def __init__(self, **kwargs):
         self._deleted = False
         self.mentions = []
+        self.role_mentions = []
         self.webhook_id = None
         self.attachments = []
         self.reactions = []
@@ -82,7 +83,8 @@ class Message(Object):
             # mentions can also be in the embed but that's irrelevant here
             for mention in re.findall("(?<=\<\@\!)[0-9]+(?=\>)", self.content):
                 self.mentions.append(User.users[int(mention)])
-        self.role_mentions = [] # TODO
+            for mention in re.findall("(?<=\<\@\&)[0-9]+(?=\>)", self.content):
+                self.role_mentions.append(Role.roles[int(mention)])
     async def delete(self):
         self.channel._messages.remove(self)
         self._deleted = True
@@ -114,7 +116,6 @@ class Webhook(Object):
     def partial(id, token, adapter):
         return Webhook.hooks[id]
     async def send(self, **kwargs):
-        # keep author None because it's weird with webhook messages
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
         msg.webhook_id = self.id
         msg.author = bot # so on_message doesn't complain about no author
@@ -151,11 +152,13 @@ class Channel(Object):
         return msg
 
 class Role(Object):
+    roles = {}
     def __init__(self, **kwargs):
         self.members = []
         self.guild = None
         super().__init__(**kwargs)
         self.mention = "<@&%i>" % self.id
+        Role.roles[self.id] = self
 
 class RoleEveryone:
     def __init__(self, guild):
@@ -183,9 +186,27 @@ class Guild(Object):
         chan = Channel(name = name, guild = self)
         self._channels[chan.id] = chan
         return chan
-    def _add_member(self, user, perms = discord.Permissions.all()):
-        self._members[user.id] = Member(user, self, perms)
-        return self._members[user.id]
+    def _add_role(self, name):
+        role = Role(guild = self, name = name)
+        self._roles[role.id] = role
+        return role
+        # bot doesn't listen to role creation events
+    async def _del_role(self, role):
+        if role == self.default_role:
+            raise RuntimeError("Can't delete @everyone!")
+        # event order observed experimentally
+        # discord.py doesn't document these things
+        for member in role.members:
+            member.roles.remove(role)
+            await instance.on_member_update(None, member)
+        del self._roles[role.id]
+        await instance.on_guild_role_delete(role)
+    async def _add_member(self, user, perms = discord.Permissions.all()):
+        member = self._members[user.id] = Member(user, self, perms)
+        member.roles.append(self.default_role)
+        # NOTE: does on_member_update get called here? probably not but idk
+        await instance.on_member_join(member)
+        return member
     def get_member(self, user_id):
         return self._members[user_id]
     def get_role(self, role_id):
@@ -224,8 +245,14 @@ class GestaltTest(unittest.TestCase):
     def assertRowExists(self, query, args = None):
         self.assertIsNotNone(instance.cur.execute(query, args).fetchone())
 
+    def assertRowNotExists(self, query, args = None):
+        self.assertIsNone(instance.cur.execute(query, args).fetchone())
+
     def assertReacted(self, msg, reaction = gestalt.REACT_CONFIRM):
         self.assertEqual(msg.reactions[0].emoji, reaction)
+
+    def assertNotReacted(self, msg):
+        self.assertEqual(len(msg.reactions), 0)
 
     # the swap system has an edge case that depends on one user having no entry
     # in the users database. so it comes first
@@ -268,15 +295,62 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(msg._deleted)
 
     def test_add_collective(self):
+        # create an @everyone collective
         msg = send(alpha, g["main"], ["gs;c new everyone"])[0]
         self.assertReacted(msg)
+        # make sure it worked
         self.assertRowExists("select * from collectives where roleid = ?",
                 (g.id,))
-        for x in [alpha, beta]:
-            proxid = self.get_proxid(x, g.default_role)
-            self.assertIsNotNone(proxid)
-            msg = send(x, g["main"], ["gs;p %s prefix e:" % proxid])[0]
-            self.assertReacted(msg)
+        # try to make a collective on the same role; it shouldn't work
+        msg = send(alpha, g["main"], ["gs;c new everyone"])[0]
+        self.assertNotReacted(msg)
+
+        proxid = self.get_proxid(alpha, g.default_role)
+        self.assertIsNotNone(proxid)
+        # set the prefix
+        self.assertReacted(
+                send(alpha, g["main"], ["gs;p %s prefix e:" % proxid])[0])
+        # test the proxy
+        self.assertIsNotNone(
+                send(alpha, g["main"], ["e:test"])[0].webhook_id)
+        # this proxy will be used in later tests
+
+
+        # now try again with a new role
+        role = g._add_role("delete me")
+        # add the role to alpha, then create collective
+        run(g.get_member(alpha.id)._add_role(role))
+        self.assertReacted(
+                send(alpha, g["main"], ["gs;c new %s" % role.mention])[0])
+        proxid = self.get_proxid(alpha, role)
+        self.assertIsNotNone(proxid)
+
+        # set prefix and test it
+        self.assertReacted(
+                send(alpha, g["main"], ["gs;p %s prefix d:" % proxid])[0])
+        self.assertIsNotNone(
+                send(alpha, g["main"], ["d:test"])[0].webhook_id)
+
+        # delete the collective normally
+        collid = instance.cur.execute(
+                "select collid from collectives where roleid = ?",
+                (role.id,)).fetchone()[0]
+        self.assertReacted(
+                send(alpha, g["main"], ["gs;c %s delete " % collid])[0])
+        self.assertRowNotExists("select * from collectives where roleid = ?",
+                (role.id,))
+        self.assertIsNone(self.get_proxid(alpha, role))
+
+        # recreate the collective, then delete the role
+        self.assertReacted(
+                send(alpha, g["main"], ["gs;c new %s" % role.mention])[0])
+        proxid = self.get_proxid(alpha, role)
+        self.assertIsNotNone(proxid)
+        run(g._del_role(role))
+        self.assertIsNone(self.get_proxid(alpha, role))
+        self.assertRowNotExists("select * from collectives where roleid = ?",
+                (role.id,))
+
 
     def test_prefix_auto(self):
         # test every combo of auto, prefix, and also the switches thereof
@@ -319,16 +393,17 @@ class GestaltTest(unittest.TestCase):
 
 def main():
     global bot, alpha, beta, g, instance
+
+    instance = TestBot()
+
     bot = User(name = "Gestalt", bot = True)
     alpha = User(name = "test-alpha")
     beta = User(name = "test-beta")
     g = Guild()
     g._add_channel("main")
-    g._add_member(bot)
-    g._add_member(alpha)
-    g._add_member(beta)
-
-    instance = TestBot()
+    run(g._add_member(bot))
+    run(g._add_member(alpha))
+    run(g._add_member(beta))
 
     if unittest.main(exit = False).result.wasSuccessful():
         print("But it isn't *really* OK, is it?")
