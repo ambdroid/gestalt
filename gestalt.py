@@ -495,6 +495,11 @@ class Gestalt(discord.Client):
         self.sync_member(after)
 
 
+    # add @everyone collective, if necessary
+    async def on_member_join(self, member):
+        self.sync_member(member)
+
+
     # discord.py commands extension throws out bot messages
     # this is incompatible with the test framework so process commands manually
     async def do_command(self, message, cmd):
