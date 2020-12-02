@@ -160,10 +160,9 @@ class Role(Object):
 class RoleEveryone:
     def __init__(self, guild):
         self.guild = guild
-    @property
-    def id(self): return self.guild.id
-    @property
-    def name(self): return self.guild.name
+        self.id = guild.id
+        self.name = guild.name
+    # note that this doesn't update when guild._members updates
     @property
     def members(self): return self.guild._members.values()
 
