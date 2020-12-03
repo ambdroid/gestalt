@@ -304,7 +304,7 @@ class GestaltTest(unittest.TestCase):
         run(msg._react(gestalt.REACT_DELETE, alpha))
         self.assertTrue(msg._deleted)
 
-    def test_add_collective(self):
+    def test_add_delete_collective(self):
         # create an @everyone collective
         self.assertReacted(send(alpha, g["main"], "gs;c new everyone"))
         # make sure it worked
@@ -335,7 +335,7 @@ class GestaltTest(unittest.TestCase):
 
         # delete the collective normally
         collid = self.get_collid(role)
-        self.assertReacted(send(alpha, g["main"], "gs;c %s delete " % collid))
+        self.assertReacted(send(alpha, g["main"], "gs;c %s delete" % collid))
         self.assertIsNone(self.get_collid(role))
         self.assertIsNone(self.get_proxid(alpha, role))
 
@@ -347,6 +347,24 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(self.get_proxid(alpha, role))
         self.assertIsNone(self.get_collid(role))
 
+    def test_permissions(self):
+        collid = self.get_collid(g.default_role)
+        self.assertIsNotNone(collid)
+        # beta does not have manage_roles permission; this should fail
+        send(beta, g["main"], "gs;c %s delete" % collid)
+        # last message in channel should be permissions error from bot
+        self.assertIsNotNone(g["main"][-1].embed)
+        # now change the @everyone collective name; this should work
+        self.assertReacted(send(beta, g["main"], "gs;c %s name test" % collid))
+
+        # beta shouldn't be able to change a collective it isn't in
+        role = g._add_role("no beta")
+        self.assertReacted(send(alpha, g["main"], "gs;c new %s" % role.mention))
+        collid = self.get_collid(role)
+        self.assertIsNotNone(collid)
+        send(beta, g["main"], "gs;c %s name test" % collid)
+        # again, last message should be an error
+        self.assertIsNotNone(g["main"][-1].embed)
 
     def test_prefix_auto(self):
         # test every combo of auto, prefix, and also the switches thereof
@@ -398,10 +416,17 @@ def main():
     g._add_channel("main")
     run(g._add_member(bot))
     run(g._add_member(alpha))
-    run(g._add_member(beta))
+    run(g._add_member(beta, perms = discord.Permissions(
+        # these don't actually matter other than beta not having manage_roles
+        add_reactions = True,
+        read_messages = True,
+        send_messages = True)))
 
     if unittest.main(exit = False).result.wasSuccessful():
         print("But it isn't *really* OK, is it?")
+
+# some tests fail if the bot doesn't send an error
+gestalt.DEFAULT_PREFS |= gestalt.Prefs.errors
 
 if __name__ == "__main__":
     main()
