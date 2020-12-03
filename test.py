@@ -159,6 +159,8 @@ class Role(Object):
         super().__init__(**kwargs)
         self.mention = "<@&%i>" % self.id
         Role.roles[self.id] = self
+    async def delete(self):
+        await self.guild._del_role(self)
 
 class RoleEveryone:
     def __init__(self, guild):
@@ -341,7 +343,7 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, g["main"], "gs;c new %s" % role.mention))
         proxid = self.get_proxid(alpha, role)
         self.assertIsNotNone(proxid)
-        run(g._del_role(role))
+        run(role.delete())
         self.assertIsNone(self.get_proxid(alpha, role))
         self.assertIsNone(self.get_collid(role))
 
