@@ -242,11 +242,19 @@ class GestaltTest(unittest.TestCase):
                 (user.id, role.id)).fetchone()
         return row[0] if row else None
 
+    def get_collid(self, role):
+        row = instance.cur.execute(
+                "select collid from collectives where roleid = ?",
+                (role.id,)).fetchone()
+        return row[0] if row else None
+
+    '''
     def assertRowExists(self, query, args = None):
         self.assertIsNotNone(instance.cur.execute(query, args).fetchone())
 
     def assertRowNotExists(self, query, args = None):
         self.assertIsNone(instance.cur.execute(query, args).fetchone())
+    '''
 
     def assertReacted(self, msg, reaction = gestalt.REACT_CONFIRM):
         self.assertEqual(msg.reactions[0].emoji, reaction)
@@ -299,8 +307,7 @@ class GestaltTest(unittest.TestCase):
         msg = send(alpha, g["main"], ["gs;c new everyone"])[0]
         self.assertReacted(msg)
         # make sure it worked
-        self.assertRowExists("select * from collectives where roleid = ?",
-                (g.id,))
+        self.assertIsNotNone(self.get_collid(g.default_role))
         # try to make a collective on the same role; it shouldn't work
         msg = send(alpha, g["main"], ["gs;c new everyone"])[0]
         self.assertNotReacted(msg)
@@ -332,13 +339,10 @@ class GestaltTest(unittest.TestCase):
                 send(alpha, g["main"], ["d:test"])[0].webhook_id)
 
         # delete the collective normally
-        collid = instance.cur.execute(
-                "select collid from collectives where roleid = ?",
-                (role.id,)).fetchone()[0]
+        collid = self.get_collid(role)
         self.assertReacted(
                 send(alpha, g["main"], ["gs;c %s delete " % collid])[0])
-        self.assertRowNotExists("select * from collectives where roleid = ?",
-                (role.id,))
+        self.assertIsNone(self.get_collid(role))
         self.assertIsNone(self.get_proxid(alpha, role))
 
         # recreate the collective, then delete the role
@@ -348,8 +352,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(proxid)
         run(g._del_role(role))
         self.assertIsNone(self.get_proxid(alpha, role))
-        self.assertRowNotExists("select * from collectives where roleid = ?",
-                (role.id,))
+        self.assertIsNone(self.get_collid(role))
 
 
     def test_prefix_auto(self):
