@@ -487,8 +487,8 @@ class Gestalt(discord.Client):
 
 
     async def on_guild_role_delete(self, role):
+        # no need to delete proxies; on_member_update takes care of that
         self.cur.execute("delete from collectives where roleid = ?", (role.id,))
-        self.cur.execute("delete from proxies where extraid = ?", (role.id,))
 
 
     async def on_member_update(self, before, after):
