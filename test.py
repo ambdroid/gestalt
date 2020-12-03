@@ -108,17 +108,18 @@ class Message(Object):
 
 class Webhook(Object):
     hooks = {}
-    def __init__(self, channel):
+    def __init__(self, channel, name):
         super().__init__()
-        self._channel = channel
+        (self._channel, self.name) = (channel, name)
         self.token = "t0k3n" + str(self.id)
         Webhook.hooks[self.id] = self
     def partial(id, token, adapter):
         return Webhook.hooks[id]
-    async def send(self, **kwargs):
+    async def send(self, username, **kwargs):
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
         msg.webhook_id = self.id
-        msg.author = bot # so on_message doesn't complain about no author
+        msg.author = Object(id = self.id, bot = True,
+                name = username if username else self.name)
         await self._channel._add(msg)
         return msg
 
@@ -143,7 +144,7 @@ class Channel(Object):
         self._messages.append(msg)
         await instance.on_message(msg)
     async def create_webhook(self, name):
-        return Webhook(self)
+        return Webhook(self, name)
     async def fetch_message(self, id):
         return self._messages[[x.id for x in self._messages].index(id)]
     async def send(self, content = None, embed = None, file = None):
