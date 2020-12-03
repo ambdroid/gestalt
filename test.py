@@ -228,10 +228,13 @@ class TestBot(gestalt.Gestalt):
         return Channel.channels[id]
 
 def send(user, channel, contents):
+    if type(contents) == str:
+        contents = [contents]
     auth = channel.guild.get_member(user.id) if channel.guild else user
     for x in contents:
         run(channel._add(Message(author = auth, content = x)))
-    return channel._messages[-len(contents):]
+    ret = channel._messages[-len(contents):]
+    return ret[0] if len(contents) == 1 else ret
 
 class GestaltTest(unittest.TestCase):
 
@@ -290,13 +293,10 @@ class GestaltTest(unittest.TestCase):
         for i in [0, 4]:
             self.assertIsNone(msgs[i].webhook_id)
 
-        msgs = send(alpha, chan, [
-            "sw no swap"])
-
-        self.assertIsNone(msgs[0].webhook_id)
+        self.assertIsNone(send(alpha, chan, "sw no swap").webhook_id)
 
     def test_help(self):
-        msg = send(alpha, g["main"], ["gs;help"])[0]
+        msg = send(alpha, g["main"], "gs;help")
         self.assertIsNotNone(msg.embed)
         self.assertReacted(msg, gestalt.REACT_DELETE)
         run(msg._react(gestalt.REACT_DELETE, alpha))
@@ -304,22 +304,18 @@ class GestaltTest(unittest.TestCase):
 
     def test_add_collective(self):
         # create an @everyone collective
-        msg = send(alpha, g["main"], ["gs;c new everyone"])[0]
-        self.assertReacted(msg)
+        self.assertReacted(send(alpha, g["main"], "gs;c new everyone"))
         # make sure it worked
         self.assertIsNotNone(self.get_collid(g.default_role))
         # try to make a collective on the same role; it shouldn't work
-        msg = send(alpha, g["main"], ["gs;c new everyone"])[0]
-        self.assertNotReacted(msg)
+        self.assertNotReacted(send(alpha, g["main"], "gs;c new everyone"))
 
         proxid = self.get_proxid(alpha, g.default_role)
         self.assertIsNotNone(proxid)
         # set the prefix
-        self.assertReacted(
-                send(alpha, g["main"], ["gs;p %s prefix e:" % proxid])[0])
+        self.assertReacted(send(alpha, g["main"], "gs;p %s prefix e:" % proxid))
         # test the proxy
-        self.assertIsNotNone(
-                send(alpha, g["main"], ["e:test"])[0].webhook_id)
+        self.assertIsNotNone(send(alpha, g["main"], "e:test").webhook_id)
         # this proxy will be used in later tests
 
 
@@ -327,27 +323,22 @@ class GestaltTest(unittest.TestCase):
         role = g._add_role("delete me")
         # add the role to alpha, then create collective
         run(g.get_member(alpha.id)._add_role(role))
-        self.assertReacted(
-                send(alpha, g["main"], ["gs;c new %s" % role.mention])[0])
+        self.assertReacted(send(alpha, g["main"], "gs;c new %s" % role.mention))
         proxid = self.get_proxid(alpha, role)
         self.assertIsNotNone(proxid)
 
         # set prefix and test it
-        self.assertReacted(
-                send(alpha, g["main"], ["gs;p %s prefix d:" % proxid])[0])
-        self.assertIsNotNone(
-                send(alpha, g["main"], ["d:test"])[0].webhook_id)
+        self.assertReacted(send(alpha, g["main"], "gs;p %s prefix d:" % proxid))
+        self.assertIsNotNone(send(alpha, g["main"], "d:test").webhook_id)
 
         # delete the collective normally
         collid = self.get_collid(role)
-        self.assertReacted(
-                send(alpha, g["main"], ["gs;c %s delete " % collid])[0])
+        self.assertReacted(send(alpha, g["main"], "gs;c %s delete " % collid))
         self.assertIsNone(self.get_collid(role))
         self.assertIsNone(self.get_proxid(alpha, role))
 
         # recreate the collective, then delete the role
-        self.assertReacted(
-                send(alpha, g["main"], ["gs;c new %s" % role.mention])[0])
+        self.assertReacted(send(alpha, g["main"], "gs;c new %s" % role.mention))
         proxid = self.get_proxid(alpha, role)
         self.assertIsNotNone(proxid)
         run(g._del_role(role))
@@ -381,7 +372,7 @@ class GestaltTest(unittest.TestCase):
             self.assertIsNotNone(msgs[i].webhook_id) # message proxied
 
     def test_query_delete(self):
-        msg = send(alpha, g["main"], ["e:reaction test"])[0]
+        msg = send(alpha, g["main"], ["e:reaction test"])
         run(msg._react(gestalt.REACT_QUERY, beta))
         self.assertNotEqual(
                 beta.dm_channel._messages[-1].content.find(alpha.name), -1)
