@@ -399,28 +399,29 @@ class GestaltTest(unittest.TestCase):
 
     def test_prefix_auto(self):
         # test every combo of auto, prefix, and also the switches thereof
+        chan = g["main"]
         proxid = self.get_proxid(alpha, g.default_role)
-        msgs = send(alpha, g["main"], [
-            "no prefix, no auto",
-            "e:prefix",
-            "gs;p %s prefix =" % proxid,
-            "=prefix, no auto",
-            "gs;p %s auto on" % proxid,
 
-            "=prefix, auto",
-            "no prefix, auto",
-            "gs;p %s auto" % proxid,
-            "gs;p %s prefix =text" % proxid,
-            "=pk-style prefix",
+        self.assertIsNone(send(alpha, chan, "no prefix, no auto").webhook_id)
+        self.assertIsNotNone(send(alpha, chan, "e:prefix").webhook_id)
+        self.assertReacted(send(alpha, chan, "gs;p %s prefix =" % proxid))
+        self.assertIsNotNone(send(alpha, chan, "=prefix, no auto").webhook_id)
+        self.assertReacted(send(alpha, chan, "gs;p %s auto on" % proxid))
+        self.assertIsNone(send(alpha, chan, "=prefix, auto").webhook_id)
+        self.assertIsNotNone(send(alpha, chan, "no prefix, auto").webhook_id)
+        # test autoproxy both as on/off and as toggle
+        self.assertReacted(send(alpha, chan, "gs;p %s auto" % proxid))
+        self.assertReacted(send(alpha, chan, "gs;p %s prefix #text" % proxid))
+        self.assertIsNotNone(send(alpha, chan, "#pk-style prefix").webhook_id)
+        self.assertReacted(send(alpha, chan, "gs;p %s prefix e:" % proxid))
 
-            "gs;p %s prefix e:" % proxid])
-        for i in [2, 4, 7, 8, 10]:
-            self.assertReacted(msgs[i])
-        for i in [0, 5]:
-            self.assertEqual(len(msgs[i].reactions), 0)
-            self.assertEqual(msgs[i].author.id, alpha.id) # message not proxied
-        for i in [1, 3, 6, 9]:
-            self.assertIsNotNone(msgs[i].webhook_id) # message proxied
+        # invalid prefixes. these should fail
+        self.assertIsNotNone(
+                send(alpha, chan, "gs;p %s prefix " % proxid).embed)
+        self.assertIsNotNone(
+                send(alpha, chan, 'gs;p %s prefix "" ' % proxid).embed)
+        self.assertIsNotNone(
+                send(alpha, chan, 'gs;p %s prefix "text"' % proxid).embed)
 
     def test_query_delete(self):
         msg = send(alpha, g["main"], ["e:reaction test"])
