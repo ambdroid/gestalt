@@ -63,6 +63,8 @@ class Member:
     @property
     def bot(self): return self.user.bot
     @property
+    def name(self): return self.user.name
+    @property
     def display_name(self): return self.user.name
     def avatar_url_as(self, **kwargs):
         return "http://avatar.png" # who gives a damn
@@ -242,10 +244,10 @@ def send(user, channel, contents):
 class GestaltTest(unittest.TestCase):
 
     # ugly hack because parsing gs;p output would be uglier
-    def get_proxid(self, user, role):
+    def get_proxid(self, user, other):
         row = instance.cur.execute(
                 "select proxid from proxies where (userid, extraid) = (?, ?)",
-                (user.id, role.id)).fetchone()
+                (user.id, other.id)).fetchone()
         return row[0] if row else None
 
     def get_collid(self, role):
@@ -268,35 +270,63 @@ class GestaltTest(unittest.TestCase):
     def assertNotReacted(self, msg):
         self.assertEqual(len(msg.reactions), 0)
 
-    # the swap system has an edge case that depends on one user having no entry
-    # in the users database. so it comes first
-    def test_aa_swaps(self):
-        # monkey patch. this probably violates the Geneva Conventions
-        discord.Webhook.partial = Webhook.partial
 
+    def test_swaps(self):
         chan = g["main"]
 
-        msgs = send(alpha, chan, [
-            "gs;swap open <@!%d> \"sw \"" % beta.id,
-            "sw no swap"])
-
-        self.assertReacted(msgs[0])
-        self.assertIsNone(msgs[1].webhook_id)
-
-        msgs = send(beta, chan, [
-            "sw no swap",
-            "gs;swap open <@!%d> \"sw \"" % alpha.id,
-            "sw swap",
-            "gs;swap close \"sw \"",
-            "sw no swap",])
-
-        for i in [1, 3]:
-            self.assertReacted(msgs[i])
-        self.assertIsNotNone(msgs[2].webhook_id)
-        for i in [0, 4]:
-            self.assertIsNone(msgs[i].webhook_id)
-
+        # alpha opens a swap with beta
+        self.assertReacted(
+                send(alpha, chan, 'gs;swap open <@!%d> "sw "' % beta.id))
+        self.assertIsNotNone(self.get_proxid(alpha, beta))
+        self.assertIsNone(self.get_proxid(beta, alpha))
+        # alpha tests swap; it should fail
         self.assertIsNone(send(alpha, chan, "sw no swap").webhook_id)
+        # beta opens swap
+        self.assertReacted(
+                send(beta, chan, 'gs;swap open <@!%d> "sw "' % alpha.id))
+        self.assertIsNotNone(self.get_proxid(alpha ,beta))
+        self.assertIsNotNone(self.get_proxid(beta, alpha))
+        # alpha and beta test the swap; it should work now
+        self.assertIsNotNone(send(alpha, chan, "sw swap").webhook_id)
+        self.assertIsNotNone(send(beta, chan, "sw swap").webhook_id)
+
+        # now, with the alpha-beta swap active, alpha opens swap with gamma
+        # this one should fail due to prefix conflict
+        self.assertIsNotNone(
+                send(alpha, chan, 'gs;swap open <@!%d> "sw "' % gamma.id).embed)
+        # but this one should work
+        self.assertReacted(
+                send(alpha, chan, 'gs;swap open <@!%d> "sww "' % gamma.id))
+        # gamma opens the swap
+        self.assertReacted(
+                send(gamma, chan, 'gs;swap open <@!%d> "sww "' % alpha.id))
+        self.assertIsNotNone(self.get_proxid(alpha, gamma))
+        gammaid = self.get_proxid(gamma, alpha)
+        self.assertIsNotNone(gammaid)
+        self.assertTrue(
+                send(alpha, chan, "sww swap").author.name.index(gamma.name)
+                != -1)
+        self.assertTrue(
+                send(gamma, chan, "sww swap").author.name.index(alpha.name)
+                != -1)
+        # the alpha-beta swap should still work
+        self.assertIsNotNone(self.get_proxid(alpha, beta))
+        self.assertIsNotNone(self.get_proxid(beta, alpha))
+        self.assertTrue(
+                send(alpha, chan, "sw swap").author.name.index(beta.name) != -1)
+        self.assertTrue(
+                send(beta, chan, "sw swap").author.name.index(alpha.name) != -1)
+
+        # close the swaps
+        self.assertReacted(send(alpha, chan, 'gs;swap close "sw "'))
+        self.assertReacted(
+                send(gamma, chan, 'gs;swap close %s' % gammaid))
+        self.assertIsNone(self.get_proxid(alpha, beta))
+        self.assertIsNone(self.get_proxid(beta, alpha))
+        self.assertIsNone(self.get_proxid(alpha, gamma))
+        self.assertIsNone(self.get_proxid(gamma, alpha))
+        self.assertIsNone(send(beta, chan, "sw no swap").webhook_id)
+        self.assertIsNone(send(gamma, chan, "sww no swap").webhook_id)
 
     def test_help(self):
         msg = send(alpha, g["main"], "gs;help")
@@ -406,13 +436,14 @@ class GestaltTest(unittest.TestCase):
 
 
 def main():
-    global bot, alpha, beta, g, instance
+    global bot, alpha, beta, gamma, g, instance
 
     instance = TestBot()
 
     bot = User(name = "Gestalt", bot = True)
     alpha = User(name = "test-alpha")
     beta = User(name = "test-beta")
+    gamma = User(name = "test-gamma")
     g = Guild()
     g._add_channel("main")
     run(g._add_member(bot))
@@ -422,12 +453,17 @@ def main():
         add_reactions = True,
         read_messages = True,
         send_messages = True)))
+    run(g._add_member(gamma))
 
     if unittest.main(exit = False).result.wasSuccessful():
         print("But it isn't *really* OK, is it?")
 
+
+# monkey patch. this probably violates the Geneva Conventions
+discord.Webhook.partial = Webhook.partial
 # some tests fail if the bot doesn't send an error
 gestalt.DEFAULT_PREFS |= gestalt.Prefs.errors
+
 
 if __name__ == "__main__":
     main()
