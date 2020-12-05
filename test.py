@@ -109,15 +109,21 @@ class Message(Object):
         del self.reactions[[x.emoji for x in self.reactions].index(emoji)]
 
 class Webhook(Object):
+    class NotFound(discord.errors.NotFound):
+        def __init__(self):
+            pass
     hooks = {}
     def __init__(self, channel, name):
         super().__init__()
+        self._deleted = False
         (self._channel, self.name) = (channel, name)
         self.token = "t0k3n" + str(self.id)
         Webhook.hooks[self.id] = self
     def partial(id, token, adapter):
         return Webhook.hooks[id]
     async def send(self, username, **kwargs):
+        if self._deleted:
+            raise Webhook.NotFound()
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
         msg.webhook_id = self.id
         msg.author = Object(id = self.id, bot = True,
@@ -253,13 +259,11 @@ class GestaltTest(unittest.TestCase):
                 (role.id,)).fetchone()
         return row[0] if row else None
 
-    '''
     def assertRowExists(self, query, args = None):
         self.assertIsNotNone(instance.cur.execute(query, args).fetchone())
 
     def assertRowNotExists(self, query, args = None):
         self.assertIsNone(instance.cur.execute(query, args).fetchone())
-    '''
 
     def assertReacted(self, msg, reaction = gestalt.REACT_CONFIRM):
         self.assertEqual(msg.reactions[0].emoji, reaction)
@@ -431,6 +435,19 @@ class GestaltTest(unittest.TestCase):
 
         run(msg._react(gestalt.REACT_DELETE, alpha))
         self.assertTrue(msg._deleted)
+
+    def test_webhook_shenanigans(self):
+        # test what happens when a webhook is deleted
+        hookid = send(alpha, g["main"], "e:reiuskudfvb").webhook_id
+        self.assertIsNotNone(hookid)
+        self.assertRowExists(
+                "select * from webhooks where hookid = ?",
+                (hookid,))
+        Webhook.hooks[hookid]._deleted = True
+        self.assertIsNotNone(send(alpha, g["main"], "e:asdhgdfjg").webhook_id)
+        self.assertRowNotExists(
+                "select * from webhooks where hookid = ?",
+                (hookid,))
 
 
 def main():
