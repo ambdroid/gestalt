@@ -232,14 +232,10 @@ class TestBot(gestalt.Gestalt):
     def get_channel(self, id):
         return Channel.channels[id]
 
-def send(user, channel, contents):
-    if type(contents) == str:
-        contents = [contents]
+def send(user, channel, content):
     auth = channel.guild.get_member(user.id) if channel.guild else user
-    for x in contents:
-        run(channel._add(Message(author = auth, content = x)))
-    ret = channel._messages[-len(contents):]
-    return ret[0] if len(contents) == 1 else ret
+    run(channel._add(Message(author = auth, content = content)))
+    return channel[-1]
 
 class GestaltTest(unittest.TestCase):
 
@@ -424,7 +420,7 @@ class GestaltTest(unittest.TestCase):
                 send(alpha, chan, 'gs;p %s prefix "text"' % proxid).embed)
 
     def test_query_delete(self):
-        msg = send(alpha, g["main"], ["e:reaction test"])
+        msg = send(alpha, g["main"], "e:reaction test")
         run(msg._react(gestalt.REACT_QUERY, beta))
         self.assertNotEqual(beta.dm_channel[-1].content.find(alpha.name), -1)
 
