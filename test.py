@@ -143,6 +143,8 @@ class Channel(Object):
         msg.channel = self
         if self.guild:
             msg.guild = self.guild
+            if not msg.author.id in Webhook.hooks:
+                msg.author = self.guild.get_member(msg.author.id)
         self._messages.append(msg)
         await instance.on_message(msg)
     async def create_webhook(self, name):
@@ -233,8 +235,7 @@ class TestBot(gestalt.Gestalt):
         return Channel.channels[id]
 
 def send(user, channel, content):
-    auth = channel.guild.get_member(user.id) if channel.guild else user
-    run(channel._add(Message(author = auth, content = content)))
+    run(channel._add(Message(author = user, content = content)))
     return channel[-1]
 
 class GestaltTest(unittest.TestCase):
