@@ -507,12 +507,14 @@ class Gestalt(discord.Client):
         arg = reader.read_word().lower()
         authid = message.author.id
 
+        """
         if arg == "debug":
             for table in ["users", "proxies", "collectives"]:
                 await self.send_embed(message, "```%s```" % "\n".join(
                     ["|".join([str(i) for i in x]) for x in self.cur.execute(
                         "select * from %s" % table).fetchall()]))
             return
+        """
 
         if arg == "help":
             await self.send_embed(message, HELPMSG)
