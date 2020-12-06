@@ -215,6 +215,8 @@ class Guild(Object):
         del self._roles[role.id]
         await instance.on_guild_role_delete(role)
     async def _add_member(self, user, perms = discord.Permissions.all()):
+        if user.id in self._members:
+            raise RuntimeError("re-adding a member to a guild")
         member = self._members[user.id] = Member(user, self, perms)
         member.roles.append(self.default_role)
         # NOTE: does on_member_update get called here? probably not but idk
@@ -448,6 +450,79 @@ class GestaltTest(unittest.TestCase):
         self.assertRowNotExists(
                 "select * from webhooks where hookid = ?",
                 (hookid,))
+
+    # this function requires the existence of at least three ongoing wars
+    def test_global_conflicts(self):
+        g2 = Guild()
+        g2._add_channel("main")
+        run(g2._add_member(bot))
+        run(g2._add_member(alpha))
+
+        rolefirst = g._add_role("conflict")
+        rolesecond = g2._add_role("conflict")
+        run(g.get_member(alpha.id)._add_role(rolefirst))
+        run(g.get_member(alpha.id)._add_role(rolesecond))
+
+        # open a swap. swaps are global so alpha will use it to test conflicts
+        self.assertReacted(
+                send(alpha, g["main"], "gs;swap open <@!%i> :" % beta.id))
+        self.assertReacted(
+                send(beta, g["main"], "gs;swap open <@!%i> :" % alpha.id))
+        proxswap = self.get_proxid(alpha, beta)
+        self.assertIsNotNone(proxswap)
+
+        # create collectives on the two roles
+        self.assertReacted(
+                send(alpha, g["main"], "gs;c new %s" % rolefirst.mention))
+        self.assertReacted(
+                send(alpha, g2["main"], "gs;c new %s" % rolesecond.mention))
+        proxfirst = self.get_proxid(alpha, rolefirst)
+        proxsecond = self.get_proxid(alpha, rolesecond)
+        self.assertIsNotNone(proxfirst)
+        self.assertIsNotNone(proxsecond)
+
+        # now alpha can test prefix and auto stuff
+        self.assertReacted(
+                send(alpha, g["main"], "gs;p %s prefix same:" % proxfirst))
+        # this should work because the collectives are in different guilds
+        self.assertReacted(
+                send(alpha, g2["main"], "gs;p %s prefix same:" % proxsecond))
+        self.assertIsNotNone(send(alpha, g["main"], "same: no auto").webhook_id)
+        # alpha should be able to set both to auto; different guilds
+        self.assertReacted(
+                send(alpha, g["main"], "gs;p %s auto on" % proxfirst))
+        self.assertReacted(
+                send(alpha, g2["main"], "gs;p %s auto on" % proxsecond))
+        self.assertIsNotNone(send(alpha, g["main"], "auto on").webhook_id)
+
+        # test global prefix conflict; this should fail
+        self.assertIsNotNone(
+                send(alpha, g["main"], "gs;p %s prefix same:" % proxswap).embed)
+        # no conflict; this should work
+        self.assertReacted(
+                send(alpha, g["main"], "gs;p %s prefix swap:" % proxswap))
+        # make a conflict with a collective
+        self.assertIsNotNone(
+                send(alpha, g["main"],
+                    "gs;p %s prefix swap:" % proxfirst).embed)
+        # now turning on auto on the swap should deactivate the other autos
+        self.assertIsNotNone(send(alpha, g["main"], "auto on").webhook_id)
+        self.assertNotEqual(
+                send(alpha, g["main"], "collective has auto").author.name.index(
+                    rolefirst.name), -1)
+        self.assertReacted(send(alpha, g["main"], "gs;p %s auto on" % proxswap))
+        self.assertNotEqual(
+                send(alpha, g["main"], "swap has auto").author.name.index(
+                    beta.name), -1)
+        # test other prefix conflicts
+        self.assertIsNotNone(
+                send(alpha, g["main"], "gs;p %s prefix sw" % proxfirst).embed)
+        self.assertIsNotNone(
+                send(alpha, g["main"],
+                    "gs;p %s prefix swap::" % proxfirst).embed)
+
+        # done. close the swap
+        self.assertReacted(send(alpha, g["main"], "gs;swap close swap:"))
 
 
 def main():
