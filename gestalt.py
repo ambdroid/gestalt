@@ -569,15 +569,26 @@ class Gestalt(discord.Client):
                         "select * from proxies where userid = ?"
                         "order by type asc",
                         (authid,)).fetchall()
-                text = "\n".join(["`%s`%s: prefix `%s` auto **%s**" %
-                        (row[0], # proxy id
-                            # if attached to a guild, add " in (guild)"
-                            ((" in " + self.get_guild(row[2]).name) if row[2]
-                                else ""),
-                            row[3], #prefix
-                            "on" if row[6] else "off") # auto
-                        for row in rows])
-                return await self.send_embed(message, text)
+                lines = []
+                # must be at least one: the override
+                for row in rows:
+                    proxy = self.trans.proxy_from_row(row)
+                    line = "`%s`" % proxy.proxid
+                    if proxy.type == Proxy.type.override:
+                        line += (":no_entry: prefix **%s**" % (proxy.prefix,))
+                    elif proxy.type == Proxy.type.swap:
+                        line += (":twisted_rightwards_arrows: with **%s** "
+                                "prefix **%s**" %
+                                (self.get_user(proxy.extraid), proxy.prefix))
+                    elif proxy.type == Proxy.type.collective:
+                        guild = self.get_guild(proxy.guildid)
+                        line += (":bee: on **%s** in **%s** prefix **%s**"
+                                % (guild.get_role(proxy.extraid).name,
+                                    guild.name, proxy.prefix))
+                    if proxy.active == 0:
+                        line += " *(inactive)*"
+                    lines.append(line)
+                return await self.send_embed(message, "\n".join(lines))
 
             proxy = self.trans.proxy_by_id(proxid)
             if proxy == None or proxy.userid != authid:
