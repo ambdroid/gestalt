@@ -605,7 +605,7 @@ class Gestalt(discord.Client):
                     arg = arg[:-4]
 
                 proxy.set_prefix(arg)
-                if proxy.type == Proxy.type.collective:
+                if proxy.type != Proxy.type.swap:
                     proxy.set_active(1)
 
                 await message.add_reaction(REACT_CONFIRM)
