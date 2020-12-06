@@ -295,8 +295,8 @@ class GestaltTest(unittest.TestCase):
 
         # now, with the alpha-beta swap active, alpha opens swap with gamma
         # this one should fail due to prefix conflict
-        self.assertIsNotNone(
-                send(alpha, chan, 'gs;swap open <@!%d> "sw "' % gamma.id).embed)
+        self.assertNotReacted(
+                send(alpha, chan, 'gs;swap open <@!%d> "sw "' % gamma.id))
         # but this one should work
         self.assertReacted(
                 send(alpha, chan, 'gs;swap open <@!%d> "sww "' % gamma.id))
@@ -385,9 +385,7 @@ class GestaltTest(unittest.TestCase):
         collid = self.get_collid(g.default_role)
         self.assertIsNotNone(collid)
         # beta does not have manage_roles permission; this should fail
-        send(beta, g["main"], "gs;c %s delete" % collid)
-        # last message in channel should be permissions error from bot
-        self.assertIsNotNone(g["main"][-1].embed)
+        self.assertNotReacted(send(beta, g["main"], "gs;c %s delete" % collid))
         # now change the @everyone collective name; this should work
         self.assertReacted(send(beta, g["main"], "gs;c %s name test" % collid))
 
@@ -396,9 +394,7 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, g["main"], "gs;c new %s" % role.mention))
         collid = self.get_collid(role)
         self.assertIsNotNone(collid)
-        send(beta, g["main"], "gs;c %s name test" % collid)
-        # again, last message should be an error
-        self.assertIsNotNone(g["main"][-1].embed)
+        self.assertNotReacted(send(beta, g["main"], "gs;c %s name test" % collid))
 
     def test_prefix_auto(self):
         # test every combo of auto, prefix, and also the switches thereof
@@ -419,12 +415,10 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, "gs;p %s prefix e:" % proxid))
 
         # invalid prefixes. these should fail
-        self.assertIsNotNone(
-                send(alpha, chan, "gs;p %s prefix " % proxid).embed)
-        self.assertIsNotNone(
-                send(alpha, chan, 'gs;p %s prefix "" ' % proxid).embed)
-        self.assertIsNotNone(
-                send(alpha, chan, 'gs;p %s prefix "text"' % proxid).embed)
+        self.assertNotReacted(send(alpha, chan, "gs;p %s prefix " % proxid))
+        self.assertNotReacted(send(alpha, chan, 'gs;p %s prefix "" ' % proxid))
+        self.assertNotReacted(
+                send(alpha, chan, 'gs;p %s prefix "text"' % proxid))
 
     def test_query_delete(self):
         msg = send(alpha, g["main"], "e:reaction test")
@@ -496,15 +490,14 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(alpha, g["main"], "auto on").webhook_id)
 
         # test global prefix conflict; this should fail
-        self.assertIsNotNone(
-                send(alpha, g["main"], "gs;p %s prefix same:" % proxswap).embed)
+        self.assertNotReacted(
+                send(alpha, g["main"], "gs;p %s prefix same:" % proxswap))
         # no conflict; this should work
         self.assertReacted(
                 send(alpha, g["main"], "gs;p %s prefix swap:" % proxswap))
         # make a conflict with a collective
-        self.assertIsNotNone(
-                send(alpha, g["main"],
-                    "gs;p %s prefix swap:" % proxfirst).embed)
+        self.assertNotReacted(
+                send(alpha, g["main"], "gs;p %s prefix swap:" % proxfirst))
         # now turning on auto on the swap should deactivate the other autos
         self.assertIsNotNone(send(alpha, g["main"], "auto on").webhook_id)
         self.assertNotEqual(
@@ -515,11 +508,10 @@ class GestaltTest(unittest.TestCase):
                 send(alpha, g["main"], "swap has auto").author.name.index(
                     beta.name), -1)
         # test other prefix conflicts
-        self.assertIsNotNone(
-                send(alpha, g["main"], "gs;p %s prefix sw" % proxfirst).embed)
-        self.assertIsNotNone(
-                send(alpha, g["main"],
-                    "gs;p %s prefix swap::" % proxfirst).embed)
+        self.assertNotReacted(
+                send(alpha, g["main"], "gs;p %s prefix sw" % proxfirst))
+        self.assertNotReacted(
+                send(alpha, g["main"], "gs;p %s prefix swap::" % proxfirst))
 
         # done. close the swap
         self.assertReacted(send(alpha, g["main"], "gs;swap close swap:"))
@@ -551,8 +543,8 @@ def main():
 
 # monkey patch. this probably violates the Geneva Conventions
 discord.Webhook.partial = Webhook.partial
-# some tests fail if the bot doesn't send an error
-gestalt.DEFAULT_PREFS |= gestalt.Prefs.errors
+# don't spam the channel with error messages
+gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
 
 
 if __name__ == "__main__":
