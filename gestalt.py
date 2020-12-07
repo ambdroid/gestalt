@@ -764,7 +764,7 @@ class Gestalt(discord.Client):
 
             await message.add_reaction(REACT_CONFIRM)
 
-        elif arg == "swap":
+        elif arg in ["swap", "s"]:
             arg = reader.read_word().lower()
             if arg == "open":
                 if is_dm(message):
