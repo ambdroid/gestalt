@@ -572,19 +572,29 @@ class Gestalt(discord.Client):
                 lines = []
                 # must be at least one: the override
                 for row in rows:
+                    # sanitize text to not mess up formatting
+                    s = lambda x : re.sub("\\*", "\*", str(x))
                     proxy = self.trans.proxy_from_row(row)
                     line = "`%s`" % proxy.proxid
                     if proxy.type == Proxy.type.override:
-                        line += (":no_entry: prefix **%s**" % (proxy.prefix,))
+                        line += (":no_entry: prefix **%s**"
+                                %(s(proxy.prefix),))
                     elif proxy.type == Proxy.type.swap:
                         line += (":twisted_rightwards_arrows: with **%s** "
-                                "prefix **%s**" %
-                                (self.get_user(proxy.extraid), proxy.prefix))
+                                "prefix **%s**"
+                                % (s(self.get_user(proxy.extraid)),
+                                    s(proxy.prefix)))
                     elif proxy.type == Proxy.type.collective:
                         guild = self.get_guild(proxy.guildid)
-                        line += (":bee: on **%s** in **%s** prefix **%s**"
-                                % (guild.get_role(proxy.extraid).name,
-                                    guild.name, proxy.prefix))
+                        name = self.cur.execute(
+                                "select nick from collectives "
+                                "where roleid = ?",
+                                (proxy.extraid,)).fetchone()[0]
+                        line += (":bee: **%s** on **%s** in **%s** "
+                                "prefix **%s**"
+                                % (s(name),
+                                    s(guild.get_role(proxy.extraid).name),
+                                    s(guild.name), s(proxy.prefix)))
                     if proxy.active == 0:
                         line += " *(inactive)*"
                     lines.append(line)
@@ -685,7 +695,6 @@ class Gestalt(discord.Client):
                             % self.get_guild(row[0]).name)
 
                 if action in ["name", "avatar"]:
-                    # this can be empty. it doesn't cause any errors
                     arg = reader.read_remainder()
 
                     role = guild.get_role(row[1])
@@ -697,6 +706,13 @@ class Gestalt(discord.Client):
                             or member.guild_permissions.manage_roles):
                         raise RuntimeError(
                                 "You don't have access to that collective!")
+
+                    if arg == "":
+                        # allow empty avatar URL but not name
+                        if action == "name":
+                            raise RuntimeError("Please provide a new name.")
+                        elif message.attachments:
+                            arg = message.attachments[0].url
 
                     self.cur.execute(
                             "update collectives set %s = ? "
