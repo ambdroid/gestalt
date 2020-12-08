@@ -250,9 +250,11 @@ class GestaltTest(unittest.TestCase):
 
     # ugly hack because parsing gs;p output would be uglier
     def get_proxid(self, user, other):
+        if type(other) != int:
+            other = other.id
         row = instance.cur.execute(
                 "select proxid from proxies where (userid, extraid) = (?, ?)",
-                (user.id, other.id)).fetchone()
+                (user.id, other)).fetchone()
         return row[0] if row else None
 
     def get_collid(self, role):
@@ -515,6 +517,26 @@ class GestaltTest(unittest.TestCase):
 
         # done. close the swap
         self.assertReacted(send(alpha, g["main"], "gs;swap close swap:"))
+
+    def test_override(self):
+        overid = self.get_proxid(alpha, 0)
+        # alpha has sent messages visible to bot by now, so should have one
+        self.assertIsNotNone(overid)
+        proxid = self.get_proxid(alpha, g.default_role)
+        self.assertIsNotNone(proxid)
+
+        chan = g["main"]
+        self.assertIsNotNone(send(alpha, chan, "e: proxy").webhook_id)
+        self.assertReacted(send(alpha, chan, "gs;p %s auto on" % proxid))
+        self.assertIsNotNone(send(alpha, chan, "proxy").webhook_id)
+        # set the override prefix. this should activate it
+        self.assertReacted(send(alpha, chan, "gs;p %s prefix x:" % overid))
+        self.assertIsNone(send(alpha, chan, "x: not proxies").webhook_id)
+
+        # turn autoproxy off
+        self.assertReacted(send(alpha, chan, "gs;p %s auto" % proxid))
+        self.assertIsNone(send(alpha, chan, "not proxied").webhook_id)
+        self.assertIsNone(send(alpha, chan, "x: not proxied").webhook_id)
 
 
 def main():
