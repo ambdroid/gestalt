@@ -259,7 +259,7 @@ class Gestalt(discord.Client):
                 "extraid integer,"          # userid or roleid or NULL
                 "auto integer,"             # 0/1
                 "active integer,"           # 0/1
-                "unique(userid, extraid))") # note that NULL bypasses unique
+                "unique(userid, extraid))")
         self.cur.execute(
                 # this is a no-op to kick in the update trigger
                 "create trigger if not exists proxy_prefix_conflict_insert "
@@ -876,7 +876,7 @@ class Gestalt(discord.Client):
             self.cur.execute("insert into users values (?, ?, ?)",
                     (message.author.id, str(message.author), DEFAULT_PREFS))
             self.cur.execute("insert into proxies values"
-                    "(?, ?, 0, NULL, ?, NULL, 0, 0)",
+                    "(?, ?, 0, NULL, ?, 0, 0, 0)",
                     (self.gen_id(), authid, Proxy.type.override))
             errors = DEFAULT_PREFS & Prefs.errors
         else:
