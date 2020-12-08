@@ -243,8 +243,9 @@ class TestBot(gestalt.Gestalt):
         return Channel.channels[id]
 
 def send(user, channel, content):
-    run(channel._add(Message(author = user, content = content)))
-    return channel[-1]
+    msg = Message(author = user, content = content)
+    run(channel._add(msg))
+    return channel[-1] if msg._deleted else msg
 
 class GestaltTest(unittest.TestCase):
 
@@ -334,7 +335,8 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(gamma, chan, "sww no swap").webhook_id)
 
     def test_help(self):
-        msg = send(alpha, g["main"], "gs;help")
+        send(alpha, g["main"], "gs;help")
+        msg = g["main"][-1]
         self.assertIsNotNone(msg.embed)
         self.assertReacted(msg, gestalt.REACT_DELETE)
         run(msg._react(gestalt.REACT_DELETE, alpha))
