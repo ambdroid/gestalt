@@ -540,6 +540,20 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(alpha, chan, "not proxied").webhook_id)
         self.assertIsNone(send(alpha, chan, "x: not proxied").webhook_id)
 
+    # by far the most ominous test
+    def test_replacements(self):
+        chan = g["main"]
+        self.assertReacted(send(alpha, chan, "gs;prefs replace off"))
+        msg = send(alpha, chan,
+                "e:" + "I am. i was. I'm. im. am I? I me my mine.")
+        self.assertEqual(msg.content,
+                "I am. i was. I'm. im. am I? I me my mine.")
+        self.assertReacted(send(alpha, chan, "gs;prefs replace"))
+        msg = send(alpha, chan,
+                "e:" + "I am. i was. I'm. im. am I? I me my mine.")
+        self.assertEqual(msg.content,
+                "We are. We were. We're. We're. are We? We Us Our Ours.")
+
 
 def main():
     global bot, alpha, beta, gamma, g, instance

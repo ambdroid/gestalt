@@ -48,7 +48,9 @@ class Prefs(enum.IntFlag):
     replace     = 1 << 1
 #   autoswap    = 1 << 2
     errors      = 1 << 3
+
 DEFAULT_PREFS = reduce(lambda a, b : a | Prefs[b], DEFAULT_PREFS, 0)
+REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
 
 
 
@@ -171,8 +173,8 @@ class ProxyCollective(Proxy):
         if prefs & Prefs.replace:
             # do these in order (or else, e.g. "I'm" could become "We'm")
             # which is funny but not what we want here
-            # TODO: replace this with a reduce()?
-            for x, y in REPLACE_DICT.items():
+            # this could be a reduce() but this is more readable
+            for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
         return await webhook.send(wait = True, content = content,
