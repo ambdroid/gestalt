@@ -575,7 +575,7 @@ class Gestalt(discord.Client):
                 # must be at least one: the override
                 for row in rows:
                     # sanitize text to not mess up formatting
-                    s = lambda x : re.sub("\\*", "\*", str(x))
+                    s = lambda x : discord.utils.escape_markdown(str(x))
                     proxy = self.trans.proxy_from_row(row)
                     line = "`%s`" % proxy.proxid
                     if proxy.type == Proxy.type.override:
