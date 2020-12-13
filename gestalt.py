@@ -431,8 +431,6 @@ class Gestalt(discord.Client):
             (role.id,)).fetchone() == None):
             return
 
-        userids = [x.id for x in role.members]
-
         # is there anyone with the proxy who shouldn't?
         rows = self.cur.execute("select * from proxies where extraid = ?",
                 (role.id,)).fetchall()
@@ -448,18 +446,21 @@ class Gestalt(discord.Client):
         # is there anyone without the proxy who should?
         # do this second; no need to check a proxy that's just been added
         rows = [rows[5] for x in rows] # [(..,userid,..),..] -> [userid,..]
-        for userid in userids:
+        for member in role.members:
             # don't just "insert or ignore"; gen_id() is expensive
-            if userid not in rows:
+            if member.id not in rows and not member.bot:
                 self.cur.execute(
                         # prefix = NULL, auto = 0, active = 0
                         "insert into proxies values "
                         "(?, ?, ?, NULL, ?, ?, 0, 0)",
-                        (self.gen_id(), userid, role.guild.id,
+                        (self.gen_id(), member.id, role.guild.id,
                             Proxy.type.collective, role.id))
 
 
     def sync_member(self, member):
+        if member.bot:
+            return
+
         guild = member.guild
         # first, check if they have any proxies they shouldn't
         # right now, this only applies to collectives
