@@ -167,6 +167,7 @@ class Role(Object):
     def __init__(self, **kwargs):
         self.members = []
         self.guild = None
+        self.managed = False
         super().__init__(**kwargs)
         self.mention = "<@&%i>" % self.id
         Role.roles[self.id] = self
@@ -178,6 +179,7 @@ class RoleEveryone:
         self.guild = guild
         self.id = guild.id
         self.name = guild.name
+        self.managed = False
     # note that this doesn't update when guild._members updates
     @property
     def members(self): return self.guild._members.values()
