@@ -168,8 +168,6 @@ class ProxyCollective(Proxy):
         present = self.cur.execute("select nick, avatar from collectives "
                 "where roleid = ?",
                 (self.extraid,)).fetchone()
-        if present == None:
-            return super().send(webhook, message, content, attachment)
 
         if prefs & Prefs.replace:
             # do these in order (or else, e.g. "I'm" could become "We'm")
