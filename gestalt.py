@@ -48,6 +48,7 @@ class Prefs(enum.IntFlag):
     replace     = 1 << 1
 #   autoswap    = 1 << 2
     errors      = 1 << 3
+    delay       = 1 << 4
 
 DEFAULT_PREFS = reduce(lambda a, b : a | Prefs[b], DEFAULT_PREFS, 0)
 REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
@@ -824,10 +825,12 @@ class Gestalt(discord.Client):
                 await message.add_reaction(REACT_CONFIRM)
 
 
-    async def do_proxy(self, message, content, proxy):
+    async def do_proxy(self, message, proxy, prefs):
         authid = message.author.id
         channel = message.channel
         msgfile = None
+
+        content = message.content[len(proxy.prefix):]
 
         if len(message.attachments) > 0:
             # only copy the first attachment
@@ -875,6 +878,8 @@ class Gestalt(discord.Client):
                 (msg.id, channel.id, authid, proxy.extraid,
                     content if LOG_MESSAGE_CONTENT else ""))
 
+        if prefs & Prefs.delay:
+            await asyncio.sleep(0.2)
         try:
             await message.delete()
         except discord.errors.Forbidden:
@@ -893,11 +898,11 @@ class Gestalt(discord.Client):
             self.cur.execute("insert into proxies values"
                     "(?, ?, 0, NULL, ?, 0, 0, 0)",
                     (self.gen_id(), authid, Proxy.type.override))
-            errors = DEFAULT_PREFS & Prefs.errors
+            prefs = DEFAULT_PREFS
         else:
             if author.username != str(message.author):
                 author.set_username(str(message.author))
-            errors = author.prefs & Prefs.errors
+            prefs = author.prefs
 
         # end of prefix or 0
         offset = (len(COMMAND_PREFIX)
@@ -908,7 +913,7 @@ class Gestalt(discord.Client):
             try:
                 await self.do_command(message, message.content[offset:].strip())
             except (RuntimeError, sqlite.IntegrityError) as e:
-                if errors:
+                if prefs & Prefs.errors:
                     await self.send_embed(message, e.args[0])
             return
 
@@ -938,7 +943,7 @@ class Gestalt(discord.Client):
                 .strip())
         if content == "" and len(message.attachments) == 0:
             return
-        await self.do_proxy(message, content, match)
+        await self.do_proxy(message, match, prefs)
 
 
     # on_reaction_add doesn't catch everything
