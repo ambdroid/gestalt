@@ -446,7 +446,7 @@ class Gestalt(discord.Client):
 
         # is there anyone without the proxy who should?
         # do this second; no need to check a proxy that's just been added
-        rows = [rows[5] for x in rows] # [(..,userid,..),..] -> [userid,..]
+        rows = [x[5] for x in rows] # [(..,userid,..),..] -> [userid,..]
         for member in role.members:
             # don't just "insert or ignore"; gen_id() is expensive
             if member.id not in rows and not member.bot:
