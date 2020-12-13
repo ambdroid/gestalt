@@ -137,7 +137,7 @@ class Proxy:
 
     # this base class version shouldn't be called normally
     async def send(self, webhook, message, content, attachment):
-        return message.send(content, file = attachment)
+        raise NotImplementedError()
 
     def set_prefix(self, prefix):
         self.prefix = prefix
