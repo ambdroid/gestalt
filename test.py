@@ -409,15 +409,19 @@ class GestaltTest(unittest.TestCase):
 
         self.assertIsNone(send(alpha, chan, "no prefix, no auto").webhook_id)
         self.assertIsNotNone(send(alpha, chan, "e:prefix").webhook_id)
+        self.assertEqual(chan[-1].content, "prefix")
         self.assertReacted(send(alpha, chan, "gs;p %s prefix =" % proxid))
         self.assertIsNotNone(send(alpha, chan, "=prefix, no auto").webhook_id)
+        self.assertEqual(chan[-1].content, "prefix, no auto")
         self.assertReacted(send(alpha, chan, "gs;p %s auto on" % proxid))
         self.assertIsNone(send(alpha, chan, "=prefix, auto").webhook_id)
         self.assertIsNotNone(send(alpha, chan, "no prefix, auto").webhook_id)
+        self.assertEqual(chan[-1].content, "no prefix, auto")
         # test autoproxy both as on/off and as toggle
         self.assertReacted(send(alpha, chan, "gs;p %s auto" % proxid))
         self.assertReacted(send(alpha, chan, "gs;p %s prefix #text" % proxid))
         self.assertIsNotNone(send(alpha, chan, "#pk-style prefix").webhook_id)
+        self.assertEqual(chan[-1].content, "pk-style prefix")
         self.assertReacted(send(alpha, chan, "gs;p %s prefix e:" % proxid))
 
         # invalid prefixes. these should fail

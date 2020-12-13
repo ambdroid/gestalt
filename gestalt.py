@@ -830,7 +830,10 @@ class Gestalt(discord.Client):
         channel = message.channel
         msgfile = None
 
-        content = message.content[len(proxy.prefix):]
+        content = (message.content[0 if proxy.auto else len(proxy.prefix):]
+                .strip())
+        if content == "" and len(message.attachments) == 0:
+            return
 
         if len(message.attachments) > 0:
             # only copy the first attachment
@@ -938,10 +941,6 @@ class Gestalt(discord.Client):
             return
         match = self.trans.proxy_from_row(match)
         if match.type == Proxy.type.override:
-            return
-        content = (message.content[0 if match.auto else len(match.prefix):]
-                .strip())
-        if content == "" and len(message.attachments) == 0:
             return
         await self.do_proxy(message, match, prefs)
 
