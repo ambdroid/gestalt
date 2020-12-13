@@ -810,7 +810,7 @@ class Gestalt(discord.Client):
                 if self.cur.rowcount == 1:
                     await message.add_reaction(REACT_CONFIRM)
 
-            elif arg == "close":
+            elif arg in ["close", "off"]:
                 swapname = reader.read_quote().lower()
                 if swapname == "":
                     raise RuntimeError("Please provide a swap ID or prefix.")
