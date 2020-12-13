@@ -674,6 +674,13 @@ class Gestalt(discord.Client):
                     if role == None:
                         raise RuntimeError("Please provide a role.")
 
+                if role.managed:
+                    # bots, server booster, integrated subscription services
+                    # requiring users to pay to participate is antithetical
+                    # to community-oriented identity play
+                    # TODO: return to this with RoleTags in 1.6
+                    raise RuntimeError(ERROR_CURSED)
+
                 # new collective with name of role and no avatar
                 self.cur.execute("insert or ignore into collectives values"
                         "(?, ?, ?, ?, NULL)",
@@ -785,6 +792,11 @@ class Gestalt(discord.Client):
                 if membername == "": # prefix absorbed member name
                     raise RuntimeError(
                             "Please provide a prefix after the user.")
+
+                if member.id == self.user.id:
+                    raise RuntimeError(ERROR_BLURSED)
+                if member.bot:
+                    raise RuntimeError(ERROR_CURSED)
 
                 # activate author->other swap
                 self.cur.execute("insert or ignore into proxies values"

@@ -87,3 +87,5 @@ HELPMSG = (
         ).format(p = COMMAND_PREFIX)
 ERROR_DM = "You need to be in a server to do that!"
 ERROR_MANAGE_ROLES = "You need `Manage Roles` permission to do that!"
+ERROR_CURSED = "No."
+ERROR_BLURSED = "I'm flattered, but no."
