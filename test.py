@@ -563,7 +563,6 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, "gs;prefs defaults"))
         self.assertEqual(msg.content,
                 "We are. We were. We're. We're. are We? We Us Our Ours.")
-        self.assertReacted(send(alpha, chan, "gs;prefs errors off"))
 
 
 def main():
