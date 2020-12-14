@@ -123,12 +123,11 @@ class GestaltUser:
                 (username, self.userid))
 
 
-class Proxy:
-    @enum.unique
-    class type(enum.IntEnum):
-        override    = 0
-        collective  = 1
-        swap        = 2
+@enum.unique
+class ProxyType(enum.IntEnum):
+    override    = 0
+    collective  = 1
+    swap        = 2
 
 
 def is_text(message):
@@ -170,7 +169,7 @@ class Gestalt(discord.Client):
                 "userid integer,"
                 "guildid integer,"          # 0 for swaps, overrides
                 "prefix text,"
-                "type integer,"             # see enum Proxy.type
+                "type integer,"             # see enum ProxyType
                 "extraid integer,"          # userid or roleid or NULL
                 "auto integer,"             # 0/1
                 "active integer,"           # 0/1
@@ -365,7 +364,7 @@ class Gestalt(discord.Client):
                         "insert into proxies values "
                         "(?, ?, ?, NULL, ?, ?, 0, 0)",
                         (self.gen_id(), member.id, role.guild.id,
-                            Proxy.type.collective, role.id))
+                            ProxyType.collective, role.id))
 
 
     def sync_member(self, member):
@@ -378,7 +377,7 @@ class Gestalt(discord.Client):
         rows = self.cur.execute(
                 "select * from proxies "
                 "where (userid, guildid, type) = (?, ?, ?)",
-                (member.id, guild.id, Proxy.type.collective)).fetchall()
+                (member.id, guild.id, ProxyType.collective)).fetchall()
         roleids = [x.id for x in member.roles]
         for row in rows:
             if row["extraid"] not in roleids:
@@ -396,7 +395,7 @@ class Gestalt(discord.Client):
                     "insert or ignore into proxies values "
                     "(?, ?, ?, NULL, ?, ?, 0, 0)",
                     (self.gen_id(), member.id, guild.id,
-                        Proxy.type.collective, role.id))
+                        ProxyType.collective, role.id))
 
 
     async def on_guild_role_delete(self, role):
@@ -488,15 +487,15 @@ class Gestalt(discord.Client):
                     # sanitize text to not mess up formatting
                     s = lambda x : discord.utils.escape_markdown(str(x))
                     line = "`%s`" % proxy["proxid"]
-                    if proxy["type"] == Proxy.type.override:
+                    if proxy["type"] == ProxyType.override:
                         line += (":no_entry: prefix **%s**"
                                 %(s(proxy["prefix"]),))
-                    elif proxy["type"] == Proxy.type.swap:
+                    elif proxy["type"] == ProxyType.swap:
                         line += (":twisted_rightwards_arrows: with **%s** "
                                 "prefix **%s**"
                                 % (s(self.get_user(proxy["extraid"])),
                                     s(proxy["prefix"])))
-                    elif proxy["type"] == Proxy.type.collective:
+                    elif proxy["type"] == ProxyType.collective:
                         guild = self.get_guild(proxy["guildid"])
                         name = self.cur.execute(
                                 "select nick from collectives "
@@ -530,7 +529,7 @@ class Gestalt(discord.Client):
                 self.cur.execute(
                     "update proxies set prefix = ? where proxid = ?",
                     (arg, proxy["proxid"]))
-                if proxy["type"] != Proxy.type.swap:
+                if proxy["type"] != ProxyType.swap:
                     self.cur.execute(
                         "update proxies set active = 1 where proxid = ?",
                         (proxy["proxid"],))
@@ -538,7 +537,7 @@ class Gestalt(discord.Client):
                 await message.add_reaction(REACT_CONFIRM)
 
             elif arg == "auto":
-                if proxy["type"] == Proxy.type.override:
+                if proxy["type"] == ProxyType.override:
                     raise RuntimeError("You cannot autoproxy your override.")
 
                 if reader.is_empty():
@@ -727,7 +726,7 @@ class Gestalt(discord.Client):
                 self.cur.execute("insert or ignore into proxies values"
                         # id, auth, guild, prefix, type, member, auto, active
                         "(?, ?, 0, ?, ?, ?, 0, 0)",
-                        (self.gen_id(), authid, prefix, Proxy.type.swap,
+                        (self.gen_id(), authid, prefix, ProxyType.swap,
                             member.id))
                 # triggers will take care of activation if necessary
 
@@ -742,7 +741,7 @@ class Gestalt(discord.Client):
                 self.cur.execute(
                         "delete from proxies where "
                         "(userid, type) = (?, ?) and (? in (proxid, prefix))",
-                        (authid, Proxy.type.swap, swapname))
+                        (authid, ProxyType.swap, swapname))
                 if self.cur.rowcount == 0:
                     raise RuntimeError(
                             "You do not have a swap with that ID or prefix.")
@@ -857,7 +856,7 @@ class Gestalt(discord.Client):
                     (message.author.id, str(message.author), DEFAULT_PREFS))
             self.cur.execute("insert into proxies values"
                     "(?, ?, 0, NULL, ?, 0, 0, 0)",
-                    (self.gen_id(), authid, Proxy.type.override))
+                    (self.gen_id(), authid, ProxyType.override))
             prefs = DEFAULT_PREFS
         else:
             if author["username"] != str(message.author):
@@ -898,7 +897,7 @@ class Gestalt(discord.Client):
         # return if no matches or matches override
         if match == None:
             return
-        if match["type"] == Proxy.type.override:
+        if match["type"] == ProxyType.override:
             return
         await self.do_proxy(message, match, prefs)
 
