@@ -130,93 +130,6 @@ class Proxy:
         collective  = 1
         swap        = 2
 
-    def __init__(self, trans, row):
-        self.trans = trans
-        self.cur = trans.cur
-        (self.proxid, self.userid, self.guildid, self.prefix, self.type,
-                self.extraid, self.auto, self.active) = row
-
-    # this base class version shouldn't be called normally
-    async def send(self, webhook, message, content, attachment):
-        raise NotImplementedError()
-
-    def set_prefix(self, prefix):
-        self.prefix = prefix
-        self.cur.execute("update proxies set prefix = ? where proxid = ?",
-                (prefix, self.proxid))
-
-    def set_auto(self, auto):
-        self.auto = auto
-        self.cur.execute("update proxies set auto = ? where proxid = ?",
-                (auto, self.proxid))
-
-    def set_active(self, active):
-        self.active = active
-        self.cur.execute("update proxies set active = ? where proxid = ?",
-                (active, self.proxid))
-
-
-class ProxyOverride(Proxy):
-    async def send(self, webhook, message, content, attachment):
-        raise RuntimeError("Attempted to send a message with an override proxy")
-
-
-class ProxyCollective(Proxy):
-    async def send(self, webhook, message, content, attachment):
-        authid = message.author.id
-        prefs = self.trans.user_by_id(authid).prefs
-        present = self.cur.execute("select nick, avatar from collectives "
-                "where roleid = ?",
-                (self.extraid,)).fetchone()
-
-        if prefs & Prefs.replace:
-            # do these in order (or else, e.g. "I'm" could become "We'm")
-            # which is funny but not what we want here
-            # this could be a reduce() but this is more readable
-            for x, y in REPLACEMENTS:
-                content = x.sub(y, content)
-
-        return await webhook.send(wait = True, content = content,
-                file=attachment, username = present[0],
-                avatar_url = present[1])
-
-
-class ProxySwap(Proxy):
-    async def send(self, webhook, message, content, attachment):
-        member = message.guild.get_member(self.extraid)
-        if member == None:
-            return
-
-        return await webhook.send(wait = True, content = content,
-                file = attachment, username = member.display_name,
-                avatar_url = member.avatar_url_as(format = "webp"))
-
-
-class Translator:
-    type_mapping = {
-            0: ProxyOverride,
-            1: ProxyCollective,
-            2: ProxySwap,
-    }
-
-    def __init__(self, cursor):
-        self.cur = cursor
-
-    def user_by_id(self, userid):
-        row = self.cur.execute("select * from users where userid = ?",
-                (userid,)).fetchone()
-        return None if row == None else GestaltUser(self.cur, row)
-
-    def proxy_from_row(self, row):
-        if row[4] not in Translator.type_mapping:
-            return Proxy(self, row)
-        return Translator.type_mapping[row[4]](self, row)
-
-    def proxy_by_id(self, proxid):
-        row = self.cur.execute("select * from proxies where proxid = ?",
-                (proxid,)).fetchone()
-        return None if row == None else self.proxy_from_row(row)
-
 
 def is_text(message):
     return message.channel.type == discord.ChannelType.text
@@ -231,6 +144,7 @@ class Gestalt(discord.Client):
         super().__init__(intents = INTENTS)
 
         self.conn = sqlite.connect(dbfile)
+        self.conn.row_factory = sqlite.Row
         self.cur = self.conn.cursor()
         self.cur.execute(
                 "create table if not exists history("
@@ -349,8 +263,6 @@ class Gestalt(discord.Client):
                 "unique(guildid, roleid))")
         self.cur.execute("pragma secure_delete")
 
-        self.trans = Translator(self.cur)
-
         if purge:
             self.loop.create_task(self.purge_loop())
 
@@ -435,16 +347,16 @@ class Gestalt(discord.Client):
                 (role.id,)).fetchall()
         # currently unused
         '''
+        userids = [x.id for x in role.members]
         for row in rows:
-            proxy = self.trans.proxy_from_row(row)
-            if proxy.userid not in userids:
+            if row["userid"] not in userids:
                 self.cur.execute("delete from proxies where proxid = ?",
-                        (proxy.proxid,))
+                        (proxy["proxid"],))
         '''
 
         # is there anyone without the proxy who should?
         # do this second; no need to check a proxy that's just been added
-        rows = [x[5] for x in rows] # [(..,userid,..),..] -> [userid,..]
+        rows = [x["userid"] for x in rows]
         for member in role.members:
             # don't just "insert or ignore"; gen_id() is expensive
             if member.id not in rows and not member.bot:
@@ -469,10 +381,9 @@ class Gestalt(discord.Client):
                 (member.id, guild.id, Proxy.type.collective)).fetchall()
         roleids = [x.id for x in member.roles]
         for row in rows:
-            proxy = self.trans.proxy_from_row(row)
-            if proxy.extraid not in roleids:
+            if row["extraid"] not in roleids:
                 self.cur.execute("delete from proxies where proxid = ?",
-                        (proxy.proxid,))
+                        (row["proxid"],))
 
         # now check if they don't have any proxies they should
         # do this second; no need to check a proxy that's just been added
@@ -573,37 +484,37 @@ class Gestalt(discord.Client):
                         (authid,)).fetchall()
                 lines = []
                 # must be at least one: the override
-                for row in rows:
+                for proxy in rows:
                     # sanitize text to not mess up formatting
                     s = lambda x : discord.utils.escape_markdown(str(x))
-                    proxy = self.trans.proxy_from_row(row)
-                    line = "`%s`" % proxy.proxid
-                    if proxy.type == Proxy.type.override:
+                    line = "`%s`" % proxy["proxid"]
+                    if proxy["type"] == Proxy.type.override:
                         line += (":no_entry: prefix **%s**"
-                                %(s(proxy.prefix),))
-                    elif proxy.type == Proxy.type.swap:
+                                %(s(proxy["prefix"]),))
+                    elif proxy["type"] == Proxy.type.swap:
                         line += (":twisted_rightwards_arrows: with **%s** "
                                 "prefix **%s**"
-                                % (s(self.get_user(proxy.extraid)),
-                                    s(proxy.prefix)))
-                    elif proxy.type == Proxy.type.collective:
-                        guild = self.get_guild(proxy.guildid)
+                                % (s(self.get_user(proxy["extraid"])),
+                                    s(proxy["prefix"])))
+                    elif proxy["type"] == Proxy.type.collective:
+                        guild = self.get_guild(proxy["guildid"])
                         name = self.cur.execute(
                                 "select nick from collectives "
                                 "where roleid = ?",
-                                (proxy.extraid,)).fetchone()[0]
+                                (proxy["extraid"],)).fetchone()[0]
                         line += (":bee: **%s** on **%s** in **%s** "
                                 "prefix **%s**"
                                 % (s(name),
-                                    s(guild.get_role(proxy.extraid).name),
-                                    s(guild.name), s(proxy.prefix)))
-                    if proxy.active == 0:
+                                    s(guild.get_role(proxy["extraid"]).name),
+                                    s(guild.name), s(proxy["prefix"])))
+                    if proxy["active"] == 0:
                         line += " *(inactive)*"
                     lines.append(line)
                 return await self.send_embed(message, "\n".join(lines))
 
-            proxy = self.trans.proxy_by_id(proxid)
-            if proxy == None or proxy.userid != authid:
+            proxy = self.cur.execute("select * from proxies where proxid = ?",
+                    (proxid,)).fetchone()
+            if proxy == None or proxy["userid"] != authid:
                 raise RuntimeError("You do not have a proxy with that ID.")
 
             if arg == "prefix":
@@ -616,23 +527,31 @@ class Gestalt(discord.Client):
                 if arg.endswith("text"):
                     arg = arg[:-4]
 
-                proxy.set_prefix(arg)
-                if proxy.type != Proxy.type.swap:
-                    proxy.set_active(1)
+                self.cur.execute(
+                    "update proxies set prefix = ? where proxid = ?",
+                    (arg, proxy["proxid"]))
+                if proxy["type"] != Proxy.type.swap:
+                    self.cur.execute(
+                        "update proxies set active = 1 where proxid = ?",
+                        (proxy["proxid"],))
 
                 await message.add_reaction(REACT_CONFIRM)
 
             elif arg == "auto":
-                if proxy.type == Proxy.type.override:
+                if proxy["type"] == Proxy.type.override:
                     raise RuntimeError("You cannot autoproxy your override.")
 
                 if reader.is_empty():
-                    proxy.set_auto(1-proxy.auto)
+                    self.cur.execute(
+                        "update proxies set auto = 1 - auto where proxid = ?",
+                        (proxy["proxid"],))
                 else:
                     arg = reader.read_bool_int()
                     if arg == None:
                         raise RuntimeError("Please specify 'on' or 'off'.")
-                    proxy.set_auto(arg)
+                    self.cur.execute(
+                        "update proxies set auto = ? where proxid = ?",
+                        (arg, proxy["proxid"]))
 
                 await message.add_reaction(REACT_CONFIRM)
 
@@ -647,12 +566,13 @@ class Gestalt(discord.Client):
                         "select * from collectives where guildid = ?",
                         (guild.id,)).fetchall()
                 text = "\n".join(["`%s`: %s %s" %
-                        (row[0], # collective id
-                            "**%s**" % row[3] if row[3] else "*(no name)*",
+                        (row["collid"],
+                            "**%s**" % (row["nick"] if row["nick"]
+                                else "*(no name)*"),
                             # @everyone.mention shows up as @@everyone. weird!
                             # note that this is an embed; mentions don't work
-                            ("@everyone" if row[2] == guild.id
-                                else guild.get_role(row[2]).mention))
+                            ("@everyone" if row["roleid"] == guild.id
+                                else guild.get_role(row["roleid"]).mention))
                         for row in rows])
                 if not text:
                     text = "This guild does not have any collectives."
@@ -692,21 +612,20 @@ class Gestalt(discord.Client):
                 collid = arg
                 action = reader.read_word().lower()
                 row = self.cur.execute(
-                        "select guildid, roleid from collectives "
-                        "where collid = ?",
+                        "select * from collectives where collid = ?",
                         (collid,)).fetchone()
                 if row == None:
                     raise RuntimeError("Invalid collective ID!")
 
-                if row[0] != guild.id:
+                if row["guildid"] != guild.id:
                     # TODO allow commands outside server
                     raise RuntimeError("Please try that again in %s"
-                            % self.get_guild(row[0]).name)
+                            % self.get_guild(row["guildid"]).name)
 
                 if action in ["name", "avatar"]:
                     arg = reader.read_remainder()
 
-                    role = guild.get_role(row[1])
+                    role = guild.get_role(row["roleid"])
                     if role == None:
                         raise RuntimeError("That role no longer exists?")
 
@@ -738,7 +657,7 @@ class Gestalt(discord.Client):
                     # all the more reason to delete it then, right?
                     # if guild.get_role(row[1]) == None:
                     self.cur.execute("delete from proxies where extraid = ?",
-                            (row[1],))
+                            (row["roleid"],))
                     self.cur.execute("delete from collectives where collid = ?",
                             (collid,))
                     if self.cur.rowcount == 1:
@@ -746,17 +665,21 @@ class Gestalt(discord.Client):
 
         elif arg == "prefs":
             # user must exist due to on_message
-            user = self.trans.user_by_id(authid)
+            user = self.cur.execute(
+                    "select * from users where userid = ?",
+                    (authid,)).fetchone()
             arg = reader.read_word()
             if len(arg) == 0:
                 # list current prefs in "pref: [on/off]" format
                 text = "\n".join(["%s: **%s**" %
-                        (pref.name, "on" if user.prefs & pref else "off")
+                        (pref.name, "on" if user["prefs"] & pref else "off")
                         for pref in Prefs])
                 return await self.send_embed(message, text)
 
             if arg in ["default", "defaults"]:
-                user.set_prefs(DEFAULT_PREFS)
+                self.cur.execute(
+                        "update users set prefs = ? where userid = ?",
+                        (DEFAULT_PREFS, authid))
                 return await message.add_reaction(REACT_CONFIRM)
 
             if not arg in Prefs.__members__.keys():
@@ -764,12 +687,15 @@ class Gestalt(discord.Client):
 
             bit = int(Prefs[arg])
             if reader.is_empty(): # only "prefs" + name given. invert the thing
-                user.set_prefs(user.prefs ^ bit)
+                prefs = user["prefs"] ^ bit
             else:
                 value = reader.read_bool_int()
                 if value == None:
                     raise RuntimeError("Please specify 'on' or 'off'.")
-                user.set_prefs((user.prefs & ~bit) | (bit * value))
+                prefs = (user["prefs"] & ~bit) | (bit * value)
+            self.cur.execute(
+                    "update users set prefs = ? where userid = ?",
+                    (prefs, authid))
 
             await message.add_reaction(REACT_CONFIRM)
 
@@ -822,13 +748,39 @@ class Gestalt(discord.Client):
                             "You do not have a swap with that ID or prefix.")
                 await message.add_reaction(REACT_CONFIRM)
 
+    async def do_proxy_collective(self, message, target, prefs,
+            content, attach, hook):
+        present = self.cur.execute("select * from collectives where roleid = ?",
+                (target,)).fetchone()
+
+        if prefs & Prefs.replace:
+            # do these in order (or else, e.g. "I'm" could become "We'm")
+            # which is funny but not what we want here
+            # this could be a reduce() but this is more readable
+            for x, y in REPLACEMENTS:
+                content = x.sub(y, content)
+
+        return await hook.send(wait = True, content = content,
+                file = attach, username = present["nick"],
+                avatar_url = present["avatar"])
+
+    async def do_proxy_swap(self, message, target, prefs,
+            content, attach, hook):
+        member = message.guild.get_member(target)
+        if member == None:
+            return
+
+        return await hook.send(wait = True, content = content,
+                file = attach, username = member.display_name,
+                avatar_url = member.avatar_url_as(format = "webp"))
 
     async def do_proxy(self, message, proxy, prefs):
         authid = message.author.id
         channel = message.channel
         msgfile = None
 
-        content = (message.content[0 if proxy.auto else len(proxy.prefix):]
+        content = (
+                message.content[0 if proxy["auto"] else len(proxy["prefix"]):]
                 .strip())
         if content == "" and len(message.attachments) == 0:
             return
@@ -861,7 +813,12 @@ class Gestalt(discord.Client):
                         adapter = self.adapter)
 
             try:
-                msg = await proxy.send(hook, message, content, msgfile)
+                func = [None,
+                        self.do_proxy_collective,
+                        self.do_proxy_swap
+                        ][proxy["type"]]
+                msg = await func(message, proxy["extraid"], prefs,
+                        content, msgfile, hook)
             except discord.errors.NotFound:
                 # webhook is deleted. delete entry and return to top of loop
                 self.cur.execute("delete from webhooks where chanid = ?",
@@ -876,7 +833,7 @@ class Gestalt(discord.Client):
 
         # deleted = 0
         self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
-                (msg.id, channel.id, authid, proxy.extraid,
+                (msg.id, channel.id, authid, proxy["extraid"],
                     content if LOG_MESSAGE_CONTENT else ""))
 
         if prefs & Prefs.delay:
@@ -892,7 +849,9 @@ class Gestalt(discord.Client):
             return
 
         authid = message.author.id
-        author = self.trans.user_by_id(authid)
+        author = self.cur.execute(
+                "select * from users where userid = ?",
+                (authid,)).fetchone()
         if author == None:
             self.cur.execute("insert into users values (?, ?, ?)",
                     (message.author.id, str(message.author), DEFAULT_PREFS))
@@ -901,9 +860,11 @@ class Gestalt(discord.Client):
                     (self.gen_id(), authid, Proxy.type.override))
             prefs = DEFAULT_PREFS
         else:
-            if author.username != str(message.author):
-                author.set_username(str(message.author))
-            prefs = author.prefs
+            if author["username"] != str(message.author):
+                self.cur.execute(
+                        "update usres set username = ? where userid = ?",
+                        (str(message.author), authid))
+            prefs = author["prefs"]
 
         # end of prefix or 0
         offset = (len(COMMAND_PREFIX)
@@ -937,8 +898,7 @@ class Gestalt(discord.Client):
         # return if no matches or matches override
         if match == None:
             return
-        match = self.trans.proxy_from_row(match)
-        if match.type == Proxy.type.override:
+        if match["type"] == Proxy.type.override:
             return
         await self.do_proxy(message, match, prefs)
 
@@ -965,19 +925,21 @@ class Gestalt(discord.Client):
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
-            author = self.trans.user_by_id(row[0])
+            author = self.cur.execute(
+                    "select * from users where userid = ?",
+                    (row["authid"],)).fetchone()
             try:
                 # this can fail depending on user's DM settings & prior messages
                 await reactor.send(
                         "Message sent by %s, id %d"
-                        % (author.username, author.userid))
+                        % (author["username"], author["userid"]))
                 await message.remove_reaction(emoji, reactor)
             except discord.errors.Forbidden:
                 pass
 
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
-            if payload.user_id == row[0]:
+            if payload.user_id == row["authid"]:
                 try:
                     await message.delete()
                 except discord.errors.Forbidden:
