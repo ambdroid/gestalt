@@ -547,7 +547,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(alpha, chan, "x: not proxied").webhook_id)
 
     # by far the most ominous test
-    def test_replacements(self):
+    def test_prefs_replacements(self):
         chan = g["main"]
         self.assertReacted(send(alpha, chan, "gs;prefs replace off"))
         msg = send(alpha, chan,
@@ -559,6 +559,11 @@ class GestaltTest(unittest.TestCase):
                 "e:" + "I am. i was. I'm. im. am I? I me my mine.")
         self.assertEqual(msg.content,
                 "We are. We were. We're. We're. are We? We Us Our Ours.")
+        self.assertReacted(send(alpha, chan, "gs;prefs replace off"))
+        self.assertReacted(send(alpha, chan, "gs;prefs defaults"))
+        self.assertEqual(msg.content,
+                "We are. We were. We're. We're. are We? We Us Our Ours.")
+        self.assertReacted(send(alpha, chan, "gs;prefs errors off"))
 
 
 def main():
@@ -589,6 +594,7 @@ def main():
 discord.Webhook.partial = Webhook.partial
 # don't spam the channel with error messages
 gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
+gestalt.DEFAULT_PREFS |= gestalt.Prefs.replace
 
 
 if __name__ == "__main__":
