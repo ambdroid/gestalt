@@ -107,22 +107,6 @@ class CommandReader:
         return ret
 
 
-class GestaltUser:
-    def __init__(self, cursor, row):
-        self.cur = cursor
-        (self.userid, self.username, self.prefs) = row
-
-    def set_prefs(self, prefs):
-        self.prefs = prefs
-        self.cur.execute("update users set prefs = ? where userid = ?",
-                (prefs, self.userid))
-
-    def set_username(self, username):
-        self.username = username
-        self.cur.execute("update users set username = ? where userid = ?",
-                (username, self.userid))
-
-
 @enum.unique
 class ProxyType(enum.IntEnum):
     override    = 0
