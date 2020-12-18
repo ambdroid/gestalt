@@ -73,9 +73,10 @@ async def do_command(self, message, cmd):
     if arg == "help":
         await self.send_embed(message, HELPMSG)
 
-    elif arg == "invite" and self.invite:
-        await self.send_embed(message,
-                discord.utils.oauth_url(self.user.id, permissions = PERMS))
+    elif arg == "invite":
+        if (await self.application_info()).bot_public:
+            await self.send_embed(message,
+                    discord.utils.oauth_url(self.user.id, permissions = PERMS))
 
     elif arg == "permcheck":
         guildid = reader.read_word()
