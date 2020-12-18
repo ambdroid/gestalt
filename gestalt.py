@@ -193,9 +193,9 @@ class Gestalt(discord.Client):
     async def send_embed(self, replyto, text):
         msg = await replyto.channel.send(
                 embed = discord.Embed(description = text))
-        await msg.add_reaction(REACT_DELETE)
         # insert into history to allow initiator to delete message if desired
         if is_text(replyto):
+            await msg.add_reaction(REACT_DELETE)
             self.cur.execute(
                     "insert into history values (?, 0, ?, 0, '', 0)",
                     (msg.id, replyto.author.id))
