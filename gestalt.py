@@ -183,7 +183,6 @@ class Gestalt(discord.Client):
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + "help"))
-        self.invite = (await self.application_info()).bot_public
 
 
     async def close(self):

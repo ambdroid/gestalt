@@ -233,7 +233,6 @@ class TestBot(gestalt.Gestalt):
     def __init__(self):
         super().__init__(dbfile = ":memory:", purge = False)
         self.adapter = None
-        self.invite = True
     def __del__(self):
         pass # suppress "closing database" message
     @property
