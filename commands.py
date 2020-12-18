@@ -53,14 +53,6 @@ class CommandReader:
         self.cmd = ""
         return ret
 
-"""
-def is_text(message):
-    return message.channel.type == discord.ChannelType.text
-
-
-def is_dm(message):
-    return message.channel.type == discord.ChannelType.private
-"""
 
 # discord.py commands extension throws out bot messages
 # this is incompatible with the test framework so process commands manually
