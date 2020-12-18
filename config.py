@@ -22,6 +22,10 @@ REACT_DELETE = emojilookup("CROSS MARK")
 # but this has visibility issues on ultradark theme
 REACT_CONFIRM = emojilookup("WHITE HEAVY CHECK MARK")
 
+SYMBOL_OVERRIDE = emojilookup("NO ENTRY")
+SYMBOL_COLLECTIVE = emojilookup("LINK SYMBOL")
+SYMBOL_SWAP = emojilookup("TWISTED RIGHTWARDS ARROWS")
+
 COMMAND_PREFIX = "gs;"
 
 DEFAULT_PREFS = ["replace", "errors"]
