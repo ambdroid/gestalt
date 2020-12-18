@@ -131,12 +131,11 @@ async def do_command(self, message, cmd):
                 s = lambda x : discord.utils.escape_markdown(str(x))
                 line = "`%s`" % proxy["proxid"]
                 if proxy["type"] == ProxyType.override:
-                    line += (":no_entry: prefix **%s**"
-                            %(s(proxy["prefix"]),))
+                    line += ("%s prefix **%s**"
+                            %(SYMBOL_OVERRIDE, s(proxy["prefix"])))
                 elif proxy["type"] == ProxyType.swap:
-                    line += (":twisted_rightwards_arrows: with **%s** "
-                            "prefix **%s**"
-                            % (s(self.get_user(proxy["extraid"])),
+                    line += ("%s with **%s** prefix **%s**"
+                            % (SYMBOL_SWAP, s(self.get_user(proxy["extraid"])),
                                 s(proxy["prefix"])))
                 elif proxy["type"] == ProxyType.collective:
                     guild = self.get_guild(proxy["guildid"])
@@ -144,9 +143,8 @@ async def do_command(self, message, cmd):
                             "select nick from collectives "
                             "where roleid = ?",
                             (proxy["extraid"],)).fetchone()[0]
-                    line += (":bee: **%s** on **%s** in **%s** "
-                            "prefix **%s**"
-                            % (s(name),
+                    line += ("%s **%s** on **%s** in **%s** prefix **%s**"
+                            % (SYMBOL_COLLECTIVE, s(name),
                                 s(guild.get_role(proxy["extraid"]).name),
                                 s(guild.name), s(proxy["prefix"])))
                 if proxy["active"] == 0:
