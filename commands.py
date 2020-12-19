@@ -195,6 +195,15 @@ class GestaltCommands:
             await message.add_reaction(REACT_CONFIRM)
 
 
+    async def cmd_collective_delete(self, message, coll):
+        self.cur.execute("delete from proxies where extraid = ?",
+                (coll["roleid"],))
+        self.cur.execute("delete from collectives where collid = ?",
+                (coll["collid"],))
+        if self.cur.rowcount == 1:
+            await message.add_reaction(REACT_CONFIRM)
+
+
     async def cmd_prefs_list(self, message, user):
         # list current prefs in "pref: [on/off]" format
         text = "\n".join(["%s: **%s**" %
@@ -393,15 +402,10 @@ class GestaltCommands:
                 elif action == "delete":
                     if not message.author.guild_permissions.manage_roles:
                         raise RuntimeError(ERROR_MANAGE_ROLES)
-
                     # all the more reason to delete it then, right?
                     # if guild.get_role(row[1]) == None:
-                    self.cur.execute("delete from proxies where extraid = ?",
-                            (row["roleid"],))
-                    self.cur.execute("delete from collectives where collid = ?",
-                            (collid,))
-                    if self.cur.rowcount == 1:
-                        await message.add_reaction(REACT_CONFIRM)
+
+                    return await self.cmd_collective_delete(message, row)
 
         elif arg == "prefs":
             # user must exist due to on_message
