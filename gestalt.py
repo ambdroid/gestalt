@@ -20,9 +20,7 @@ import commands
 import auth
 
 
-class Gestalt(discord.Client):
-    do_command = commands.do_command
-
+class Gestalt(discord.Client, commands.GestaltCommands):
     def __init__(self, *, dbfile, purge = True):
         super().__init__(intents = INTENTS)
 
