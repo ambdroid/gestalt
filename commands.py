@@ -366,15 +366,12 @@ class GestaltCommands:
                 collid = arg
                 action = reader.read_word().lower()
                 row = self.cur.execute(
-                        "select * from collectives where collid = ?",
-                        (collid,)).fetchone()
+                        "select * from collectives "
+                        "where (collid, guildid) = (?, ?)",
+                        (collid, guild.id)).fetchone()
                 if row == None:
-                    raise RuntimeError("Invalid collective ID!")
-
-                if row["guildid"] != guild.id:
-                    # TODO allow commands outside server
-                    raise RuntimeError("Please try that again in %s"
-                            % self.get_guild(row["guildid"]).name)
+                    raise RuntimeError(
+                            "This guild has no collective with that ID.")
 
                 if action in ["name", "avatar"]:
                     arg = reader.read_remainder()
