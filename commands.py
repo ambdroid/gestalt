@@ -241,8 +241,9 @@ class GestaltCommands:
                 "delete from proxies where "
                 "(userid, type) = (?, ?) and (? in (proxid, prefix))",
                 (message.author.id, ProxyType.swap, swapname))
-        await message.add_reaction(REACT_CONFIRM)
-        return self.cur.rowcount == 1
+        if self.cur.rowcount:
+            await message.add_reaction(REACT_CONFIRM)
+        return bool(self.cur.rowcount)
 
 
     # discord.py commands extension throws out bot messages
@@ -457,10 +458,6 @@ class GestaltCommands:
                 if swapname == "":
                     raise RuntimeError("Please provide a swap ID or prefix.")
 
-                self.cur.execute(
-                        "delete from proxies where "
-                        "(userid, type) = (?, ?) and (? in (proxid, prefix))",
-                        (authid, ProxyType.swap, swapname))
                 if not await self.cmd_swap_close(message, swapname):
                     raise RuntimeError(
                             "You do not have a swap with that ID or prefix.")
