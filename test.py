@@ -563,6 +563,24 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(msg.content,
                 "We are. We were. We're. We're. are We? We Us Our Ours.")
 
+    def test_avatar_url(self):
+        chan = g["main"]
+        collid = self.get_collid(g.default_role)
+        self.assertReacted(send(alpha, chan,
+            "gs;c %s avatar http://a" % collid))
+        self.assertReacted(send(alpha, chan,
+            "gs;c %s avatar https://a" % collid))
+        self.assertNotReacted(send(alpha, chan,
+            "gs;c %s avatar http:/a" % collid))
+        self.assertNotReacted(send(alpha, chan,
+            "gs;c %s avatar https:/a" % collid))
+        self.assertNotReacted(send(alpha, chan,
+            "gs;c %s avatar _https://a" % collid))
+        self.assertNotReacted(send(alpha, chan,
+            "gs;c %s avatar foobar" % collid))
+        self.assertReacted(send(alpha, chan, "gs;c %s avatar" % collid))
+        self.assertReacted(send(alpha, chan, "gs;c %s avatar \"\"" % collid))
+
 
 def main():
     global bot, alpha, beta, gamma, g, instance

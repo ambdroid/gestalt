@@ -386,12 +386,14 @@ class GestaltCommands:
                         raise RuntimeError(
                                 "You don't have access to that collective!")
 
-                    if arg == "":
-                        # allow empty avatar URL but not name
-                        if action == "name":
-                            raise RuntimeError("Please provide a new name.")
-                        elif message.attachments:
+                    # allow empty avatar URL but not name
+                    if action == "name" and not arg:
+                        raise RuntimeError("Please provide a new name.")
+                    if action == "avatar":
+                        if message.attachments and not arg:
                             arg = message.attachments[0].url
+                        elif arg and not re.match("http(s?)://.*", arg):
+                            raise RuntimeError("Invalid avatar URL!")
 
                     return await self.cmd_collective_update(message, collid,
                             action, arg)
