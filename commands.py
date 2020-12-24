@@ -72,7 +72,15 @@ class GestaltCommands:
                     discord.utils.oauth_url(self.user.id, permissions = PERMS))
 
 
-    async def cmd_permcheck(self, message, guild):
+    async def cmd_permcheck(self, message, guildid):
+        guildid = message.guild.id if guildid == "" else int(guildid)
+        guild = self.get_guild(guildid)
+        if guild == None:
+            raise RuntimeError(
+                    "That guild does not exist or I am not in it.")
+        if guild.get_member(message.author.id) == None:
+            raise RuntimeError("You are not a member of that guild.")
+
         memberauth = guild.get_member(message.author.id)
         memberbot = guild.get_member(self.user.id)
         text = "**%s**:\n" % guild.name
@@ -98,7 +106,12 @@ class GestaltCommands:
         await self.send_embed(message, text)
 
 
-    async def cmd_proxy_list(self, message, rows):
+    async def cmd_proxy_list(self, message):
+        rows = self.cur.execute(
+                "select * from proxies where userid = ?"
+                "order by type asc",
+                (message.author.id,)).fetchall()
+
         lines = []
         # must be at least one: the override
         for proxy in rows:
@@ -128,7 +141,14 @@ class GestaltCommands:
         await self.send_embed(message, "\n".join(lines))
 
 
-    async def cmd_proxy_prefix(self, message, proxy, prefix):
+    async def cmd_proxy_prefix(self, message, proxid, prefix):
+        if prefix.replace("text","") == "":
+            raise RuntimeError("Please provide a valid prefix.")
+        proxy = self.cur.execute("select * from proxies where proxid = ?",
+                (proxid,)).fetchone()
+        if proxy == None or proxy["userid"] != message.author.id:
+            raise RuntimeError("You do not have a proxy with that ID.")
+
         prefix = prefix.lower()
         # adapt PluralKit [text] prefix/postfix format
         if prefix.endswith("text"):
@@ -145,7 +165,14 @@ class GestaltCommands:
         await message.add_reaction(REACT_CONFIRM)
 
 
-    async def cmd_proxy_auto(self, message, proxy, val):
+    async def cmd_proxy_auto(self, message, proxid, val):
+        proxy = self.cur.execute("select * from proxies where proxid = ?",
+                (proxid,)).fetchone()
+        if proxy == None or proxy["userid"] != message.author.id:
+            raise RuntimeError("You do not have a proxy with that ID.")
+        if proxy["type"] == ProxyType.override:
+            raise RuntimeError("You cannot autoproxy your override.")
+
         if val == None:
             self.cur.execute(
                 "update proxies set auto = 1 - auto where proxid = ?",
@@ -157,7 +184,11 @@ class GestaltCommands:
         await message.add_reaction(REACT_CONFIRM)
 
 
-    async def cmd_collective_list(self, message, rows):
+    async def cmd_collective_list(self, message):
+        rows = self.cur.execute(
+                "select * from collectives where guildid = ?",
+                (message.guild.id,)).fetchall()
+
         if len(rows) == 0:
             text = "This guild does not have any collectives."
         else:
@@ -278,52 +309,27 @@ class GestaltCommands:
             if (guildid == "" and (is_dm(message)
                     or not re.match("[0-9]*", guildid))):
                 raise RuntimeError("Please provide a valid guild ID.")
-            guildid = message.guild.id if guildid == "" else int(guildid)
-            guild = self.get_guild(guildid)
-            if guild == None:
-                raise RuntimeError(
-                        "That guild does not exist or I am not in it.")
-            if guild.get_member(authid) == None:
-                raise RuntimeError("You are not a member of that guild.")
-
-            return await self.cmd_permcheck(message, guild)
+            return await self.cmd_permcheck(message, guildid)
 
         elif arg in ["proxy", "p"]:
             proxid = reader.read_word().lower()
             arg = reader.read_word().lower()
 
             if proxid == "":
-                rows = self.cur.execute(
-                        "select * from proxies where userid = ?"
-                        "order by type asc",
-                        (authid,)).fetchall()
-
-                return await self.cmd_proxy_list(message, rows)
-
-            proxy = self.cur.execute("select * from proxies where proxid = ?",
-                    (proxid,)).fetchone()
-            if proxy == None or proxy["userid"] != authid:
-                raise RuntimeError("You do not have a proxy with that ID.")
+                return await self.cmd_proxy_list(message)
 
             if arg == "prefix":
                 arg = reader.read_quote().lower()
-                if arg.replace("text","") == "":
-                    raise RuntimeError("Please provide a valid prefix.")
-
-                return await self.cmd_proxy_prefix(message, proxy, arg)
+                return await self.cmd_proxy_prefix(message, proxid, arg)
 
             elif arg == "auto":
-                if proxy["type"] == ProxyType.override:
-                    raise RuntimeError("You cannot autoproxy your override.")
-
                 if reader.is_empty():
                     val = None
                 else:
                     val = reader.read_bool_int()
                     if val == None:
                         raise RuntimeError("Please specify 'on' or 'off'.")
-
-                return await self.cmd_proxy_auto(message, proxy, val)
+                return await self.cmd_proxy_auto(message, proxid, val)
 
         elif arg in ["collective", "c"]:
             if is_dm(message):
@@ -332,11 +338,7 @@ class GestaltCommands:
             arg = reader.read_word().lower()
 
             if arg == "":
-                rows = self.cur.execute(
-                        "select * from collectives where guildid = ?",
-                        (guild.id,)).fetchall()
-
-                return await self.cmd_collective_list(message, rows)
+                return await self.cmd_collective_list(message)
 
             elif arg in ["new", "create"]:
                 if not message.author.guild_permissions.manage_roles:
