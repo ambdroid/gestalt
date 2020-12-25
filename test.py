@@ -345,11 +345,11 @@ class GestaltTest(unittest.TestCase):
 
     def test_add_delete_collective(self):
         # create an @everyone collective
-        self.assertReacted(send(alpha, g["main"], "gs;c new everyone"))
+        self.assertReacted(send(alpha, g["main"], "gs;c new \"everyone\""))
         # make sure it worked
         self.assertIsNotNone(self.get_collid(g.default_role))
         # try to make a collective on the same role; it shouldn't work
-        self.assertNotReacted(send(alpha, g["main"], "gs;c new everyone"))
+        self.assertNotReacted(send(alpha, g["main"], "gs;c new \"everyone\""))
 
         proxid = self.get_proxid(alpha, g.default_role)
         self.assertIsNotNone(proxid)
