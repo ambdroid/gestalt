@@ -2,6 +2,12 @@ import discord
 
 from defs import *
 
+
+def escape(text):
+    return discord.utils.escape_markdown(
+            discord.utils.escape_mentions(str(text)))
+
+
 class CommandReader:
     BOOL_KEYWORDS = {
         "on": 1,
@@ -125,16 +131,14 @@ class GestaltCommands:
         lines = []
         # must be at least one: the override
         for proxy in rows:
-            # sanitize text to not mess up formatting
-            s = lambda x : discord.utils.escape_markdown(str(x))
             line = "`%s`" % proxy["proxid"]
             if proxy["type"] == ProxyType.override:
                 line += ("%s prefix **%s**"
-                        %(SYMBOL_OVERRIDE, s(proxy["prefix"])))
+                        %(SYMBOL_OVERRIDE, escape(proxy["prefix"])))
             elif proxy["type"] == ProxyType.swap:
                 line += ("%s with **%s** prefix **%s**"
-                        % (SYMBOL_SWAP, s(self.get_user(proxy["extraid"])),
-                            s(proxy["prefix"])))
+                        % (SYMBOL_SWAP, escape(self.get_user(proxy["extraid"])),
+                            escape(proxy["prefix"])))
             elif proxy["type"] == ProxyType.collective:
                 guild = self.get_guild(proxy["guildid"])
                 name = self.cur.execute(
@@ -142,9 +146,9 @@ class GestaltCommands:
                         "where roleid = ?",
                         (proxy["extraid"],)).fetchone()[0]
                 line += ("%s **%s** on **%s** in **%s** prefix **%s**"
-                        % (SYMBOL_COLLECTIVE, s(name),
-                            s(guild.get_role(proxy["extraid"]).name),
-                            s(guild.name), s(proxy["prefix"])))
+                        % (SYMBOL_COLLECTIVE, escape(name),
+                            escape(guild.get_role(proxy["extraid"]).name),
+                            escape(guild.name), escape(proxy["prefix"])))
             if proxy["active"] == 0:
                 line += " *(inactive)*"
             lines.append(line)
@@ -205,7 +209,7 @@ class GestaltCommands:
             guild = message.guild
             text = "\n".join(["`%s`: %s %s" %
                     (row["collid"],
-                        "**%s**" % (row["nick"] if row["nick"]
+                        "**%s**" % (escape(row["nick"]) if row["nick"]
                             else "*(no name)*"),
                         # @everyone.mention shows up as @@everyone. weird!
                         # note that this is an embed; mentions don't work
