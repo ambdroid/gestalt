@@ -1,7 +1,3 @@
-from unicodedata import lookup as emojilookup
-import re
-
-
 LOG_MESSAGE_CONTENT = True
 
 REPLACEMENTS = [
@@ -16,15 +12,15 @@ REPLACEMENTS = [
         ("\\bmine\\b", "Ours")
         ]
 
-REACT_QUERY = emojilookup("BLACK QUESTION MARK ORNAMENT")
-REACT_DELETE = emojilookup("CROSS MARK")
+REACT_QUERY = "\N{BLACK QUESTION MARK ORNAMENT}"
+REACT_DELETE = "\N{CROSS MARK}"
 # originally "BALLOT BOX WITH CHECK"
 # but this has visibility issues on ultradark theme
-REACT_CONFIRM = emojilookup("WHITE HEAVY CHECK MARK")
+REACT_CONFIRM = "\N{WHITE HEAVY CHECK MARK}"
 
-SYMBOL_OVERRIDE = emojilookup("NO ENTRY")
-SYMBOL_COLLECTIVE = emojilookup("LINK SYMBOL")
-SYMBOL_SWAP = emojilookup("TWISTED RIGHTWARDS ARROWS")
+SYMBOL_OVERRIDE = "\N{NO ENTRY}"
+SYMBOL_COLLECTIVE = "\N{LINK SYMBOL}"
+SYMBOL_SWAP = "\N{TWISTED RIGHTWARDS ARROWS}"
 
 COMMAND_PREFIX = "gs;"
 
@@ -88,7 +84,7 @@ HELPMSG = (
         ":x: : delete a message you sent.\n"
         ":question: : query who sent a message. "
         "(If you don't receive the DM, DM this bot first.)\n"
-        ).format(p = COMMAND_PREFIX)
+        )
 ERROR_DM = "You need to be in a server to do that!"
 ERROR_MANAGE_ROLES = "You need `Manage Roles` permission to do that!"
 ERROR_CURSED = "No."
