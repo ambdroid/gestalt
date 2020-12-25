@@ -209,8 +209,7 @@ class GestaltCommands:
             guild = message.guild
             text = "\n".join(["`%s`: %s %s" %
                     (row["collid"],
-                        "**%s**" % (escape(row["nick"]) if row["nick"]
-                            else "*(no name)*"),
+                        "**%s**" % escape(row["nick"]),
                         # @everyone.mention shows up as @@everyone. weird!
                         # note that this is an embed; mentions don't work
                         ("@everyone" if row["roleid"] == guild.id
