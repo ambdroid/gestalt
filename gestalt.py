@@ -1,5 +1,6 @@
 #!/usr/bin/python3.7
 
+from datetime import datetime, timedelta
 from functools import reduce
 import sqlite3 as sqlite
 import asyncio
@@ -7,7 +8,6 @@ import random
 import signal
 import string
 import enum
-import time
 import math
 import sys
 import re
@@ -177,11 +177,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     @tasks.loop(seconds = PURGE_TIMEOUT)
     async def purge_loop(self):
-        # time.time() and PURGE_AGE in seconds, snowflake timestamp in ms
-        # https://discord.com/developers/docs/reference#snowflakes
-        maxid = math.floor(1000*(time.time()-PURGE_AGE)-1420070400000)<<22
+        when = datetime.now() - timedelta(seconds = PURGE_AGE)
         self.cur.execute("delete from history where deleted = 1 and msgid < ?",
-                (maxid,))
+                # this function is undocumented for some reason?
+                (discord.utils.time_snowflake(when),))
         self.conn.commit()
 
 
