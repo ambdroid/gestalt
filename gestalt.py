@@ -1,6 +1,7 @@
 #!/usr/bin/python3.7
 
 from functools import reduce
+import sqlite3 as sqlite
 import asyncio
 import random
 import signal
@@ -11,7 +12,7 @@ import math
 import sys
 import re
 
-import sqlite3 as sqlite
+from discord.ext import tasks
 import aiohttp
 import discord
 
@@ -21,7 +22,7 @@ import auth
 
 
 class Gestalt(discord.Client, commands.GestaltCommands):
-    def __init__(self, *, dbfile, purge = True):
+    def __init__(self, *, dbfile):
         super().__init__(intents = INTENTS)
 
         self.conn = sqlite.connect(dbfile)
@@ -144,27 +145,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "unique(guildid, roleid))")
         self.cur.execute("pragma secure_delete")
 
-        if purge:
-            self.loop.create_task(self.purge_loop())
-
 
     def __del__(self):
         print("Closing database.")
         self.conn.commit()
         self.conn.close()
-
-
-    async def purge_loop(self):
-        # this is purely a db task, no need to wait until ready
-        while True:
-            # time.time() and PURGE_AGE in seconds, snowflake timestamp in ms
-            # https://discord.com/developers/docs/reference#snowflakes
-            maxid = math.floor(1000*(time.time()-PURGE_AGE)-1420070400000)<<22
-            self.cur.execute(
-                    "delete from history where deleted = 1 and msgid < ?",
-                    (maxid,))
-            self.conn.commit()
-            await asyncio.sleep(PURGE_TIMEOUT)
 
 
     # close on SIGINT, SIGTERM
@@ -179,6 +164,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.adapter = discord.AsyncWebhookAdapter(aiohttp.ClientSession())
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
+        # this could go in __init__ but that would break testing
+        self.purge_loop.start()
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + "help"))
 
@@ -186,6 +173,16 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     async def close(self):
         await super().close()
         await self.adapter.session.close()
+
+
+    @tasks.loop(seconds = PURGE_TIMEOUT)
+    async def purge_loop(self):
+        # time.time() and PURGE_AGE in seconds, snowflake timestamp in ms
+        # https://discord.com/developers/docs/reference#snowflakes
+        maxid = math.floor(1000*(time.time()-PURGE_AGE)-1420070400000)<<22
+        self.cur.execute("delete from history where deleted = 1 and msgid < ?",
+                (maxid,))
+        self.conn.commit()
 
 
     async def send_embed(self, replyto, text):
