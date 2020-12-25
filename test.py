@@ -231,7 +231,7 @@ class Guild(Object):
 
 class TestBot(gestalt.Gestalt):
     def __init__(self):
-        super().__init__(dbfile = ":memory:", purge = False)
+        super().__init__(dbfile = ":memory:")
         self.adapter = None
     def __del__(self):
         pass # suppress "closing database" message
