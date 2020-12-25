@@ -1,5 +1,6 @@
 from functools import reduce
 import enum
+import re
 
 import discord
 
@@ -50,6 +51,7 @@ class ProxyType(enum.IntEnum):
 
 DEFAULT_PREFS = reduce(lambda a, b : a | Prefs[b], DEFAULT_PREFS, 0)
 REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
+HELPMSG = HELPMSG.format(p = COMMAND_PREFIX)
 
 
 def is_text(message):
