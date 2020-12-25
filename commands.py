@@ -53,6 +53,16 @@ class CommandReader:
         self.cmd = ""
         return ret
 
+    def read_role(self):
+        if self.msg.role_mentions:
+            return self.msg.role_mentions[0]
+        else:
+            guild = self.msg.guild
+            rolename = self.read_quote()
+            if rolename == "everyone":
+                return guild.default_role
+            return discord.utils.get(guild.roles, name = rolename)
+
 
 class GestaltCommands:
     async def cmd_debug(self, message):
@@ -344,16 +354,9 @@ class GestaltCommands:
                 if not message.author.guild_permissions.manage_roles:
                     raise RuntimeError(ERROR_MANAGE_ROLES)
 
-                guild = message.channel.guild
-                rolename = reader.read_remainder()
-                if len(message.role_mentions) > 0:
-                    role = message.role_mentions[0]
-                elif rolename == "everyone":
-                   role = guild.default_role
-                else:
-                    role = discord.utils.get(guild.roles, name = rolename)
-                    if role == None:
-                        raise RuntimeError("Please provide a role.")
+                role = reader.read_role()
+                if role == None:
+                    raise RuntimeError("Please provide a role.")
 
                 if role.managed:
                     # bots, server booster, integrated subscription services
