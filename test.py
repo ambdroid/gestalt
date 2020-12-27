@@ -225,7 +225,7 @@ class Guild(Object):
         await instance.on_member_join(member)
         return member
     def get_member(self, user_id):
-        return self._members[user_id]
+        return self._members[user_id] if user_id in self._members else None
     def get_role(self, role_id):
         return self._roles[role_id]
 
@@ -473,6 +473,10 @@ class GestaltTest(unittest.TestCase):
                 send(beta, g["main"], "gs;swap open <@!%i> :" % alpha.id))
         proxswap = self.get_proxid(alpha, beta)
         self.assertIsNotNone(proxswap)
+
+        # swap should be usable in g but not g2 because beta isn't in g2
+        self.assertIsNotNone(send(alpha, g["main"], ":test").webhook_id)
+        self.assertIsNone(send(alpha, g2["main"], ":test").webhook_id)
 
         # create collectives on the two roles
         self.assertReacted(
