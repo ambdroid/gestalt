@@ -359,6 +359,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     present = self.do_proxy_swap(*args)
                 else:
                     raise RuntimeError("Unknown proxy type")
+                # in case e.g. it's a swap but the other user isn't in the guild
+                if present == None:
+                    return
+
                 msg = await hook.send(wait = True, username = present[0],
                         avatar_url = present[1], content = present[2],
                         file = msgfile)
@@ -369,10 +373,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 continue
             else:
                 break
-
-        # in case e.g. it's a swap but the other user isn't in the guild
-        if msg == None:
-            return
 
         # deleted = 0
         self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
