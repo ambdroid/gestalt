@@ -200,13 +200,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # this bit copied from PluralKit, Apache 2.0 license
             id = "".join(random.choices(string.ascii_lowercase, k=5))
             # IDs don't need to be globally unique but it can't hurt
-            proxies = self.cur.execute(
-                    "select proxid from proxies where proxid = ?",
-                    (id,)).fetchall()
-            collectives = self.cur.execute(
-                    "select collid from collectives where collid = ?",
-                    (id,)).fetchall()
-            if len(proxies) == len(collectives) == 0:
+            exists = self.cur.execute(
+                    "select exists(select * from proxies where proxid = ?)"
+                    "or exists(select * from collectives where collid = ?)",
+                    (id,) * 2).fetchone()[0]
+            if not exists:
                 return id
 
 
