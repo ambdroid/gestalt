@@ -354,12 +354,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         adapter = self.adapter)
 
             try:
-                func = [None,
-                        self.do_proxy_collective,
-                        self.do_proxy_swap
-                        ][proxy["type"]]
-                msg = await func(message, proxy["extraid"], prefs,
+                args = (message, proxy["extraid"], prefs,
                         content, msgfile, hook)
+                proxtype = proxy["type"]
+                if proxtype == ProxyType.collective:
+                    msg = await self.do_proxy_collective(*args)
+                elif proxtype == ProxyType.swap:
+                    msg = await self.do_proxy_swap(*args)
+                else:
+                    raise RuntimeError("Unknown proxy type")
             except discord.errors.NotFound:
                 # webhook is deleted. delete entry and return to top of loop
                 self.cur.execute("delete from webhooks where chanid = ?",
