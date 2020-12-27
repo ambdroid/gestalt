@@ -289,8 +289,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.sync_member(member)
 
 
-    async def do_proxy_collective(self, message, target, prefs,
-            content, attach, hook):
+    def do_proxy_collective(self, message, target, prefs, content):
         present = self.cur.execute("select * from collectives where roleid = ?",
                 (target,)).fetchone()
 
@@ -301,19 +300,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
-        return await hook.send(wait = True, content = content,
-                file = attach, username = present["nick"],
-                avatar_url = present["avatar"])
+        return (present["nick"], present["avatar"], content)
 
-    async def do_proxy_swap(self, message, target, prefs,
-            content, attach, hook):
+
+    def do_proxy_swap(self, message, target, prefs, content):
         member = message.guild.get_member(target)
         if member == None:
             return
 
-        return await hook.send(wait = True, content = content,
-                file = attach, username = member.display_name,
-                avatar_url = member.avatar_url_as(format = "webp"))
+        return (member.display_name, member.avatar_url_as(format = "webp"),
+                content)
+
 
     async def do_proxy(self, message, proxy, prefs):
         authid = message.author.id
@@ -354,15 +351,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         adapter = self.adapter)
 
             try:
-                args = (message, proxy["extraid"], prefs,
-                        content, msgfile, hook)
+                args = (message, proxy["extraid"], prefs, content)
                 proxtype = proxy["type"]
                 if proxtype == ProxyType.collective:
-                    msg = await self.do_proxy_collective(*args)
+                    present = self.do_proxy_collective(*args)
                 elif proxtype == ProxyType.swap:
-                    msg = await self.do_proxy_swap(*args)
+                    present = self.do_proxy_swap(*args)
                 else:
                     raise RuntimeError("Unknown proxy type")
+                msg = await hook.send(wait = True, username = present[0],
+                        avatar_url = present[1], content = present[2],
+                        file = msgfile)
             except discord.errors.NotFound:
                 # webhook is deleted. delete entry and return to top of loop
                 self.cur.execute("delete from webhooks where chanid = ?",
