@@ -500,7 +500,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 def main():
     instance = Gestalt(
-            dbfile = sys.argv[1] if len(sys.argv) > 1 else "gestalt.db")
+            dbfile = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DB)
 
     try:
         instance.run(auth.token)

@@ -1,3 +1,4 @@
+DEFAULT_DB = "gestalt.db"
 LOG_MESSAGE_CONTENT = True
 
 REPLACEMENTS = [
