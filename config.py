@@ -1,6 +1,8 @@
 DEFAULT_DB = "gestalt.db"
 LOG_MESSAGE_CONTENT = True
 
+DELETE_DELAY = 0.4
+
 REPLACEMENTS = [
         ("\\bi\\s+am\\b", "We are"),
         ("\\bi\\s+was\\b", "We were"),
