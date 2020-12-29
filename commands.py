@@ -48,9 +48,8 @@ class CommandReader:
 
     def read_bool_int(self):
         word = self.read_word().lower()
-        if word not in CommandReader.BOOL_KEYWORDS:
-            return None
-        return CommandReader.BOOL_KEYWORDS[word]
+        if word in CommandReader.BOOL_KEYWORDS:
+            return CommandReader.BOOL_KEYWORDS[word]
 
     def read_remainder(self):
         ret = self.cmd
@@ -62,12 +61,11 @@ class CommandReader:
     def read_role(self):
         if self.msg.role_mentions:
             return self.msg.role_mentions[0]
-        else:
-            guild = self.msg.guild
-            rolename = self.read_quote()
-            if rolename == "everyone":
-                return guild.default_role
-            return discord.utils.get(guild.roles, name = rolename)
+        guild = self.msg.guild
+        rolename = self.read_quote()
+        if rolename == "everyone":
+            return guild.default_role
+        return discord.utils.get(guild.roles, name = rolename)
 
 
 class GestaltCommands:
