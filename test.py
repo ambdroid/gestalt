@@ -87,7 +87,7 @@ class Message(Object):
                 self.mentions.append(User.users[int(mention)])
             for mention in re.findall("(?<=\<\@\&)[0-9]+(?=\>)", self.content):
                 self.role_mentions.append(Role.roles[int(mention)])
-    async def delete(self):
+    async def delete(self, delay = None):
         self.channel._messages.remove(self)
         self._deleted = True
     async def _react(self, emoji, user):

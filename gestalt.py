@@ -375,10 +375,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (msg.id, channel.id, authid, proxy["extraid"],
                     content if LOG_MESSAGE_CONTENT else ""))
 
-        if prefs & Prefs.delay:
-            await asyncio.sleep(0.2)
         try:
-            await message.delete()
+            delay = DELETE_DELAY if prefs & Prefs.delay else None
+            await message.delete(delay = delay)
         except discord.errors.Forbidden:
             pass
 
