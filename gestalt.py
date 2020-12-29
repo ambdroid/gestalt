@@ -303,11 +303,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     def do_proxy_swap(self, message, target, prefs, content):
         member = message.guild.get_member(target)
-        if member == None:
-            return
-
-        return (member.display_name, member.avatar_url_as(format = "webp"),
-                content)
+        if member:
+            return (member.display_name, member.avatar_url_as(format = "webp"),
+                    content)
 
 
     async def do_proxy(self, message, proxy, prefs):
@@ -436,12 +434,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (message.author.id, message.guild.id, message.content.lower()))
                 .fetchone())
 
-        # return if no matches or matches override
-        if match == None:
-            return
-        if match["type"] == ProxyType.override:
-            return
-        await self.do_proxy(message, match, prefs)
+        if match and match["type"] != ProxyType.override:
+            await self.do_proxy(message, match, prefs)
 
 
     # on_reaction_add doesn't catch everything
