@@ -188,7 +188,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         msg = await replyto.channel.send(
                 embed = discord.Embed(description = text))
         # insert into history to allow initiator to delete message if desired
-        if is_text(replyto):
+        if replyto.guild:
             await msg.add_reaction(REACT_DELETE)
             self.cur.execute(
                     "insert into history values (?, 0, ?, 0, '', 0)",
@@ -411,7 +411,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         offset = (len(COMMAND_PREFIX)
                 if message.content.lower().startswith(COMMAND_PREFIX) else 0)
         # command prefix is optional in DMs
-        if offset != 0 or is_dm(message):
+        if offset != 0 or not message.guild:
             # strip() so that e.g. "gs; help" works (helpful with autocorrect)
             try:
                 await self.do_command(message, message.content[offset:].strip())

@@ -53,11 +53,3 @@ DEFAULT_PREFS = reduce(lambda a, b : a | Prefs[b], DEFAULT_PREFS, 0)
 REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
 HELPMSG = HELPMSG.format(p = COMMAND_PREFIX)
 
-
-def is_text(message):
-    return message.channel.type == discord.ChannelType.text
-
-
-def is_dm(message):
-    return message.channel.type == discord.ChannelType.private
-

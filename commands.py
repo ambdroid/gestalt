@@ -327,8 +327,7 @@ class GestaltCommands:
 
         elif arg == "permcheck":
             guildid = reader.read_word()
-            if (guildid == "" and (is_dm(message)
-                    or not re.match("[0-9]*", guildid))):
+            if re.search("[^0-9]", guildid) or not (guildid or message.guild):
                 raise RuntimeError("Please provide a valid guild ID.")
             return await self.cmd_permcheck(message, guildid)
 
@@ -353,7 +352,7 @@ class GestaltCommands:
                 return await self.cmd_proxy_auto(message, proxid, val)
 
         elif arg in ["collective", "c"]:
-            if is_dm(message):
+            if not message.guild:
                 raise RuntimeError(ERROR_DM)
             guild = message.guild
             arg = reader.read_word().lower()
@@ -449,7 +448,7 @@ class GestaltCommands:
         elif arg in ["swap", "s"]:
             arg = reader.read_word().lower()
             if arg == "open":
-                if is_dm(message):
+                if not message.guild:
                     raise RuntimeError(ERROR_DM)
 
                 prefix = reader.read_quote_reverse().lower()
