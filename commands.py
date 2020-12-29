@@ -129,8 +129,13 @@ class GestaltCommands:
                 (message.author.id,)).fetchall()
 
         lines = []
+        omit = False
         # must be at least one: the override
         for proxy in rows:
+            # don't show non-global proxies in other servers
+            if message.guild and proxy["guildid"] not in [0, message.guild.id]:
+                omit = True
+                continue
             line = "`%s`" % proxy["proxid"]
             if proxy["type"] == ProxyType.override:
                 line += ("%s prefix **%s**"
@@ -152,6 +157,9 @@ class GestaltCommands:
             if proxy["active"] == 0:
                 line += " *(inactive)*"
             lines.append(line)
+
+        if omit:
+            lines.append("Proxies in other servers have been omitted.")
         await self.send_embed(message, "\n".join(lines))
 
 
