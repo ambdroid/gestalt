@@ -122,7 +122,9 @@ class GestaltCommands:
 
     async def cmd_proxy_list(self, message):
         rows = self.cur.execute(
-                "select * from proxies where userid = ?"
+                "select *,"
+                "(select nick from collectives where roleid = extraid) nick "
+                "from proxies where userid = ?"
                 "order by type asc",
                 (message.author.id,)).fetchall()
 
@@ -144,12 +146,8 @@ class GestaltCommands:
                             escape(proxy["prefix"])))
             elif proxy["type"] == ProxyType.collective:
                 guild = self.get_guild(proxy["guildid"])
-                name = self.cur.execute(
-                        "select nick from collectives "
-                        "where roleid = ?",
-                        (proxy["extraid"],)).fetchone()[0]
                 line += ("%s **%s** on **%s** in **%s** prefix **%s**"
-                        % (SYMBOL_COLLECTIVE, escape(name),
+                        % (SYMBOL_COLLECTIVE, escape(proxy["nick"]),
                             escape(guild.get_role(proxy["extraid"]).name),
                             escape(guild.name), escape(proxy["prefix"])))
             if proxy["active"] == 0:

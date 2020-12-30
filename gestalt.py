@@ -67,7 +67,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.cur.execute(
                 "create trigger if not exists proxy_prefix_conflict_update "
                 "after update of prefix on proxies when (exists("
-                    "select * from proxies where ("
+                    "select 1 from proxies where ("
                         "(userid == new.userid) and (proxid != new.proxid)"
                         "and ("
                             # if prefix is to be global, check everything
@@ -201,8 +201,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             id = "".join(random.choices(string.ascii_lowercase, k=5))
             # IDs don't need to be globally unique but it can't hurt
             exists = self.cur.execute(
-                    "select exists(select * from proxies where proxid = ?)"
-                    "or exists(select * from collectives where collid = ?)",
+                    "select exists(select 1 from proxies where proxid = ?)"
+                    "or exists(select 1 from collectives where collid = ?)",
                     (id,) * 2).fetchone()[0]
             if not exists:
                 return id
@@ -212,7 +212,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     # because users being added/removed from a role activates on_member_update()
     def sync_role(self, role):
         # is this role attached to a collective?
-        if (self.cur.execute("select * from collectives where roleid = ?",
+        if (self.cur.execute("select 1 from collectives where roleid = ?",
             (role.id,)).fetchone() == None):
             return
 
@@ -263,7 +263,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # do this second; no need to check a proxy that's just been added
         for role in member.roles:
             coll = self.cur.execute(
-                    "select * from collectives where roleid = ?",
+                    "select 1 from collectives where roleid = ?",
                     (role.id,)).fetchone()
             if coll != None:
                 self.cur.execute(
@@ -444,7 +444,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         # first, make sure this is one of ours
         row = self.cur.execute(
-            "select authid from history where msgid = ?",
+            "select authid,"
+            "(select username from users where userid = authid) username "
+            "from history where msgid = ?",
             (payload.message_id,)).fetchone()
         if row == None:
             return
@@ -459,14 +461,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
-            author = self.cur.execute(
-                    "select * from users where userid = ?",
-                    (row["authid"],)).fetchone()
             try:
                 # this can fail depending on user's DM settings & prior messages
                 await reactor.send(
                         "Message sent by %s, id %d"
-                        % (author["username"], author["userid"]))
+                        % (row["username"], row["authid"]))
                 await message.remove_reaction(emoji, reactor)
             except discord.errors.Forbidden:
                 pass
