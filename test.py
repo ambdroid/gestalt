@@ -446,12 +446,12 @@ class GestaltTest(unittest.TestCase):
         hookid = send(alpha, g["main"], "e:reiuskudfvb").webhook_id
         self.assertIsNotNone(hookid)
         self.assertRowExists(
-                "select * from webhooks where hookid = ?",
+                "select 1 from webhooks where hookid = ?",
                 (hookid,))
         Webhook.hooks[hookid]._deleted = True
         self.assertIsNotNone(send(alpha, g["main"], "e:asdhgdfjg").webhook_id)
         self.assertRowNotExists(
-                "select * from webhooks where hookid = ?",
+                "select 1 from webhooks where hookid = ?",
                 (hookid,))
 
     # this function requires the existence of at least three ongoing wars
