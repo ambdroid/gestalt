@@ -40,6 +40,7 @@ class Prefs(enum.IntFlag):
 #   autoswap    = 1 << 2
     errors      = 1 << 3
     delay       = 1 << 4
+    latch       = 1 << 5
 
 
 @enum.unique
