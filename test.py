@@ -254,22 +254,22 @@ class GestaltTest(unittest.TestCase):
     def get_proxid(self, user, other):
         if type(other) != int:
             other = other.id
-        row = instance.cur.execute(
+        row = instance.fetchone(
                 "select proxid from proxies where (userid, extraid) = (?, ?)",
-                (user.id, other)).fetchone()
+                (user.id, other))
         return row[0] if row else None
 
     def get_collid(self, role):
-        row = instance.cur.execute(
+        row = instance.fetchone(
                 "select collid from collectives where roleid = ?",
-                (role.id,)).fetchone()
+                (role.id,))
         return row[0] if row else None
 
-    def assertRowExists(self, query, args = None):
-        self.assertIsNotNone(instance.cur.execute(query, args).fetchone())
+    def assertRowExists(self, *args):
+        self.assertIsNotNone(instance.fetchone(*args))
 
-    def assertRowNotExists(self, query, args = None):
-        self.assertIsNone(instance.cur.execute(query, args).fetchone())
+    def assertRowNotExists(self, *args):
+        self.assertIsNone(instance.fetchone(*args))
 
     def assertReacted(self, msg, reaction = gestalt.REACT_CONFIRM):
         self.assertEqual(msg.reactions[0].emoji, reaction)
@@ -591,22 +591,22 @@ class GestaltTest(unittest.TestCase):
         old = (alpha.name, alpha.discriminator)
         # first, make sure the existing entry is up to date
         # these are full name#discriminator, not just name
-        self.assertEqual(instance.cur.execute(
+        self.assertEqual(instance.fetchone(
             "select username from users where userid = ?",
-            (alpha.id,)).fetchone()[0], str(alpha))
+            (alpha.id,))[0], str(alpha))
         alpha.name = "changed name"
         # included for completeness, but shouldn't have relevant effects
         run(instance.on_member_update(None, g.get_member(alpha.id)))
         send(alpha, chan, "this should trigger an update")
-        self.assertEqual(instance.cur.execute(
+        self.assertEqual(instance.fetchone(
             "select username from users where userid = ?",
-            (alpha.id,)).fetchone()[0], str(alpha))
+            (alpha.id,))[0], str(alpha))
         alpha.discriminator = "9999"
         run(instance.on_member_update(None, g.get_member(alpha.id)))
         send(alpha, chan, "this should trigger an update")
-        self.assertEqual(instance.cur.execute(
+        self.assertEqual(instance.fetchone(
             "select username from users where userid = ?",
-            (alpha.id,)).fetchone()[0], str(alpha))
+            (alpha.id,))[0], str(alpha))
         # done, set things back
         (alpha.name, alpha.discriminator) = old
         run(instance.on_member_update(None, g.get_member(alpha.id)))

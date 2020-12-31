@@ -72,8 +72,8 @@ class GestaltCommands:
     async def cmd_debug(self, message):
         for table in ["users", "proxies", "collectives"]:
             await self.send_embed(message, "```%s```" % "\n".join(
-                ["|".join([str(i) for i in x]) for x in self.cur.execute(
-                    "select * from %s" % table).fetchall()]))
+                ["|".join([str(i) for i in x]) for x in self.fetchall(
+                    "select * from %s" % table)]))
 
 
     async def cmd_help(self, message):
@@ -121,12 +121,12 @@ class GestaltCommands:
 
 
     async def cmd_proxy_list(self, message):
-        rows = self.cur.execute(
+        rows = self.fetchall(
                 "select *,"
                 "(select nick from collectives where roleid = extraid) nick "
                 "from proxies where userid = ?"
                 "order by type asc",
-                (message.author.id,)).fetchall()
+                (message.author.id,))
 
         lines = []
         omit = False
@@ -162,8 +162,8 @@ class GestaltCommands:
     async def cmd_proxy_prefix(self, message, proxid, prefix):
         if prefix.replace("text","") == "":
             raise RuntimeError("Please provide a valid prefix.")
-        proxy = self.cur.execute("select * from proxies where proxid = ?",
-                (proxid,)).fetchone()
+        proxy = self.fetchone("select * from proxies where proxid = ?",
+                (proxid,))
         if proxy == None or proxy["userid"] != message.author.id:
             raise RuntimeError("You do not have a proxy with that ID.")
 
@@ -172,11 +172,11 @@ class GestaltCommands:
         if prefix.endswith("text"):
             prefix = prefix[:-4]
 
-        self.cur.execute(
+        self.execute(
             "update proxies set prefix = ? where proxid = ?",
             (prefix, proxy["proxid"]))
         if proxy["type"] != ProxyType.swap:
-            self.cur.execute(
+            self.execute(
                 "update proxies set active = 1 where proxid = ?",
                 (proxy["proxid"],))
 
@@ -184,28 +184,28 @@ class GestaltCommands:
 
 
     async def cmd_proxy_auto(self, message, proxid, val):
-        proxy = self.cur.execute("select * from proxies where proxid = ?",
-                (proxid,)).fetchone()
+        proxy = self.fetchone("select * from proxies where proxid = ?",
+                (proxid,))
         if proxy == None or proxy["userid"] != message.author.id:
             raise RuntimeError("You do not have a proxy with that ID.")
         if proxy["type"] == ProxyType.override:
             raise RuntimeError("You cannot autoproxy your override.")
 
         if val == None:
-            self.cur.execute(
+            self.execute(
                 "update proxies set auto = 1 - auto where proxid = ?",
                 (proxy["proxid"],))
         else:
-            self.cur.execute(
+            self.execute(
                 "update proxies set auto = ? where proxid = ?",
                 (val, proxy["proxid"]))
         await message.add_reaction(REACT_CONFIRM)
 
 
     async def cmd_collective_list(self, message):
-        rows = self.cur.execute(
+        rows = self.fetchall(
                 "select * from collectives where guildid = ?",
-                (message.guild.id,)).fetchall()
+                (message.guild.id,))
 
         if len(rows) == 0:
             text = "This guild does not have any collectives."
@@ -225,7 +225,7 @@ class GestaltCommands:
 
     async def cmd_collective_new(self, message, role):
         # new collective with name of role and no avatar
-        self.cur.execute("insert or ignore into collectives values"
+        self.execute("insert or ignore into collectives values"
                 "(?, ?, ?, ?, NULL)",
                 (self.gen_id(), message.guild.id, role.id, role.name))
         if self.cur.rowcount == 1:
@@ -234,7 +234,7 @@ class GestaltCommands:
 
 
     async def cmd_collective_update(self, message, collid, name, value):
-        self.cur.execute(
+        self.execute(
                 "update collectives set %s = ? "
                 "where collid = ?"
                 % ("nick" if name == "name" else "avatar"),
@@ -244,9 +244,8 @@ class GestaltCommands:
 
 
     async def cmd_collective_delete(self, message, coll):
-        self.cur.execute("delete from proxies where extraid = ?",
-                (coll["roleid"],))
-        self.cur.execute("delete from collectives where collid = ?",
+        self.execute("delete from proxies where extraid = ?", (coll["roleid"],))
+        self.execute("delete from collectives where collid = ?",
                 (coll["collid"],))
         if self.cur.rowcount == 1:
             await message.add_reaction(REACT_CONFIRM)
@@ -261,7 +260,7 @@ class GestaltCommands:
 
 
     async def cmd_prefs_default(self, message):
-        self.cur.execute(
+        self.execute(
                 "update users set prefs = ? where userid = ?",
                 (DEFAULT_PREFS, message.author.id))
         await message.add_reaction(REACT_CONFIRM)
@@ -273,7 +272,7 @@ class GestaltCommands:
             prefs = user["prefs"] ^ bit
         else:
             prefs = (user["prefs"] & ~bit) | (bit * value)
-        self.cur.execute(
+        self.execute(
                 "update users set prefs = ? where userid = ?",
                 (prefs, message.author.id))
 
@@ -282,7 +281,7 @@ class GestaltCommands:
 
     async def cmd_swap_open(self, message, member, prefix):
         # activate author->other swap
-        self.cur.execute("insert or ignore into proxies values"
+        self.execute("insert or ignore into proxies values"
                 # id, auth, guild, prefix, type, member, auto, active
                 "(?, ?, 0, ?, ?, ?, 0, 0)",
                 (self.gen_id(), message.author.id, prefix, ProxyType.swap,
@@ -294,7 +293,7 @@ class GestaltCommands:
 
 
     async def cmd_swap_close(self, message, swapname):
-        self.cur.execute(
+        self.execute(
                 "delete from proxies where "
                 "(userid, type) = (?, ?) and (? in (proxid, prefix))",
                 (message.author.id, ProxyType.swap, swapname))
@@ -376,10 +375,10 @@ class GestaltCommands:
             else: # arg is collective ID
                 collid = arg
                 action = reader.read_word().lower()
-                row = self.cur.execute(
+                row = self.fetchone(
                         "select * from collectives "
                         "where (collid, guildid) = (?, ?)",
-                        (collid, guild.id)).fetchone()
+                        (collid, guild.id))
                 if row == None:
                     raise RuntimeError(
                             "This guild has no collective with that ID.")
@@ -419,9 +418,9 @@ class GestaltCommands:
 
         elif arg == "prefs":
             # user must exist due to on_message
-            user = self.cur.execute(
+            user = self.fetchone(
                     "select * from users where userid = ?",
-                    (authid,)).fetchone()
+                    (authid,))
             arg = reader.read_word()
             if len(arg) == 0:
                 return await self.cmd_prefs_list(message, user)

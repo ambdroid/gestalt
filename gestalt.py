@@ -28,7 +28,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.conn = sqlite.connect(dbfile)
         self.conn.row_factory = sqlite.Row
         self.cur = self.conn.cursor()
-        self.cur.execute(
+        self.execute(
                 "create table if not exists history("
                 "msgid integer primary key,"
                 "chanid integer,"
@@ -36,17 +36,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "otherid text,"
                 "content text,"
                 "deleted integer)")
-        self.cur.execute(
+        self.execute(
                 "create table if not exists users("
                 "userid integer primary key,"
                 "username text,"
                 "prefs integer)")
-        self.cur.execute(
+        self.execute(
                 "create table if not exists webhooks("
                 "chanid integer primary key,"
                 "hookid integer,"
                 "token text)")
-        self.cur.execute(
+        self.execute(
                 "create table if not exists proxies("
                 "proxid text primary key,"  # of form 'abcde'
                 "userid integer,"
@@ -57,14 +57,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "auto integer,"             # 0/1
                 "active integer,"           # 0/1
                 "unique(userid, extraid))")
-        self.cur.execute(
+        self.execute(
                 # this is a no-op to kick in the update trigger
                 "create trigger if not exists proxy_prefix_conflict_insert "
                 "after insert on proxies begin "
                     "update proxies set prefix = new.prefix "
                     "where proxid = new.proxid"
                 "; end")
-        self.cur.execute(
+        self.execute(
                 "create trigger if not exists proxy_prefix_conflict_update "
                 "after update of prefix on proxies when (exists("
                     "select 1 from proxies where ("
@@ -88,7 +88,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 ")) begin select (raise(abort,"
                     "'That prefix conflicts with another proxy.'"
                 ")); end")
-        self.cur.execute(
+        self.execute(
                 # NB: this does not trigger if a proxy is inserted with auto = 1
                 # including "insert or replace"
                 "create trigger if not exists auto_exclusive "
@@ -113,14 +113,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # and updates the original (a,b) swap, resulting in both activated.
         # note that these won't work on other swaps because they rely on
         # extraid being a user id.
-        self.cur.execute(
+        self.execute(
                 "create trigger if not exists swap_active_insert "
                 "after insert on proxies begin "
                     "update proxies set active = 1 where ("
                         "(userid, extraid) = (new.extraid, new.userid)"
                     ");"
                 "end")
-        self.cur.execute(
+        self.execute(
                 "create trigger if not exists swap_active_update "
                 "after update of active on proxies begin "
                     "update proxies set active = 1 where ("
@@ -128,14 +128,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         "and (userid, extraid) = (new.extraid, new.userid)"
                     ");"
                 "end")
-        self.cur.execute(
+        self.execute(
                 "create trigger if not exists swap_delete "
                 "after delete on proxies begin "
                     "delete from proxies where ("
                         "(userid, extraid) = (old.extraid, old.userid)"
                     ");"
                 "end")
-        self.cur.execute(
+        self.execute(
                 "create table if not exists collectives("
                 "collid text primary key,"
                 "guildid integer,"
@@ -143,7 +143,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "nick text,"
                 "avatar text,"
                 "unique(guildid, roleid))")
-        self.cur.execute("pragma secure_delete")
+        self.execute("pragma secure_delete")
 
 
     def __del__(self):
@@ -156,6 +156,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def handler(self):
         self.loop.create_task(self.close())
         self.conn.commit()
+
+
+    def execute(self, *args): return self.cur.execute(*args)
+    def fetchone(self, *args): return self.cur.execute(*args).fetchone()
+    def fetchall(self, *args): return self.cur.execute(*args).fetchall()
 
 
     async def on_ready(self):
@@ -178,7 +183,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     @tasks.loop(seconds = PURGE_TIMEOUT)
     async def purge_loop(self):
         when = datetime.now() - timedelta(seconds = PURGE_AGE)
-        self.cur.execute("delete from history where deleted = 1 and msgid < ?",
+        self.execute("delete from history where deleted = 1 and msgid < ?",
                 # this function is undocumented for some reason?
                 (discord.utils.time_snowflake(when),))
         self.conn.commit()
@@ -190,7 +195,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
             await msg.add_reaction(REACT_DELETE)
-            self.cur.execute(
+            self.execute(
                     "insert into history values (?, 0, ?, 0, '', 0)",
                     (msg.id, replyto.author.id))
 
@@ -200,10 +205,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # this bit copied from PluralKit, Apache 2.0 license
             id = "".join(random.choices(string.ascii_lowercase, k=5))
             # IDs don't need to be globally unique but it can't hurt
-            exists = self.cur.execute(
+            exists = self.fetchone(
                     "select exists(select 1 from proxies where proxid = ?)"
                     "or exists(select 1 from collectives where collid = ?)",
-                    (id,) * 2).fetchone()[0]
+                    (id,) * 2)[0]
             if not exists:
                 return id
 
@@ -212,19 +217,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     # because users being added/removed from a role activates on_member_update()
     def sync_role(self, role):
         # is this role attached to a collective?
-        if (self.cur.execute("select 1 from collectives where roleid = ?",
-            (role.id,)).fetchone() == None):
+        if (self.fetchone("select 1 from collectives where roleid = ?",
+            (role.id,)) == None):
             return
 
         # is there anyone with the proxy who shouldn't?
-        rows = self.cur.execute("select * from proxies where extraid = ?",
-                (role.id,)).fetchall()
+        rows = self.fetchall("select * from proxies where extraid = ?",
+                (role.id,))
         # currently unused
         '''
         userids = [x.id for x in role.members]
         for row in rows:
             if row["userid"] not in userids:
-                self.cur.execute("delete from proxies where proxid = ?",
+                self.execute("delete from proxies where proxid = ?",
                         (proxy["proxid"],))
         '''
 
@@ -234,7 +239,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         for member in role.members:
             # don't just "insert or ignore"; gen_id() is expensive
             if member.id not in rows and not member.bot:
-                self.cur.execute(
+                self.execute(
                         # prefix = NULL, auto = 0, active = 0
                         "insert into proxies values "
                         "(?, ?, ?, NULL, ?, ?, 0, 0)",
@@ -249,24 +254,24 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         guild = member.guild
         # first, check if they have any proxies they shouldn't
         # right now, this only applies to collectives
-        rows = self.cur.execute(
+        rows = self.fetchall(
                 "select * from proxies "
                 "where (userid, guildid, type) = (?, ?, ?)",
-                (member.id, guild.id, ProxyType.collective)).fetchall()
+                (member.id, guild.id, ProxyType.collective))
         roleids = [x.id for x in member.roles]
         for row in rows:
             if row["extraid"] not in roleids:
-                self.cur.execute("delete from proxies where proxid = ?",
+                self.execute("delete from proxies where proxid = ?",
                         (row["proxid"],))
 
         # now check if they don't have any proxies they should
         # do this second; no need to check a proxy that's just been added
         for role in member.roles:
-            coll = self.cur.execute(
+            coll = self.fetchone(
                     "select 1 from collectives where roleid = ?",
-                    (role.id,)).fetchone()
+                    (role.id,))
             if coll != None:
-                self.cur.execute(
+                self.execute(
                     "insert or ignore into proxies values "
                     "(?, ?, ?, NULL, ?, ?, 0, 0)",
                     (self.gen_id(), member.id, guild.id,
@@ -275,7 +280,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def on_guild_role_delete(self, role):
         # no need to delete proxies; on_member_update takes care of that
-        self.cur.execute("delete from collectives where roleid = ?", (role.id,))
+        self.execute("delete from collectives where roleid = ?", (role.id,))
 
 
     async def on_member_update(self, before, after):
@@ -288,8 +293,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def do_proxy_collective(self, message, target, prefs, content):
-        present = self.cur.execute("select * from collectives where roleid = ?",
-                (target,)).fetchone()
+        present = self.fetchone("select * from collectives where roleid = ?",
+                (target,))
 
         if prefs & Prefs.replace:
             # do these in order (or else, e.g. "I'm" could become "We'm")
@@ -333,14 +338,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         # this should never loop infinitely but just in case
         for ignored in range(2):
-            row = self.cur.execute("select * from webhooks where chanid = ?",
-                    (channel.id,)).fetchone()
+            row = self.fetchone("select * from webhooks where chanid = ?",
+                    (channel.id,))
             if row == None:
                 try:
                     hook = await channel.create_webhook(name = WEBHOOK_NAME)
                 except discord.errors.Forbidden:
                     return # welp
-                self.cur.execute("insert into webhooks values (?, ?, ?)",
+                self.execute("insert into webhooks values (?, ?, ?)",
                         (channel.id, hook.id, hook.token))
             else:
                 hook = discord.Webhook.partial(row[1], row[2],
@@ -364,14 +369,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         file = msgfile)
             except discord.errors.NotFound:
                 # webhook is deleted. delete entry and return to top of loop
-                self.cur.execute("delete from webhooks where chanid = ?",
+                self.execute("delete from webhooks where chanid = ?",
                         (channel.id,))
                 continue
             else:
                 break
 
         # deleted = 0
-        self.cur.execute("insert into history values (?, ?, ?, ?, ?, 0)",
+        self.execute("insert into history values (?, ?, ?, ?, ?, 0)",
                 (msg.id, channel.id, authid, proxy["extraid"],
                     content if LOG_MESSAGE_CONTENT else ""))
 
@@ -389,19 +394,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             return
 
         authid = message.author.id
-        author = self.cur.execute(
+        author = self.fetchone(
                 "select * from users where userid = ?",
-                (authid,)).fetchone()
+                (authid,))
         if author == None:
-            self.cur.execute("insert into users values (?, ?, ?)",
+            self.execute("insert into users values (?, ?, ?)",
                     (authid, str(message.author), DEFAULT_PREFS))
-            self.cur.execute("insert into proxies values"
+            self.execute("insert into proxies values"
                     "(?, ?, 0, NULL, ?, 0, 0, 0)",
                     (self.gen_id(), authid, ProxyType.override))
             prefs = DEFAULT_PREFS
         else:
             if author["username"] != str(message.author):
-                self.cur.execute(
+                self.execute(
                         "update users set username = ? where userid = ?",
                         (str(message.author), authid))
             prefs = author["prefs"]
@@ -421,7 +426,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
-        match = self.cur.execute(
+        match = self.fetchone(
                 "select * from proxies where ("
                     "(userid = ?)"
                     "and (guildid in (0, ?))"
@@ -433,20 +438,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 # if message matches prefix for proxy A but proxy B is auto,
                 # A wins. therefore, rank the proxy with auto = 0 higher
                 ") order by auto asc limit 1",
-                (authid, message.guild.id, lower)).fetchone()
+                (authid, message.guild.id, lower))
 
         if match and match["active"]:
             latch = prefs & Prefs.latch and not match["auto"]
             if match["type"] == ProxyType.override:
                 if latch:
                     # override can't be auto'd so disable other autos instead
-                    self.cur.execute(
+                    self.execute(
                             "update proxies set auto = 0 "
                             "where auto = 1 and userid = ?",
                             (authid,))
             else:
                 if await self.do_proxy(message, match, prefs) and latch:
-                    self.cur.execute(
+                    self.execute(
                             "update proxies set auto = 1 where proxid = ?",
                             (match["proxid"],))
 
@@ -457,11 +462,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             return
 
         # first, make sure this is one of ours
-        row = self.cur.execute(
+        row = self.fetchone(
             "select authid,"
             "(select username from users where userid = authid) username "
             "from history where msgid = ?",
-            (payload.message_id,)).fetchone()
+            (payload.message_id,))
         if row == None:
             return
 
@@ -493,7 +498,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     return
                 # don't delete the entry immediately.
                 # purge_loop will take care of it later.
-                self.cur.execute(
+                self.execute(
                         "update history set deleted = 1 where msgid = ?",
                         (payload.message_id,))
             else:
