@@ -381,6 +381,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         except discord.errors.Forbidden:
             pass
 
+        return msg
+
 
     async def on_message(self, message):
         if message.type != discord.MessageType.default or message.author.bot:
@@ -434,7 +436,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 .fetchone())
 
         if match and match["type"] != ProxyType.override:
-            await self.do_proxy(message, match, prefs)
+            if (await self.do_proxy(message, match, prefs)
+                    and prefs & Prefs.latch and not match["auto"]):
+                self.cur.execute(
+                        "update proxies set auto = 1 where proxid = ?",
+                        (match["proxid"],))
 
 
     # on_reaction_add doesn't catch everything
