@@ -394,7 +394,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (authid,)).fetchone()
         if author == None:
             self.cur.execute("insert into users values (?, ?, ?)",
-                    (message.author.id, str(message.author), DEFAULT_PREFS))
+                    (authid, str(message.author), DEFAULT_PREFS))
             self.cur.execute("insert into proxies values"
                     "(?, ?, 0, NULL, ?, 0, 0, 0)",
                     (self.gen_id(), authid, ProxyType.override))
@@ -406,11 +406,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         (str(message.author), authid))
             prefs = author["prefs"]
 
+        lower = message.content.lower()
         # end of prefix or 0
-        offset = (len(COMMAND_PREFIX)
-                if message.content.lower().startswith(COMMAND_PREFIX) else 0)
+        offset = len(COMMAND_PREFIX) if lower.startswith(COMMAND_PREFIX) else 0
         # command prefix is optional in DMs
-        if offset != 0 or not message.guild:
+        if offset or not message.guild:
             # strip() so that e.g. "gs; help" works (helpful with autocorrect)
             try:
                 await self.do_command(message, message.content[offset:].strip())
@@ -421,7 +421,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
-        match = (self.cur.execute(
+        match = self.cur.execute(
                 "select * from proxies where ("
                     "(userid = ?)"
                     "and (guildid in (0, ?))"
@@ -433,8 +433,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 # if message matches prefix for proxy A but proxy B is auto,
                 # A wins. therefore, rank the proxy with auto = 0 higher
                 ") order by auto asc limit 1",
-                (message.author.id, message.guild.id, message.content.lower()))
-                .fetchone())
+                (authid, message.guild.id, lower)).fetchone()
 
         if match and match["active"]:
             latch = prefs & Prefs.latch and not match["auto"]
