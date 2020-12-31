@@ -436,12 +436,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (message.author.id, message.guild.id, message.content.lower()))
                 .fetchone())
 
-        if match and match["active"] and match["type"] != ProxyType.override:
-            if (await self.do_proxy(message, match, prefs)
-                    and prefs & Prefs.latch and not match["auto"]):
-                self.cur.execute(
-                        "update proxies set auto = 1 where proxid = ?",
-                        (match["proxid"],))
+        if match and match["active"]:
+            latch = prefs & Prefs.latch and not match["auto"]
+            if match["type"] == ProxyType.override:
+                if latch:
+                    # override can't be auto'd so disable other autos instead
+                    self.cur.execute(
+                            "update proxies set auto = 0 "
+                            "where auto = 1 and userid = ?",
+                            (authid,))
+            else:
+                if await self.do_proxy(message, match, prefs) and latch:
+                    self.cur.execute(
+                            "update proxies set auto = 1 where proxid = ?",
+                            (match["proxid"],))
 
 
     # on_reaction_add doesn't catch everything
