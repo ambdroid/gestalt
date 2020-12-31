@@ -586,6 +586,32 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, "gs;c %s avatar \"\"" % collid))
 
 
+    def test_username_change(self):
+        chan = g["main"]
+        old = (alpha.name, alpha.discriminator)
+        # first, make sure the existing entry is up to date
+        # these are full name#discriminator, not just name
+        self.assertEqual(instance.cur.execute(
+            "select username from users where userid = ?",
+            (alpha.id,)).fetchone()[0], str(alpha))
+        alpha.name = "changed name"
+        # included for completeness, but shouldn't have relevant effects
+        run(instance.on_member_update(None, g.get_member(alpha.id)))
+        send(alpha, chan, "this should trigger an update")
+        self.assertEqual(instance.cur.execute(
+            "select username from users where userid = ?",
+            (alpha.id,)).fetchone()[0], str(alpha))
+        alpha.discriminator = "9999"
+        run(instance.on_member_update(None, g.get_member(alpha.id)))
+        send(alpha, chan, "this should trigger an update")
+        self.assertEqual(instance.cur.execute(
+            "select username from users where userid = ?",
+            (alpha.id,)).fetchone()[0], str(alpha))
+        # done, set things back
+        (alpha.name, alpha.discriminator) = old
+        run(instance.on_member_update(None, g.get_member(alpha.id)))
+
+
 def main():
     global bot, alpha, beta, gamma, g, instance
 

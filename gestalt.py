@@ -400,7 +400,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         else:
             if author["username"] != str(message.author):
                 self.cur.execute(
-                        "update usres set username = ? where userid = ?",
+                        "update users set username = ? where userid = ?",
                         (str(message.author), authid))
             prefs = author["prefs"]
 
