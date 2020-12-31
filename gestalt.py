@@ -420,9 +420,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             return
 
         # this is where the magic happens
+        # inactive proxies get matched but only to bypass the current autoproxy
         match = (self.cur.execute(
                 "select * from proxies where ("
-                    "((userid, active) = (?, 1))"
+                    "(userid = ?)"
                     "and (guildid in (0, ?))"
                     # (prefix matches) XOR (autoproxy enabled)
                     "and ("
@@ -435,7 +436,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (message.author.id, message.guild.id, message.content.lower()))
                 .fetchone())
 
-        if match and match["type"] != ProxyType.override:
+        if match and match["active"] and match["type"] != ProxyType.override:
             if (await self.do_proxy(message, match, prefs)
                     and prefs & Prefs.latch and not match["auto"]):
                 self.cur.execute(
