@@ -281,7 +281,8 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(msg.reactions), 0)
 
 
-    def test_swaps(self):
+    # tests run in alphabetical order, so they are numbered to ensure order
+    def test_01_swaps(self):
         chan = g["main"]
 
         # alpha opens a swap with beta
@@ -338,7 +339,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(beta, chan, "sw no swap").webhook_id)
         self.assertIsNone(send(gamma, chan, "sww no swap").webhook_id)
 
-    def test_help(self):
+    def test_02_help(self):
         send(alpha, g["main"], "gs;help")
         msg = g["main"][-1]
         self.assertIsNotNone(msg.embed)
@@ -346,7 +347,7 @@ class GestaltTest(unittest.TestCase):
         run(msg._react(gestalt.REACT_DELETE, alpha))
         self.assertTrue(msg._deleted)
 
-    def test_add_delete_collective(self):
+    def test_03_add_delete_collective(self):
         # create an @everyone collective
         self.assertReacted(send(alpha, g["main"], "gs;c new \"everyone\""))
         # make sure it worked
@@ -389,7 +390,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(self.get_proxid(alpha, role))
         self.assertIsNone(self.get_collid(role))
 
-    def test_permissions(self):
+    def test_04_permissions(self):
         collid = self.get_collid(g.default_role)
         self.assertIsNotNone(collid)
         # beta does not have manage_roles permission; this should fail
@@ -404,7 +405,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(collid)
         self.assertNotReacted(send(beta, g["main"], "gs;c %s name test" % collid))
 
-    def test_prefix_auto(self):
+    def test_05_prefix_auto(self):
         # test every combo of auto, prefix, and also the switches thereof
         chan = g["main"]
         proxid = self.get_proxid(alpha, g.default_role)
@@ -433,9 +434,10 @@ class GestaltTest(unittest.TestCase):
                 send(alpha, chan, 'gs;p %s prefix "text"' % proxid))
 
         # test autoproxy without prefix
+        # also test proxies added on role add
         newrole = g._add_role("no prefix")
-        run(g.get_member(alpha.id)._add_role(newrole))
         self.assertReacted(send(alpha, chan, "gs;c new %s" % newrole.mention))
+        run(g.get_member(alpha.id)._add_role(newrole))
         proxid = self.get_proxid(alpha, newrole)
         self.assertIsNotNone(proxid)
         self.assertReacted(send(alpha, chan, "gs;p %s auto" % proxid))
@@ -443,7 +445,7 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, "gs;p %s auto off" % proxid))
         self.assertIsNone(send(alpha, chan, "no prefix, no auto").webhook_id)
 
-    def test_query_delete(self):
+    def test_06_query_delete(self):
         msg = send(alpha, g["main"], "e:reaction test")
         run(msg._react(gestalt.REACT_QUERY, beta))
         self.assertNotEqual(beta.dm_channel[-1].content.find(alpha.name), -1)
@@ -455,7 +457,7 @@ class GestaltTest(unittest.TestCase):
         run(msg._react(gestalt.REACT_DELETE, alpha))
         self.assertTrue(msg._deleted)
 
-    def test_webhook_shenanigans(self):
+    def test_07_webhook_shenanigans(self):
         # test what happens when a webhook is deleted
         hookid = send(alpha, g["main"], "e:reiuskudfvb").webhook_id
         self.assertIsNotNone(hookid)
@@ -469,7 +471,7 @@ class GestaltTest(unittest.TestCase):
                 (hookid,))
 
     # this function requires the existence of at least three ongoing wars
-    def test_global_conflicts(self):
+    def test_08_global_conflicts(self):
         g2 = Guild()
         g2._add_channel("main")
         run(g2._add_member(bot))
@@ -543,7 +545,7 @@ class GestaltTest(unittest.TestCase):
         # done. close the swap
         self.assertReacted(send(alpha, g["main"], "gs;swap close swap:"))
 
-    def test_override(self):
+    def test_09_override(self):
         overid = self.get_proxid(alpha, 0)
         # alpha has sent messages visible to bot by now, so should have one
         self.assertIsNotNone(overid)
@@ -564,7 +566,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(alpha, chan, "x: not proxied").webhook_id)
 
     # by far the most ominous test
-    def test_prefs_replacements(self):
+    def test_10_replacements(self):
         chan = g["main"]
         self.assertReacted(send(alpha, chan, "gs;prefs replace off"))
         msg = send(alpha, chan,
@@ -581,7 +583,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(msg.content,
                 "We are. We were. We're. We're. are We? We Us Our Ours.")
 
-    def test_avatar_url(self):
+    def test_11_avatar_url(self):
         chan = g["main"]
         collid = self.get_collid(g.default_role)
         self.assertReacted(send(alpha, chan,
@@ -599,8 +601,7 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, "gs;c %s avatar" % collid))
         self.assertReacted(send(alpha, chan, "gs;c %s avatar \"\"" % collid))
 
-
-    def test_username_change(self):
+    def test_12_username_change(self):
         chan = g["main"]
         old = (alpha.name, alpha.discriminator)
         # first, make sure the existing entry is up to date
@@ -624,6 +625,17 @@ class GestaltTest(unittest.TestCase):
         # done, set things back
         (alpha.name, alpha.discriminator) = old
         run(instance.on_member_update(None, g.get_member(alpha.id)))
+
+    def test_13_latch(self):
+        chan = g["main"]
+        self.assertReacted(send(alpha, chan, "gs;prefs latch"))
+        self.assertIsNone(send(alpha, chan, "no proxy, no auto").webhook_id)
+        self.assertIsNotNone(send(alpha, chan, "e: proxy, no auto").webhook_id)
+        self.assertIsNotNone(send(alpha, chan, "no proxy, auto").webhook_id)
+        self.assertIsNone(send(alpha, chan, "e: proxy, auto").webhook_id)
+        self.assertIsNone(send(alpha, chan, "x: override").webhook_id)
+        self.assertIsNone(send(alpha, chan, "no proxy, no auto").webhook_id)
+        self.assertReacted(send(alpha, chan, "gs;prefs latch off"))
 
 
 def main():

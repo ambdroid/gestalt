@@ -289,7 +289,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             if coll != None:
                 self.execute(
                     "insert or ignore into proxies values "
-                    "(?, ?, ?, NULL, ?, ?, 0, 0)",
+                    "(?, ?, ?, NULL, ?, ?, 0, 1)",
                     (self.gen_id(), member.id, guild.id,
                         ProxyType.collective, role.id))
 
@@ -415,7 +415,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.execute("insert into users values (?, ?, ?)",
                     (authid, str(message.author), DEFAULT_PREFS))
             self.execute("insert into proxies values"
-                    "(?, ?, 0, NULL, ?, 0, 0, 0)",
+                    "(?, ?, 0, NULL, ?, 0, 0, 1)",
                     (self.gen_id(), authid, ProxyType.override))
             prefs = DEFAULT_PREFS
         else:
