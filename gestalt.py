@@ -256,9 +256,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # don't just "insert or ignore"; gen_id() is expensive
             if member.id not in rows and not member.bot:
                 self.execute(
-                        # prefix = NULL, auto = 0, active = 0
+                        # prefix = NULL, auto = 0, active = 1
                         "insert into proxies values "
-                        "(?, ?, ?, NULL, ?, ?, 0, 0)",
+                        "(?, ?, ?, NULL, ?, ?, 0, 1)",
                         (self.gen_id(), member.id, role.guild.id,
                             ProxyType.collective, role.id))
 
@@ -446,8 +446,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     "and (guildid in (0, ?))"
                     # (prefix matches) XOR (autoproxy enabled)
                     "and ("
-                        "(substr(?,0,length(prefix)+1) == prefix)"
-                        "== (auto == 0)"
+                        "("
+                            "(prefix not NULL)"
+                            "and (substr(?,0,length(prefix)+1) == prefix)"
+                        ") == (auto == 0)"
                     ")"
                 # if message matches prefix for proxy A but proxy B is auto,
                 # A wins. therefore, rank the proxy with auto = 0 higher

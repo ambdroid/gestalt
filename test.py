@@ -432,6 +432,17 @@ class GestaltTest(unittest.TestCase):
         self.assertNotReacted(
                 send(alpha, chan, 'gs;p %s prefix "text"' % proxid))
 
+        # test autoproxy without prefix
+        newrole = g._add_role("no prefix")
+        run(g.get_member(alpha.id)._add_role(newrole))
+        self.assertReacted(send(alpha, chan, "gs;c new %s" % newrole.mention))
+        proxid = self.get_proxid(alpha, newrole)
+        self.assertIsNotNone(proxid)
+        self.assertReacted(send(alpha, chan, "gs;p %s auto" % proxid))
+        self.assertIsNotNone(send(alpha, chan, "no prefix, auto").webhook_id)
+        self.assertReacted(send(alpha, chan, "gs;p %s auto off" % proxid))
+        self.assertIsNone(send(alpha, chan, "no prefix, no auto").webhook_id)
+
     def test_query_delete(self):
         msg = send(alpha, g["main"], "e:reaction test")
         run(msg._react(gestalt.REACT_QUERY, beta))
