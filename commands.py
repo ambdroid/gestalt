@@ -180,7 +180,7 @@ class GestaltCommands:
                 "update proxies set active = 1 where proxid = ?",
                 (proxy["proxid"],))
 
-        await message.add_reaction(REACT_CONFIRM)
+        await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_proxy_auto(self, message, proxid, val):
@@ -199,7 +199,7 @@ class GestaltCommands:
             self.execute(
                 "update proxies set auto = ? where proxid = ?",
                 (val, proxy["proxid"]))
-        await message.add_reaction(REACT_CONFIRM)
+        await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_collective_list(self, message):
@@ -230,7 +230,7 @@ class GestaltCommands:
                 (self.gen_id(), message.guild.id, role.id, role.name))
         if self.cur.rowcount == 1:
             self.sync_role(role)
-            await message.add_reaction(REACT_CONFIRM)
+            await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_collective_update(self, message, collid, name, value):
@@ -240,7 +240,7 @@ class GestaltCommands:
                 % ("nick" if name == "name" else "avatar"),
                 (value, collid))
         if self.cur.rowcount == 1:
-            await message.add_reaction(REACT_CONFIRM)
+            await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_collective_delete(self, message, coll):
@@ -248,7 +248,7 @@ class GestaltCommands:
         self.execute("delete from collectives where collid = ?",
                 (coll["collid"],))
         if self.cur.rowcount == 1:
-            await message.add_reaction(REACT_CONFIRM)
+            await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_prefs_list(self, message, user):
@@ -263,7 +263,7 @@ class GestaltCommands:
         self.execute(
                 "update users set prefs = ? where userid = ?",
                 (DEFAULT_PREFS, message.author.id))
-        await message.add_reaction(REACT_CONFIRM)
+        await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_prefs_update(self, message, user, name, value):
@@ -276,7 +276,7 @@ class GestaltCommands:
                 "update users set prefs = ? where userid = ?",
                 (prefs, message.author.id))
 
-        await message.add_reaction(REACT_CONFIRM)
+        await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_swap_open(self, message, member, prefix):
@@ -289,7 +289,7 @@ class GestaltCommands:
         # triggers will take care of activation if necessary
 
         if self.cur.rowcount == 1:
-            await message.add_reaction(REACT_CONFIRM)
+            await self.try_add_reaction(message, REACT_CONFIRM)
 
 
     async def cmd_swap_close(self, message, swapname):
@@ -298,7 +298,7 @@ class GestaltCommands:
                 "(userid, type) = (?, ?) and (? in (proxid, prefix))",
                 (message.author.id, ProxyType.swap, swapname))
         if self.cur.rowcount:
-            await message.add_reaction(REACT_CONFIRM)
+            await self.try_add_reaction(message, REACT_CONFIRM)
         return bool(self.cur.rowcount)
 
 

@@ -68,6 +68,9 @@ class Member:
     def display_name(self): return self.user.name
     def avatar_url_as(self, **kwargs):
         return "http://avatar.png" # who gives a damn
+    def permissions_in(self, channel):
+        # TODO need channel-level permissions
+        return self.guild_permissions
 
 
 class Message(Object):

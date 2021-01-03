@@ -163,6 +163,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def fetchall(self, *args): return self.cur.execute(*args).fetchall()
 
 
+    def has_perm(self, message, **kwargs):
+        if not message.guild:
+            return True
+        # ClientUser.permissions_in() is broken for some reason
+        member = message.guild.get_member(self.user.id)
+        return discord.Permissions(**kwargs).is_subset(
+                member.permissions_in(message.channel))
+
+
     async def on_ready(self):
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
@@ -189,12 +198,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.conn.commit()
 
 
+    async def try_add_reaction(self, message, reaction):
+        if self.has_perm(message, add_reactions = True):
+            await message.add_reaction(reaction)
+
+
     async def send_embed(self, replyto, text):
+        if not self.has_perm(replyto, send_messages = True):
+            return
         msg = await replyto.channel.send(
                 embed = discord.Embed(description = text))
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
-            await msg.add_reaction(REACT_DELETE)
+            await self.try_add_reaction(msg, REACT_DELETE)
             self.execute(
                     "insert into history values (?, 0, ?, 0, '', 0)",
                     (msg.id, replyto.author.id))
@@ -341,10 +357,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             row = self.fetchone("select * from webhooks where chanid = ?",
                     (channel.id,))
             if row == None:
-                try:
+                if self.has_perm(message, manage_webhooks = True):
                     hook = await channel.create_webhook(name = WEBHOOK_NAME)
-                except discord.errors.Forbidden:
-                    return # welp
+                else:
+                    return await self.send_embed(message,
+                            "I need `Manage Webhooks` permission to proxy.")
                 self.execute("insert into webhooks values (?, ?, ?)",
                         (channel.id, hook.id, hook.token))
             else:
@@ -380,11 +397,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (msg.id, channel.id, authid, proxy["extraid"],
                     content if LOG_MESSAGE_CONTENT else ""))
 
-        try:
-            delay = DELETE_DELAY if prefs & Prefs.delay else None
-            await message.delete(delay = delay)
-        except discord.errors.Forbidden:
-            pass
+        delay = DELETE_DELAY if prefs & Prefs.delay else None
+        await message.delete(delay = delay)
 
         return msg
 
@@ -450,10 +464,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                             "where auto = 1 and userid = ?",
                             (authid,))
             else:
-                if await self.do_proxy(message, match, prefs) and latch:
-                    self.execute(
-                            "update proxies set auto = 1 where proxid = ?",
-                            (match["proxid"],))
+                if self.has_perm(message, manage_messages = True):
+                    if await self.do_proxy(message, match, prefs) and latch:
+                        self.execute(
+                                "update proxies set auto = 1 where proxid = ?",
+                                (match["proxid"],))
+                else:
+                    await self.send_embed(message,
+                            "I need `Manage Messages` permission to proxy.")
 
 
     # on_reaction_add doesn't catch everything
@@ -492,20 +510,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         elif emoji == REACT_DELETE:
             # only sender may delete proxied message
             if payload.user_id == row["authid"]:
-                try:
+                if self.has_perm(message, manage_messages = True):
                     await message.delete()
-                except discord.errors.Forbidden:
-                    return
+                else:
+                    await self.send_embed(message,
+                            "I can't delete messages here.")
                 # don't delete the entry immediately.
                 # purge_loop will take care of it later.
                 self.execute(
                         "update history set deleted = 1 where msgid = ?",
                         (payload.message_id,))
             else:
-                try:
+                if self.has_perm(message, manage_messages = True):
                     await message.remove_reaction(emoji, reactor)
-                except discord.errors.Forbidden:
-                    pass
 
 
 
