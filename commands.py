@@ -138,18 +138,20 @@ class GestaltCommands:
                 continue
             line = "`%s`" % proxy["proxid"]
             if proxy["type"] == ProxyType.override:
-                line += ("%s prefix **%s**"
-                        %(SYMBOL_OVERRIDE, escape(proxy["prefix"])))
+                line += SYMBOL_OVERRIDE
             elif proxy["type"] == ProxyType.swap:
-                line += ("%s with **%s** prefix **%s**"
-                        % (SYMBOL_SWAP, escape(self.get_user(proxy["extraid"])),
-                            escape(proxy["prefix"])))
+                line += ("%s with **%s**"
+                        % (SYMBOL_SWAP,
+                            escape(self.get_user(proxy["extraid"]))))
             elif proxy["type"] == ProxyType.collective:
                 guild = self.get_guild(proxy["guildid"])
-                line += ("%s **%s** on **%s** in **%s** prefix **%s**"
+                line += ("%s **%s** on **%s** in **%s**"
                         % (SYMBOL_COLLECTIVE, escape(proxy["nick"]),
                             escape(guild.get_role(proxy["extraid"]).name),
-                            escape(guild.name), escape(proxy["prefix"])))
+                            escape(guild.name)))
+            # hack because escaping ` doesn't work in code blocks
+            line += (" prefix `%s`"
+                    % str(proxy["prefix"]).replace("`", "\N{REVERSED PRIME}"))
             if proxy["active"] == 0:
                 line += " *(inactive)*"
             lines.append(line)
