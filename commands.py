@@ -154,6 +154,8 @@ class GestaltCommands:
                     % str(proxy["prefix"]).replace("`", "\N{REVERSED PRIME}"))
             if proxy["active"] == 0:
                 line += " *(inactive)*"
+            if proxy["auto"] == 1:
+                line += " auto **on**"
             lines.append(line)
 
         if omit:
