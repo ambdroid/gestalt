@@ -60,7 +60,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.execute(
                 # this is a no-op to kick in the update trigger
                 "create trigger if not exists proxy_prefix_conflict_insert "
-                "after insert on proxies begin "
+                "after insert on proxies when new.prefix not NULL begin "
                     "update proxies set prefix = new.prefix "
                     "where proxid = new.proxid"
                 "; end")
