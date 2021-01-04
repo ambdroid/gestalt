@@ -40,12 +40,6 @@ class CommandReader:
         self.cmd = match.string[len(match[0]):].strip()
         return match[0][1:-1]
 
-    def read_quote_reverse(self):
-        self.cmd = self.cmd[::-1]
-        ret = self.read_quote()[::-1]
-        self.cmd = self.cmd[::-1]
-        return ret
-
     def read_bool_int(self):
         word = self.read_word().lower()
         if word in CommandReader.BOOL_KEYWORDS:
@@ -58,14 +52,23 @@ class CommandReader:
         self.cmd = ""
         return ret
 
+    # discord.ext includes a MemberConverter
+    # but that's only available whem using discord.ext Command
+    def read_member(self):
+        # even if the member is in a mention, consume the text of the mention
+        name = self.read_quote()
+        if self.msg.mentions:
+            return self.msg.mentions[0]
+        return self.msg.guild.get_member_named(name)
+
     def read_role(self):
+        name = self.read_quote()
         if self.msg.role_mentions:
             return self.msg.role_mentions[0]
         guild = self.msg.guild
-        rolename = self.read_quote()
-        if rolename == "everyone":
+        if name == "everyone":
             return guild.default_role
-        return discord.utils.get(guild.roles, name = rolename)
+        return discord.utils.get(guild.roles, name = name)
 
 
 class GestaltCommands:
@@ -450,18 +453,10 @@ class GestaltCommands:
                 if not message.guild:
                     raise RuntimeError(ERROR_DM)
 
-                prefix = reader.read_quote_reverse().lower()
-                membername = reader.read_remainder()
-
-                # discord.ext includes a MemberConverter
-                # but that's only available whem using discord.ext Command
-                member = (message.mentions[0] if len(message.mentions) > 0 else
-                        message.channel.guild.get_member_named(membername))
+                member = reader.read_member()
                 if member == None:
                     raise RuntimeError("User not found.")
-                if membername == "": # prefix absorbed member name
-                    raise RuntimeError(
-                            "Please provide a prefix after the user.")
+                prefix = reader.read_quote() or None
 
                 if member.id == self.user.id:
                     raise RuntimeError(ERROR_BLURSED)

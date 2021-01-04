@@ -77,6 +77,7 @@ class Message(Object):
     def __init__(self, **kwargs):
         self._deleted = False
         self.mentions = []
+        self.raw_mentions = []
         self.role_mentions = []
         self.webhook_id = None
         self.attachments = []
@@ -87,7 +88,7 @@ class Message(Object):
         if self.content != None:
             # mentions can also be in the embed but that's irrelevant here
             for mention in re.findall("(?<=\<\@\!)[0-9]+(?=\>)", self.content):
-                self.mentions.append(User.users[int(mention)])
+                self.raw_mentions.append(int(mention))
             for mention in re.findall("(?<=\<\@\&)[0-9]+(?=\>)", self.content):
                 self.role_mentions.append(Role.roles[int(mention)])
     async def delete(self, delay = None):
@@ -154,6 +155,8 @@ class Channel(Object):
             msg.guild = self.guild
             if not msg.author.id in Webhook.hooks:
                 msg.author = self.guild.get_member(msg.author.id)
+            for userid in msg.raw_mentions:
+                msg.mentions.append(msg.guild.get_member(userid))
         self._messages.append(msg)
         await instance.on_message(msg)
     async def create_webhook(self, name):
