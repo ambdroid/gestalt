@@ -406,7 +406,20 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, g["main"], "gs;c new %s" % role.mention))
         collid = self.get_collid(role)
         self.assertIsNotNone(collid)
-        self.assertNotReacted(send(beta, g["main"], "gs;c %s name test" % collid))
+        self.assertNotReacted(
+                send(beta, g["main"], "gs;c %s name test" % collid))
+
+        # users shouldn't be able to change another's proxy
+        alphaid = self.get_proxid(alpha, g.default_role)
+        betaid = self.get_proxid(beta, g.default_role)
+        self.assertNotReacted(
+                send(alpha, g["main"], "gs;p %s auto on" % betaid))
+        self.assertNotReacted(
+                send(beta, g["main"], "gs;p %s prefix no:" % alphaid))
+        # also, override can't be auto'd
+        overid = self.get_proxid(alpha, 0)
+        self.assertNotReacted(
+                send(alpha, g["main"], "gs;p %s auto on" % overid))
 
     def test_05_prefix_auto(self):
         # test every combo of auto, prefix, and also the switches thereof
