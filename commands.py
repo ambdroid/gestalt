@@ -167,45 +167,39 @@ class GestaltCommands:
 
 
     async def cmd_proxy_prefix(self, message, proxid, prefix):
-        if prefix.replace("text","") == "":
-            raise RuntimeError("Please provide a valid prefix.")
-        proxy = self.fetchone("select * from proxies where proxid = ?",
-                (proxid,))
-        if proxy == None or proxy["userid"] != message.author.id:
+        exists = self.fetchone(
+                "select 1 from proxies where (userid, proxid) = (?, ?)",
+                (message.author.id, proxid))
+        if not exists:
             raise RuntimeError("You do not have a proxy with that ID.")
 
-        prefix = prefix.lower()
         # adapt PluralKit [text] prefix/postfix format
-        if prefix.endswith("text"):
-            prefix = prefix[:-4]
+        prefix = prefix.lower().split("text")[0]
+        if not prefix:
+            raise RuntimeError("Please provide a valid prefix.")
 
         self.execute(
             "update proxies set prefix = ? where proxid = ?",
-            (prefix, proxy["proxid"]))
-        if proxy["type"] != ProxyType.swap:
-            self.execute(
-                "update proxies set active = 1 where proxid = ?",
-                (proxy["proxid"],))
+            (prefix, proxid))
 
         await self.try_add_reaction(message, REACT_CONFIRM)
 
 
-    async def cmd_proxy_auto(self, message, proxid, val):
-        proxy = self.fetchone("select * from proxies where proxid = ?",
-                (proxid,))
-        if proxy == None or proxy["userid"] != message.author.id:
+    async def cmd_proxy_auto(self, message, proxid, auto):
+        proxy = self.fetchone(
+                "select * from proxies where (userid, proxid) = (?, ?)",
+                (message.author.id, proxid))
+        if proxy == None:
             raise RuntimeError("You do not have a proxy with that ID.")
         if proxy["type"] == ProxyType.override:
             raise RuntimeError("You cannot autoproxy your override.")
 
-        if val == None:
-            self.execute(
-                "update proxies set auto = 1 - auto where proxid = ?",
-                (proxy["proxid"],))
-        else:
-            self.execute(
+        if auto == None:
+            auto = 1 - proxy["auto"]
+        self.execute(
                 "update proxies set auto = ? where proxid = ?",
-                (val, proxy["proxid"]))
+                (auto, proxid))
+
         await self.try_add_reaction(message, REACT_CONFIRM)
 
 
