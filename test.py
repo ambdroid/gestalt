@@ -658,6 +658,12 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(alpha, chan, "no proxy, no auto").webhook_id)
         self.assertReacted(send(alpha, chan, "gs;prefs latch off"))
 
+    # test member joining when the guild has an @everyone collective
+    def test_14_member_join(self):
+        user = User(name = "test-joining")
+        run(g._add_member(user))
+        self.assertIsNotNone(self.get_proxid(user, g.default_role))
+
 
 def main():
     global bot, alpha, beta, gamma, g, instance
