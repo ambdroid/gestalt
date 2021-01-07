@@ -49,15 +49,20 @@ class Member:
         (self.user, self.guild, self.guild_permissions) = (user, guild, perms)
         self.roles = []
     def __str__(self): return str(self.user)
-    # TODO: update this if before starts being used
+    def _copy(self):
+        copy = Member(self.user, self.guild, self.guild_permissions)
+        copy.roles = self.roles[:]
+        return copy
     async def _add_role(self, role):
+        before = self._copy()
         self.roles.append(role)
         role.members.append(self)
-        await instance.on_member_update(None, self)
+        await instance.on_member_update(before, self)
     async def _del_role(self, role):
+        before = self._copy()
         self.roles.remove(role)
         role.remove(self)
-        await instance.on_member_update(None, self)
+        await instance.on_member_update(before, self)
     @property
     def id(self): return self.user.id
     @property
@@ -218,8 +223,9 @@ class Guild(Object):
         # event order observed experimentally
         # discord.py doesn't document these things
         for member in role.members:
+            before = member._copy()
             member.roles.remove(role)
-            await instance.on_member_update(None, member)
+            await instance.on_member_update(before, member)
         del self._roles[role.id]
         await instance.on_guild_role_delete(role)
     async def _add_member(self, user, perms = discord.Permissions.all()):
@@ -626,21 +632,20 @@ class GestaltTest(unittest.TestCase):
             "select username from users where userid = ?",
             (alpha.id,))[0], str(alpha))
         alpha.name = "changed name"
-        # included for completeness, but shouldn't have relevant effects
-        run(instance.on_member_update(None, g.get_member(alpha.id)))
+        # run(instance.on_member_update(None, g.get_member(alpha.id)))
         send(alpha, chan, "this should trigger an update")
         self.assertEqual(instance.fetchone(
             "select username from users where userid = ?",
             (alpha.id,))[0], str(alpha))
         alpha.discriminator = "9999"
-        run(instance.on_member_update(None, g.get_member(alpha.id)))
+        # run(instance.on_member_update(None, g.get_member(alpha.id)))
         send(alpha, chan, "this should trigger an update")
         self.assertEqual(instance.fetchone(
             "select username from users where userid = ?",
             (alpha.id,))[0], str(alpha))
         # done, set things back
         (alpha.name, alpha.discriminator) = old
-        run(instance.on_member_update(None, g.get_member(alpha.id)))
+        # run(instance.on_member_update(None, g.get_member(alpha.id)))
 
     def test_13_latch(self):
         chan = g["main"]

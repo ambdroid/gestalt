@@ -263,35 +263,21 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                             ProxyType.collective, role.id))
 
 
-    def sync_member(self, member):
-        if member.bot:
-            return
+    def on_member_role_add(self, member, role):
+        coll = self.fetchone(
+                "select 1 from collectives where roleid = ?",
+                (role.id,))
+        if coll:
+            self.execute(
+                "insert or ignore into proxies values "
+                "(?, ?, ?, NULL, ?, ?, 0, 1)",
+                (self.gen_id(), member.id, member.guild.id,
+                    ProxyType.collective, role.id))
 
-        guild = member.guild
-        # first, check if they have any proxies they shouldn't
-        # right now, this only applies to collectives
-        rows = self.fetchall(
-                "select * from proxies "
-                "where (userid, guildid, type) = (?, ?, ?)",
-                (member.id, guild.id, ProxyType.collective))
-        roleids = [x.id for x in member.roles]
-        for row in rows:
-            if row["extraid"] not in roleids:
-                self.execute("delete from proxies where proxid = ?",
-                        (row["proxid"],))
 
-        # now check if they don't have any proxies they should
-        # do this second; no need to check a proxy that's just been added
-        for role in member.roles:
-            coll = self.fetchone(
-                    "select 1 from collectives where roleid = ?",
-                    (role.id,))
-            if coll != None:
-                self.execute(
-                    "insert or ignore into proxies values "
-                    "(?, ?, ?, NULL, ?, ?, 0, 1)",
-                    (self.gen_id(), member.id, guild.id,
-                        ProxyType.collective, role.id))
+    def on_member_role_remove(self, member, role):
+        self.execute("delete from proxies where (userid, extraid) = (?, ?)",
+                (member.id, role.id))
 
 
     async def on_guild_role_delete(self, role):
@@ -300,12 +286,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_member_update(self, before, after):
-        self.sync_member(after)
+        if after.bot:
+            return
+        if len(before.roles) != len(after.roles):
+            role = list(set(before.roles) ^ set(after.roles))[0]
+            if role in after.roles:
+                self.on_member_role_add(after, role)
+            else:
+                self.on_member_role_remove(after, role)
 
 
     # add @everyone collective, if necessary
     async def on_member_join(self, member):
-        self.sync_member(member)
+        if not member.bot:
+            self.on_member_role_add(member, member.guild.default_role)
 
 
     def do_proxy_collective(self, message, target, prefs, content):
