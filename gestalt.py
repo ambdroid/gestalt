@@ -229,40 +229,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 return id
 
 
-    # this is called manually in do_command(), not attached to an event
-    # because users being added/removed from a role activates on_member_update()
-    def sync_role(self, role):
-        # is this role attached to a collective?
-        if (self.fetchone("select 1 from collectives where roleid = ?",
-            (role.id,)) == None):
-            return
-
-        # is there anyone with the proxy who shouldn't?
-        rows = self.fetchall("select * from proxies where extraid = ?",
-                (role.id,))
-        # currently unused
-        '''
-        userids = [x.id for x in role.members]
-        for row in rows:
-            if row["userid"] not in userids:
-                self.execute("delete from proxies where proxid = ?",
-                        (proxy["proxid"],))
-        '''
-
-        # is there anyone without the proxy who should?
-        # do this second; no need to check a proxy that's just been added
-        rows = [x["userid"] for x in rows]
-        for member in role.members:
-            # don't just "insert or ignore"; gen_id() is expensive
-            if member.id not in rows and not member.bot:
-                self.execute(
-                        # prefix = NULL, auto = 0, active = 1
-                        "insert into proxies values "
-                        "(?, ?, ?, NULL, ?, ?, 0, 1)",
-                        (self.gen_id(), member.id, role.guild.id,
-                            ProxyType.collective, role.id))
-
-
     def on_member_role_add(self, member, role):
         coll = self.fetchone(
                 "select 1 from collectives where roleid = ?",

@@ -228,9 +228,18 @@ class GestaltCommands:
         # new collective with name of role and no avatar
         self.execute("insert or ignore into collectives values"
                 "(?, ?, ?, ?, NULL)",
-                (self.gen_id(), message.guild.id, role.id, role.name))
+                (self.gen_id(), role.guild.id, role.id, role.name))
+        # if there wasn't already a collective on that role
         if self.cur.rowcount == 1:
-            self.sync_role(role)
+            for member in role.members:
+                if not member.bot:
+                    self.execute(
+                            # prefix = NULL, auto = 0, active = 1
+                            "insert into proxies values "
+                            "(?, ?, ?, NULL, ?, ?, 0, 1)",
+                            (self.gen_id(), member.id, role.guild.id,
+                                ProxyType.collective, role.id))
+
             await self.try_add_reaction(message, REACT_CONFIRM)
 
 
