@@ -100,7 +100,7 @@ class GestaltCommands:
 
         memberauth = guild.get_member(message.author.id)
         memberbot = guild.get_member(self.user.id)
-        text = "**%s**:\n" % guild.name
+        lines = ["**%s**:" % guild.name]
         noaccess = False
         for chan in guild.text_channels:
             if not memberauth.permissions_in(chan).view_channel:
@@ -116,11 +116,11 @@ class GestaltCommands:
             if "read_messages" in errors:
                 errors = ["read_messages"]
             errors = REACT_CONFIRM if errors == [] else ", ".join(errors)
-            text += "`#%s`: %s\n" % (chan.name, errors)
+            lines.append("`#%s`: %s" % (chan.name, errors))
 
         if noaccess:
-            text += "Some channels you can't see are omitted."
-        await self.send_embed(message, text)
+            lines.append("Some channels you can't see are omitted.")
+        await self.send_embed(message, "\n".join(lines))
 
 
     async def cmd_proxy_list(self, message):
