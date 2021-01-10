@@ -321,9 +321,6 @@ class GestaltCommands:
         arg = reader.read_word().lower()
         authid = message.author.id
 
-        if arg == "debug":
-            return await self.cmd_debug(message)
-
         if arg == "help":
             return await self.cmd_help(message)
 
@@ -476,4 +473,7 @@ class GestaltCommands:
                 if not await self.cmd_swap_close(message, swapname):
                     raise RuntimeError(
                             "You do not have a swap with that ID or prefix.")
+
+        elif CMD_DEBUG and arg == "debug":
+            return await self.cmd_debug(message)
 

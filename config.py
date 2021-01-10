@@ -1,4 +1,5 @@
 DEFAULT_DB = "gestalt.db"
+CMD_DEBUG = False
 LOG_MESSAGE_CONTENT = True
 
 DELETE_DELAY = 0.4
