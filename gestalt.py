@@ -67,12 +67,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "; end")
         self.execute(
                 "create trigger if not exists proxy_tags_conflict_update "
-                "after update of prefix, postfix on proxies when (exists("
+                "after update of prefix, postfix on proxies when exists("
                     "select 1 from proxies where ("
                         "("
-                            "prefix not NULL"
-                        ") and ("
                             "userid == new.userid"
+                        ") and ("
+                            "prefix not NULL"
                         ") and ("
                             "proxid != new.proxid"
                         ") and ("
@@ -88,26 +88,27 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                                 ")"
                             ")"
                         ") and ("
-                            # prefix matches
-                            # use instr(); we can afford to be a bit slower here
                             "("
-                                "instr(prefix, new.prefix) == 1"
+                                "("
+                                    "substr(new.prefix, 1, length(prefix))"
+                                    "== prefix"
+                                ") and ("
+                                    "substr(new.postfix||'_',-1,"
+                                    "-length(postfix)) == postfix"
+                                ")"
                             ") or ("
-                                "instr(new.prefix, prefix) == 1"
-                            ")"
-                        ") and ("
-                            # postfix matches
-                            "("
-                                "instr(postfix, new.postfix)"
-                                "== 1 + length(postfix) - length(new.postfix)"
-                            ") or ("
-                                "instr(new.postfix, postfix)"
-                                "== 1 + length(new.postfix) - length(postfix)"
+                                "("
+                                    "substr(prefix, 1, length(new.prefix))"
+                                    "== new.prefix"
+                                ") and ("
+                                    "substr(postfix||'_',-1,"
+                                    "-length(new.postfix)) == new.postfix"
+                                ")"
                             ")"
                         ")"
                     ")"
                 # this exception will be passed to the user
-                ")) begin select (raise(abort,"
+                ") begin select (raise(abort,"
                     "'Those tags conflict with another proxy.'"
                 ")); end")
         self.execute(
@@ -437,7 +438,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                                 "substr(?,1,length(prefix)) == prefix"
                             ") and ("
                                 # 'abcd'[-1] == 'c', so add another character
-                                "substr(?||' ',-1,-length(postfix)) == postfix"
+                                "substr(?||'_',-1,-length(postfix)) == postfix"
                             ") and ("
                                 # prevent #text# from matching #
                                 "length(?) >= length(prefix) + length(postfix)"

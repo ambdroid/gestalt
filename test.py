@@ -561,29 +561,63 @@ class GestaltTest(unittest.TestCase):
         self.assertNotEqual(
                 send(alpha, g["main"], "swap has auto").author.name.index(
                     beta.name), -1)
-        # test other tag conflicts
-        self.assertNotReacted(
-                send(alpha, g["main"], "gs;p %s tags swtext" % proxfirst))
-        self.assertNotReacted(
-                send(alpha, g["main"], "gs;p %s tags swap::text" % proxfirst))
 
         # test combined prefix/postfix conflicts
+        # this should be exhaustive
+
         self.assertReacted(send(alpha, g["main"],
             "gs;p %s tags 123text456" % proxswap))
-        self.assertNotReacted(send(alpha, g["main"],
-            "gs;p %s tags 123text456" % proxfirst))
-        self.assertNotReacted(send(alpha, g["main"],
-            "gs;p %s tags 123text56" % proxfirst))
-        self.assertNotReacted(send(alpha, g["main"],
-            "gs;p %s tags 12text456" % proxfirst))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 1234text56" % proxfirst))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 1234text" % proxfirst))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 12text3456" % proxfirst))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags text3456" % proxfirst))
         self.assertNotReacted(send(alpha, g["main"],
             "gs;p %s tags 12text56" % proxfirst))
         self.assertNotReacted(send(alpha, g["main"],
             "gs;p %s tags 1234text3456" % proxfirst))
         self.assertNotReacted(send(alpha, g["main"],
-            "gs;p %s tags 123text3456" % proxfirst))
+            "gs;p %s tags 123text456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags text456" % proxfirst))
+
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text" % proxswap))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags text456" % proxfirst))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 12text456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 12text" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 1234text" % proxfirst))
         self.assertNotReacted(send(alpha, g["main"],
             "gs;p %s tags 1234text456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text" % proxfirst))
+
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags [text]" % proxfirst))
+
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags text456" % proxswap))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text" % proxfirst))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text56" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags text56" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags text3456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text3456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags text456" % proxfirst))
 
         # done. close the swap
         self.assertReacted(send(alpha, g["main"],
