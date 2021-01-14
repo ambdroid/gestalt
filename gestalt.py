@@ -60,13 +60,13 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "unique(userid, extraid))")
         self.execute(
                 # this is a no-op to kick in the update trigger
-                "create trigger if not exists proxy_prefix_conflict_insert "
+                "create trigger if not exists proxy_tags_conflict_insert "
                 "after insert on proxies when new.prefix not NULL begin "
                     "update proxies set prefix = new.prefix "
                     "where proxid = new.proxid"
                 "; end")
         self.execute(
-                "create trigger if not exists proxy_prefix_conflict_update "
+                "create trigger if not exists proxy_tags_conflict_update "
                 "after update of prefix, postfix on proxies when (exists("
                     "select 1 from proxies where ("
                         "("
@@ -108,7 +108,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     ")"
                 # this exception will be passed to the user
                 ")) begin select (raise(abort,"
-                    "'That prefix conflicts with another proxy.'"
+                    "'Those tags conflict with another proxy.'"
                 ")); end")
         self.execute(
                 # NB: this does not trigger if a proxy is inserted with auto = 1

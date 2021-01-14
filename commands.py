@@ -161,9 +161,11 @@ class GestaltCommands:
                         % (SYMBOL_COLLECTIVE, escape(proxy["nick"]),
                             escape(guild.get_role(proxy["extraid"]).name),
                             escape(guild.name)))
-            # hack because escaping ` doesn't work in code blocks
-            line += (" prefix `%s`"
-                    % str(proxy["prefix"]).replace("`", "\N{REVERSED PRIME}"))
+            if proxy["prefix"] is not None:
+                line += (" tags `%s`"
+                        % (proxy["prefix"] + "text" + proxy["postfix"])
+                        # hack because escaping ` doesn't work in code blocks
+                        .replace("`", "\N{REVERSED PRIME}"))
             if proxy["active"] == 0:
                 line += " *(inactive)*"
             if proxy["auto"] == 1:
@@ -240,7 +242,7 @@ class GestaltCommands:
             for member in role.members:
                 if not member.bot:
                     self.execute(
-                            # prefix = NULL, auto = 0, active = 1
+                            # tags = NULL, auto = 0, active = 1
                             "insert into proxies values "
                             "(?, ?, ?, NULL, NULL, ?, ?, 0, 1)",
                             (self.gen_id(), member.id, role.guild.id,
@@ -308,11 +310,10 @@ class GestaltCommands:
             await self.try_add_reaction(message, REACT_CONFIRM)
 
 
-    async def cmd_swap_close(self, message, swapname):
+    async def cmd_swap_close(self, message, proxid):
         self.execute(
-                "delete from proxies where "
-                "(userid, type) = (?, ?) and (? in (proxid, prefix))",
-                (message.author.id, ProxyType.swap, swapname))
+                "delete from proxies where (userid, type, proxid) = (?, ?, ?)",
+                (message.author.id, ProxyType.swap, proxid))
         if self.cur.rowcount:
             await self.try_add_reaction(message, REACT_CONFIRM)
         return bool(self.cur.rowcount)
@@ -462,23 +463,23 @@ class GestaltCommands:
                 member = reader.read_member()
                 if member == None:
                     raise RuntimeError("User not found.")
-                prefix = reader.read_quote() or None
+                tags = reader.read_quote() or None
 
                 if member.id == self.user.id:
                     raise RuntimeError(ERROR_BLURSED)
                 if member.bot:
                     raise RuntimeError(ERROR_CURSED)
 
-                return await self.cmd_swap_open(message, member, prefix)
+                return await self.cmd_swap_open(message, member, tags)
 
             elif arg in ["close", "off"]:
                 swapname = reader.read_quote().lower()
                 if swapname == "":
-                    raise RuntimeError("Please provide a swap ID or prefix.")
+                    raise RuntimeError("Please provide a swap ID.")
 
                 if not await self.cmd_swap_close(message, swapname):
                     raise RuntimeError(
-                            "You do not have a swap with that ID or prefix.")
+                            "You do not have a swap with that ID.")
 
         elif CMD_DEBUG and arg == "debug":
             return await self.cmd_debug(message)
