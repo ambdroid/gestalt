@@ -31,7 +31,7 @@ class User(Object):
         self.dm_channel = None
         self.discriminator = "0001"
         super().__init__(**kwargs)
-        # self.mention = "<@!%d>" % self.id
+        self.mention = "<@!%d>" % self.id
         User.users[self.id] = self
     def __str__(self):
         return self.name + "#" + self.discriminator
@@ -296,14 +296,14 @@ class GestaltTest(unittest.TestCase):
 
         # alpha opens a swap with beta
         self.assertReacted(
-                send(alpha, chan, 'gs;swap open <@!%d> "sw text"' % beta.id))
+                send(alpha, chan, 'gs;swap open %s "sw text"' % beta.mention))
         self.assertIsNotNone(self.get_proxid(alpha, beta))
         self.assertIsNone(self.get_proxid(beta, alpha))
         # alpha tests swap; it should fail
         self.assertIsNone(send(alpha, chan, "sw no swap").webhook_id)
         # beta opens swap
         self.assertReacted(
-                send(beta, chan, 'gs;swap open <@!%d> "sw text"' % alpha.id))
+                send(beta, chan, 'gs;swap open %s "sw text"' % alpha.mention))
         self.assertIsNotNone(self.get_proxid(alpha ,beta))
         self.assertIsNotNone(self.get_proxid(beta, alpha))
         # alpha and beta test the swap; it should work now
@@ -313,13 +313,13 @@ class GestaltTest(unittest.TestCase):
         # now, with the alpha-beta swap active, alpha opens swap with gamma
         # this one should fail due to tags conflict
         self.assertNotReacted(
-                send(alpha, chan, 'gs;swap open <@!%d> "sw text"' % gamma.id))
+                send(alpha, chan, 'gs;swap open %s "sw text"' % gamma.mention))
         # but this one should work
         self.assertReacted(
-                send(alpha, chan, 'gs;swap open <@!%d> "sww text"' % gamma.id))
+                send(alpha, chan, 'gs;swap open %s "sww text"' % gamma.mention))
         # gamma opens the swap
         self.assertReacted(
-                send(gamma, chan, 'gs;swap open <@!%d> "sww text"' % alpha.id))
+                send(gamma, chan, 'gs;swap open %s "sww text"' % alpha.mention))
         self.assertIsNotNone(self.get_proxid(alpha, gamma))
         gammaid = self.get_proxid(gamma, alpha)
         self.assertIsNotNone(gammaid)
@@ -509,9 +509,9 @@ class GestaltTest(unittest.TestCase):
 
         # open a swap. swaps are global so alpha will use it to test conflicts
         self.assertReacted(
-                send(alpha, g["main"], "gs;swap open <@!%i> :text" % beta.id))
+                send(alpha, g["main"], "gs;swap open %s :text" % beta.mention))
         self.assertReacted(
-                send(beta, g["main"], "gs;swap open <@!%i> :text" % alpha.id))
+                send(beta, g["main"], "gs;swap open %s :text" % alpha.mention))
         proxswap = self.get_proxid(alpha, beta)
         self.assertIsNotNone(proxswap)
 
