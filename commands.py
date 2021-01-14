@@ -348,7 +348,7 @@ class GestaltCommands:
                 return await self.cmd_proxy_list(message)
 
             if arg == "tags":
-                arg = reader.read_quote()
+                arg = reader.read_remainder()
                 return await self.cmd_proxy_tags(message, proxid, arg)
 
             elif arg == "auto":
@@ -463,7 +463,7 @@ class GestaltCommands:
                 member = reader.read_member()
                 if member == None:
                     raise RuntimeError("User not found.")
-                tags = reader.read_quote() or None
+                tags = reader.read_remainder() or None
 
                 if member.id == self.user.id:
                     raise RuntimeError(ERROR_BLURSED)
