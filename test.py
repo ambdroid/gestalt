@@ -296,14 +296,14 @@ class GestaltTest(unittest.TestCase):
 
         # alpha opens a swap with beta
         self.assertReacted(
-                send(alpha, chan, 'gs;swap open %s "sw text"' % beta.mention))
+                send(alpha, chan, 'gs;swap open %s sw text' % beta.mention))
         self.assertIsNotNone(self.get_proxid(alpha, beta))
         self.assertIsNone(self.get_proxid(beta, alpha))
         # alpha tests swap; it should fail
         self.assertIsNone(send(alpha, chan, "sw no swap").webhook_id)
         # beta opens swap
         self.assertReacted(
-                send(beta, chan, 'gs;swap open %s "sw text"' % alpha.mention))
+                send(beta, chan, 'gs;swap open %s sw text' % alpha.mention))
         self.assertIsNotNone(self.get_proxid(alpha ,beta))
         self.assertIsNotNone(self.get_proxid(beta, alpha))
         # alpha and beta test the swap; it should work now
@@ -313,13 +313,13 @@ class GestaltTest(unittest.TestCase):
         # now, with the alpha-beta swap active, alpha opens swap with gamma
         # this one should fail due to tags conflict
         self.assertNotReacted(
-                send(alpha, chan, 'gs;swap open %s "sw text"' % gamma.mention))
+                send(alpha, chan, 'gs;swap open %s sw text' % gamma.mention))
         # but this one should work
         self.assertReacted(
-                send(alpha, chan, 'gs;swap open %s "sww text"' % gamma.mention))
+                send(alpha, chan, 'gs;swap open %s sww text' % gamma.mention))
         # gamma opens the swap
         self.assertReacted(
-                send(gamma, chan, 'gs;swap open %s "sww text"' % alpha.mention))
+                send(gamma, chan, 'gs;swap open %s sww text' % alpha.mention))
         self.assertIsNotNone(self.get_proxid(alpha, gamma))
         gammaid = self.get_proxid(gamma, alpha)
         self.assertIsNotNone(gammaid)
@@ -454,9 +454,8 @@ class GestaltTest(unittest.TestCase):
 
         # invalid tags. these should fail
         self.assertNotReacted(send(alpha, chan, "gs;p %s tags " % proxid))
-        self.assertNotReacted(send(alpha, chan, 'gs;p %s tags "" ' % proxid))
-        self.assertNotReacted(
-                send(alpha, chan, 'gs;p %s tags "text"' % proxid))
+        self.assertNotReacted(send(alpha, chan, 'gs;p %s tags text ' % proxid))
+        self.assertNotReacted(send(alpha, chan, 'gs;p %s tags txet ' % proxid))
 
         # test autoproxy without tags
         # also test proxies added on role add
