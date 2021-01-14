@@ -296,14 +296,14 @@ class GestaltTest(unittest.TestCase):
 
         # alpha opens a swap with beta
         self.assertReacted(
-                send(alpha, chan, 'gs;swap open <@!%d> "sw "' % beta.id))
+                send(alpha, chan, 'gs;swap open <@!%d> "sw text"' % beta.id))
         self.assertIsNotNone(self.get_proxid(alpha, beta))
         self.assertIsNone(self.get_proxid(beta, alpha))
         # alpha tests swap; it should fail
         self.assertIsNone(send(alpha, chan, "sw no swap").webhook_id)
         # beta opens swap
         self.assertReacted(
-                send(beta, chan, 'gs;swap open <@!%d> "sw "' % alpha.id))
+                send(beta, chan, 'gs;swap open <@!%d> "sw text"' % alpha.id))
         self.assertIsNotNone(self.get_proxid(alpha ,beta))
         self.assertIsNotNone(self.get_proxid(beta, alpha))
         # alpha and beta test the swap; it should work now
@@ -311,15 +311,15 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(beta, chan, "sw swap").webhook_id)
 
         # now, with the alpha-beta swap active, alpha opens swap with gamma
-        # this one should fail due to prefix conflict
+        # this one should fail due to tags conflict
         self.assertNotReacted(
-                send(alpha, chan, 'gs;swap open <@!%d> "sw "' % gamma.id))
+                send(alpha, chan, 'gs;swap open <@!%d> "sw text"' % gamma.id))
         # but this one should work
         self.assertReacted(
-                send(alpha, chan, 'gs;swap open <@!%d> "sww "' % gamma.id))
+                send(alpha, chan, 'gs;swap open <@!%d> "sww text"' % gamma.id))
         # gamma opens the swap
         self.assertReacted(
-                send(gamma, chan, 'gs;swap open <@!%d> "sww "' % alpha.id))
+                send(gamma, chan, 'gs;swap open <@!%d> "sww text"' % alpha.id))
         self.assertIsNotNone(self.get_proxid(alpha, gamma))
         gammaid = self.get_proxid(gamma, alpha)
         self.assertIsNotNone(gammaid)
@@ -330,7 +330,8 @@ class GestaltTest(unittest.TestCase):
                 send(gamma, chan, "sww swap").author.name.index(alpha.name)
                 != -1)
         # the alpha-beta swap should still work
-        self.assertIsNotNone(self.get_proxid(alpha, beta))
+        alphaid = self.get_proxid(alpha, beta)
+        self.assertIsNotNone(alphaid)
         self.assertIsNotNone(self.get_proxid(beta, alpha))
         self.assertTrue(
                 send(alpha, chan, "sw swap").author.name.index(beta.name) != -1)
@@ -338,7 +339,7 @@ class GestaltTest(unittest.TestCase):
                 send(beta, chan, "sw swap").author.name.index(alpha.name) != -1)
 
         # close the swaps
-        self.assertReacted(send(alpha, chan, 'gs;swap close "sw "'))
+        self.assertReacted(send(alpha, chan, 'gs;swap close %s' % alphaid))
         self.assertReacted(
                 send(gamma, chan, 'gs;swap close %s' % gammaid))
         self.assertIsNone(self.get_proxid(alpha, beta))
@@ -366,8 +367,9 @@ class GestaltTest(unittest.TestCase):
 
         proxid = self.get_proxid(alpha, g.default_role)
         self.assertIsNotNone(proxid)
-        # set the prefix
-        self.assertReacted(send(alpha, g["main"], "gs;p %s prefix e:" % proxid))
+        # set the tags
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags e:text" % proxid))
         # test the proxy
         self.assertIsNotNone(send(alpha, g["main"], "e:test").webhook_id)
         # this proxy will be used in later tests
@@ -381,8 +383,9 @@ class GestaltTest(unittest.TestCase):
         proxid = self.get_proxid(alpha, role)
         self.assertIsNotNone(proxid)
 
-        # set prefix and test it
-        self.assertReacted(send(alpha, g["main"], "gs;p %s prefix d:" % proxid))
+        # set tags and test it
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags d:text" % proxid))
         self.assertIsNotNone(send(alpha, g["main"], "d:test").webhook_id)
 
         # delete the collective normally
@@ -421,51 +424,51 @@ class GestaltTest(unittest.TestCase):
         self.assertNotReacted(
                 send(alpha, g["main"], "gs;p %s auto on" % betaid))
         self.assertNotReacted(
-                send(beta, g["main"], "gs;p %s prefix no:" % alphaid))
+                send(beta, g["main"], "gs;p %s tags no:text" % alphaid))
         # also, override can't be auto'd
         overid = self.get_proxid(alpha, 0)
         self.assertNotReacted(
                 send(alpha, g["main"], "gs;p %s auto on" % overid))
 
-    def test_05_prefix_auto(self):
-        # test every combo of auto, prefix, and also the switches thereof
+    def test_05_tags_auto(self):
+        # test every combo of auto, tags, and also the switches thereof
         chan = g["main"]
         proxid = self.get_proxid(alpha, g.default_role)
 
-        self.assertIsNone(send(alpha, chan, "no prefix, no auto").webhook_id)
-        self.assertIsNotNone(send(alpha, chan, "e:prefix").webhook_id)
-        self.assertEqual(chan[-1].content, "prefix")
-        self.assertReacted(send(alpha, chan, "gs;p %s prefix =" % proxid))
-        self.assertIsNotNone(send(alpha, chan, "=prefix, no auto").webhook_id)
-        self.assertEqual(chan[-1].content, "prefix, no auto")
+        self.assertIsNone(send(alpha, chan, "no tags, no auto").webhook_id)
+        self.assertIsNotNone(send(alpha, chan, "e:tags").webhook_id)
+        self.assertEqual(chan[-1].content, "tags")
+        self.assertReacted(send(alpha, chan, "gs;p %s tags =text" % proxid))
+        self.assertIsNotNone(send(alpha, chan, "=tags, no auto").webhook_id)
+        self.assertEqual(chan[-1].content, "tags, no auto")
         self.assertReacted(send(alpha, chan, "gs;p %s auto on" % proxid))
-        self.assertIsNone(send(alpha, chan, "=prefix, auto").webhook_id)
-        self.assertIsNotNone(send(alpha, chan, "no prefix, auto").webhook_id)
-        self.assertEqual(chan[-1].content, "no prefix, auto")
+        self.assertIsNone(send(alpha, chan, "=tags, auto").webhook_id)
+        self.assertIsNotNone(send(alpha, chan, "no tags, auto").webhook_id)
+        self.assertEqual(chan[-1].content, "no tags, auto")
         # test autoproxy both as on/off and as toggle
         self.assertReacted(send(alpha, chan, "gs;p %s auto" % proxid))
-        self.assertReacted(send(alpha, chan, "gs;p %s prefix #text" % proxid))
-        self.assertIsNotNone(send(alpha, chan, "#pk-style prefix").webhook_id)
-        self.assertEqual(chan[-1].content, "pk-style prefix")
-        self.assertReacted(send(alpha, chan, "gs;p %s prefix e:" % proxid))
+        self.assertReacted(send(alpha, chan, "gs;p %s tags #text#" % proxid))
+        self.assertIsNotNone(send(alpha, chan, "#tags, no auto#").webhook_id)
+        self.assertEqual(chan[-1].content, "tags, no auto")
+        self.assertReacted(send(alpha, chan, "gs;p %s tags e:text" % proxid))
 
-        # invalid prefixes. these should fail
-        self.assertNotReacted(send(alpha, chan, "gs;p %s prefix " % proxid))
-        self.assertNotReacted(send(alpha, chan, 'gs;p %s prefix "" ' % proxid))
+        # invalid tags. these should fail
+        self.assertNotReacted(send(alpha, chan, "gs;p %s tags " % proxid))
+        self.assertNotReacted(send(alpha, chan, 'gs;p %s tags "" ' % proxid))
         self.assertNotReacted(
-                send(alpha, chan, 'gs;p %s prefix "text"' % proxid))
+                send(alpha, chan, 'gs;p %s tags "text"' % proxid))
 
-        # test autoproxy without prefix
+        # test autoproxy without tags
         # also test proxies added on role add
-        newrole = g._add_role("no prefix")
+        newrole = g._add_role("no tags")
         self.assertReacted(send(alpha, chan, "gs;c new %s" % newrole.mention))
         run(g.get_member(alpha.id)._add_role(newrole))
         proxid = self.get_proxid(alpha, newrole)
         self.assertIsNotNone(proxid)
         self.assertReacted(send(alpha, chan, "gs;p %s auto" % proxid))
-        self.assertIsNotNone(send(alpha, chan, "no prefix, auto").webhook_id)
+        self.assertIsNotNone(send(alpha, chan, "no tags, auto").webhook_id)
         self.assertReacted(send(alpha, chan, "gs;p %s auto off" % proxid))
-        self.assertIsNone(send(alpha, chan, "no prefix, no auto").webhook_id)
+        self.assertIsNone(send(alpha, chan, "no tags, no auto").webhook_id)
 
     def test_06_query_delete(self):
         msg = send(alpha, g["main"], "e:reaction test")
@@ -506,9 +509,9 @@ class GestaltTest(unittest.TestCase):
 
         # open a swap. swaps are global so alpha will use it to test conflicts
         self.assertReacted(
-                send(alpha, g["main"], "gs;swap open <@!%i> :" % beta.id))
+                send(alpha, g["main"], "gs;swap open <@!%i> :text" % beta.id))
         self.assertReacted(
-                send(beta, g["main"], "gs;swap open <@!%i> :" % alpha.id))
+                send(beta, g["main"], "gs;swap open <@!%i> :text" % alpha.id))
         proxswap = self.get_proxid(alpha, beta)
         self.assertIsNotNone(proxswap)
 
@@ -526,12 +529,12 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(proxfirst)
         self.assertIsNotNone(proxsecond)
 
-        # now alpha can test prefix and auto stuff
+        # now alpha can test tags and auto stuff
         self.assertReacted(
-                send(alpha, g["main"], "gs;p %s prefix same:" % proxfirst))
+                send(alpha, g["main"], "gs;p %s tags same:text" % proxfirst))
         # this should work because the collectives are in different guilds
         self.assertReacted(
-                send(alpha, g2["main"], "gs;p %s prefix same:" % proxsecond))
+                send(alpha, g2["main"], "gs;p %s tags same:text" % proxsecond))
         self.assertIsNotNone(send(alpha, g["main"], "same: no auto").webhook_id)
         # alpha should be able to set both to auto; different guilds
         self.assertReacted(
@@ -540,15 +543,15 @@ class GestaltTest(unittest.TestCase):
                 send(alpha, g2["main"], "gs;p %s auto on" % proxsecond))
         self.assertIsNotNone(send(alpha, g["main"], "auto on").webhook_id)
 
-        # test global prefix conflict; this should fail
+        # test global tags conflict; this should fail
         self.assertNotReacted(
-                send(alpha, g["main"], "gs;p %s prefix same:" % proxswap))
+                send(alpha, g["main"], "gs;p %s tags same:text" % proxswap))
         # no conflict; this should work
         self.assertReacted(
-                send(alpha, g["main"], "gs;p %s prefix swap:" % proxswap))
+                send(alpha, g["main"], "gs;p %s tags swap:text" % proxswap))
         # make a conflict with a collective
         self.assertNotReacted(
-                send(alpha, g["main"], "gs;p %s prefix swap:" % proxfirst))
+                send(alpha, g["main"], "gs;p %s tags swap:text" % proxfirst))
         # now turning on auto on the swap should deactivate the other autos
         self.assertIsNotNone(send(alpha, g["main"], "auto on").webhook_id)
         self.assertNotEqual(
@@ -558,14 +561,33 @@ class GestaltTest(unittest.TestCase):
         self.assertNotEqual(
                 send(alpha, g["main"], "swap has auto").author.name.index(
                     beta.name), -1)
-        # test other prefix conflicts
+        # test other tag conflicts
         self.assertNotReacted(
-                send(alpha, g["main"], "gs;p %s prefix sw" % proxfirst))
+                send(alpha, g["main"], "gs;p %s tags swtext" % proxfirst))
         self.assertNotReacted(
-                send(alpha, g["main"], "gs;p %s prefix swap::" % proxfirst))
+                send(alpha, g["main"], "gs;p %s tags swap::text" % proxfirst))
+
+        # test combined prefix/postfix conflicts
+        self.assertReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text456" % proxswap))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text56" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 12text456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 12text56" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 1234text3456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 123text3456" % proxfirst))
+        self.assertNotReacted(send(alpha, g["main"],
+            "gs;p %s tags 1234text456" % proxfirst))
 
         # done. close the swap
-        self.assertReacted(send(alpha, g["main"], "gs;swap close swap:"))
+        self.assertReacted(send(alpha, g["main"],
+            "gs;swap close %s" % proxswap))
 
     def test_09_override(self):
         overid = self.get_proxid(alpha, 0)
@@ -578,8 +600,8 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(alpha, chan, "e: proxy").webhook_id)
         self.assertReacted(send(alpha, chan, "gs;p %s auto on" % proxid))
         self.assertIsNotNone(send(alpha, chan, "proxy").webhook_id)
-        # set the override prefix. this should activate it
-        self.assertReacted(send(alpha, chan, "gs;p %s prefix x:" % overid))
+        # set the override tags. this should activate it
+        self.assertReacted(send(alpha, chan, "gs;p %s tags x:text" % overid))
         self.assertIsNone(send(alpha, chan, "x: not proxies").webhook_id)
 
         # turn autoproxy off
