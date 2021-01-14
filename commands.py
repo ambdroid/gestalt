@@ -8,6 +8,15 @@ def escape(text):
             discord.utils.escape_mentions(str(text)))
 
 
+# [text] -> ['[',']']
+def parse_tags(tags):
+    split = tags.lower().split("text")
+    if len(split) != 2 or not "".join(split):
+        raise RuntimeError(
+                "Please provide valid tags around `text` (e.g. `[text]`).")
+    return split
+
+
 class CommandReader:
     BOOL_KEYWORDS = {
         "on": 1,
@@ -166,21 +175,18 @@ class GestaltCommands:
         await self.send_embed(message, "\n".join(lines))
 
 
-    async def cmd_proxy_prefix(self, message, proxid, prefix):
+    async def cmd_proxy_tags(self, message, proxid, tags):
         exists = self.fetchone(
                 "select 1 from proxies where (userid, proxid) = (?, ?)",
                 (message.author.id, proxid))
         if not exists:
             raise RuntimeError("You do not have a proxy with that ID.")
 
-        # adapt PluralKit [text] prefix/postfix format
-        prefix = prefix.lower().split("text")[0]
-        if not prefix:
-            raise RuntimeError("Please provide a valid prefix.")
+        (prefix, postfix) = parse_tags(tags)
 
         self.execute(
-            "update proxies set prefix = ? where proxid = ?",
-            (prefix, proxid))
+            "update proxies set prefix = ?, postfix = ? where proxid = ?",
+            (prefix, postfix, proxid))
 
         await self.try_add_reaction(message, REACT_CONFIRM)
 
@@ -236,7 +242,7 @@ class GestaltCommands:
                     self.execute(
                             # prefix = NULL, auto = 0, active = 1
                             "insert into proxies values "
-                            "(?, ?, ?, NULL, ?, ?, 0, 1)",
+                            "(?, ?, ?, NULL, NULL, ?, ?, 0, 1)",
                             (self.gen_id(), member.id, role.guild.id,
                                 ProxyType.collective, role.id))
 
@@ -289,13 +295,13 @@ class GestaltCommands:
         await self.try_add_reaction(message, REACT_CONFIRM)
 
 
-    async def cmd_swap_open(self, message, member, prefix):
-        # activate author->other swap
+    async def cmd_swap_open(self, message, member, tags):
+        (prefix, postfix) = parse_tags(tags) if tags else (None, None)
         self.execute("insert or ignore into proxies values"
-                # id, auth, guild, prefix, type, member, auto, active
-                "(?, ?, 0, ?, ?, ?, 0, 0)",
-                (self.gen_id(), message.author.id, prefix, ProxyType.swap,
-                    member.id))
+                # id, auth, guild, prefix, postfix, type, member, auto, active
+                "(?, ?, 0, ?, ?, ?, ?, 0, 0)",
+                (self.gen_id(), message.author.id, prefix, postfix,
+                    ProxyType.swap, member.id))
         # triggers will take care of activation if necessary
 
         if self.cur.rowcount == 1:
@@ -340,9 +346,9 @@ class GestaltCommands:
             if proxid == "":
                 return await self.cmd_proxy_list(message)
 
-            if arg == "prefix":
-                arg = reader.read_quote().lower()
-                return await self.cmd_proxy_prefix(message, proxid, arg)
+            if arg == "tags":
+                arg = reader.read_quote()
+                return await self.cmd_proxy_tags(message, proxid, arg)
 
             elif arg == "auto":
                 if reader.is_empty():

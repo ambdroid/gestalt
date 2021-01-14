@@ -52,6 +52,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "userid integer,"
                 "guildid integer,"          # 0 for swaps, overrides
                 "prefix text,"
+                "postfix text,"
                 "type integer,"             # see enum ProxyType
                 "extraid integer,"          # userid or roleid or NULL
                 "auto integer,"             # 0/1
@@ -66,22 +67,43 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "; end")
         self.execute(
                 "create trigger if not exists proxy_prefix_conflict_update "
-                "after update of prefix on proxies when (exists("
+                "after update of prefix, postfix on proxies when (exists("
                     "select 1 from proxies where ("
-                        "(userid == new.userid) and (proxid != new.proxid)"
-                        "and ("
+                        "("
+                            "prefix not NULL"
+                        ") and ("
+                            "userid == new.userid"
+                        ") and ("
+                            "proxid != new.proxid"
+                        ") and ("
                             # if prefix is to be global, check everything
                             # if not, check only the same guild
-                                "(new.guildid == 0)"
-                            "or"
-                                "((new.guildid != 0)"
-                                "and (guildid in (0, new.guildid)))"
+                            "("
+                                "new.guildid == 0"
+                            ") or ("
+                                "("
+                                    "new.guildid != 0"
+                                ") and ("
+                                    "guildid in (0, new.guildid)"
+                                ")"
+                            ")"
                         ") and ("
-                                "(substr(prefix,0,length(new.prefix)+1)"
-                                "== new.prefix)"
-                            "or"
-                                "(substr(new.prefix,0,length(prefix)+1)"
-                                "== prefix)"
+                            # prefix matches
+                            # use instr(); we can afford to be a bit slower here
+                            "("
+                                "instr(prefix, new.prefix) == 1"
+                            ") or ("
+                                "instr(new.prefix, prefix) == 1"
+                            ")"
+                        ") and ("
+                            # postfix matches
+                            "("
+                                "instr(postfix, new.postfix)"
+                                "== 1 + length(postfix) - length(new.postfix)"
+                            ") or ("
+                                "instr(new.postfix, postfix)"
+                                "== 1 + length(new.postfix) - length(postfix)"
+                            ")"
                         ")"
                     ")"
                 # this exception will be passed to the user
@@ -236,7 +258,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if coll:
             self.execute(
                 "insert or ignore into proxies values "
-                "(?, ?, ?, NULL, ?, ?, 0, 1)",
+                "(?, ?, ?, NULL, NULL, ?, ?, 0, 1)",
                 (self.gen_id(), member.id, member.guild.id,
                     ProxyType.collective, role.id))
 
@@ -294,9 +316,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         channel = message.channel
         msgfile = None
 
-        content = (
-                message.content[0 if proxy["auto"] else len(proxy["prefix"]):]
-                .strip())
+        content = message.content if proxy["auto"] else (message.content[
+            len(proxy["prefix"]) : -len(proxy["postfix"]) or None].strip())
         if content == "" and len(message.attachments) == 0:
             return
 
@@ -375,7 +396,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.execute("insert into users values (?, ?, ?)",
                     (authid, str(message.author), DEFAULT_PREFS))
             self.execute("insert into proxies values"
-                    "(?, ?, 0, NULL, ?, 0, 0, 1)",
+                    "(?, ?, 0, NULL, NULL, ?, 0, 0, 1)",
                     (self.gen_id(), authid, ProxyType.override))
             prefs = DEFAULT_PREFS
         else:
@@ -402,19 +423,34 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # inactive proxies get matched but only to bypass the current autoproxy
         match = self.fetchone(
                 "select * from proxies where ("
-                    "(userid = ?)"
-                    "and (guildid in (0, ?))"
-                    # (prefix matches) XOR (autoproxy enabled)
-                    "and ("
+                    "("
+                        "userid = ?"
+                    ") and ("
+                        "guildid in (0, ?)"
+                    ") and ("
                         "("
-                            "(prefix not NULL)"
-                            "and (substr(?,0,length(prefix)+1) == prefix)"
-                        ") == (auto == 0)"
+                            # if no tags are set, match nothing
+                            # postfix is only NULL when prefix is NULL
+                            "("
+                                "prefix not NULL"
+                            ") and ("
+                                "substr(?,1,length(prefix)) == prefix"
+                            ") and ("
+                                # 'abcd'[-1] == 'c', so add another character
+                                "substr(?||' ',-1,-length(postfix)) == postfix"
+                            ") and ("
+                                # prevent #text# from matching #
+                                "length(?) >= length(prefix) + length(postfix)"
+                            ")"
+                        # (tags match) XOR (autoproxy enabled)
+                        ") == ("
+                            "auto == 0"
+                        ")"
                     ")"
                 # if message matches prefix for proxy A but proxy B is auto,
                 # A wins. therefore, rank the proxy with auto = 0 higher
                 ") order by auto asc limit 1",
-                (authid, message.guild.id, lower))
+                (authid, message.guild.id, lower, lower, lower))
 
         if match and match["active"]:
             latch = prefs & Prefs.latch and not match["auto"]
