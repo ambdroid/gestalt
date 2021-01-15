@@ -48,7 +48,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "token text)")
         self.execute(
                 "create table if not exists proxies("
-                "proxid text primary key,"  # of form 'abcde'
+                "proxid text primary key collate nocase,"   # of form 'abcde'
                 "userid integer,"
                 "guildid integer,"          # 0 for swaps, overrides
                 "prefix text,"
@@ -160,7 +160,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "end")
         self.execute(
                 "create table if not exists collectives("
-                "collid text primary key,"
+                "collid text primary key collate nocase,"
                 "guildid integer,"
                 "roleid integer,"
                 "nick text,"

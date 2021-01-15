@@ -341,7 +341,7 @@ class GestaltCommands:
             return await self.cmd_permcheck(message, guildid)
 
         elif arg in ["proxy", "p"]:
-            proxid = reader.read_word().lower()
+            proxid = reader.read_word()
             arg = reader.read_word().lower()
 
             if proxid == "":
@@ -364,12 +364,12 @@ class GestaltCommands:
             if not message.guild:
                 raise RuntimeError(ERROR_DM)
             guild = message.guild
-            arg = reader.read_word().lower()
+            arg = reader.read_word()
 
             if arg == "":
                 return await self.cmd_collective_list(message)
 
-            elif arg in ["new", "create"]:
+            elif arg.lower() in ["new", "create"]:
                 if not message.author.guild_permissions.manage_roles:
                     raise RuntimeError(ERROR_MANAGE_ROLES)
 
