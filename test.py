@@ -719,6 +719,13 @@ class GestaltTest(unittest.TestCase):
         run(g._add_member(user))
         self.assertIsNotNone(self.get_proxid(user, g.default_role))
 
+    def test_15_case(self):
+        proxid = self.get_proxid(alpha, g.default_role).upper()
+        self.assertIsNotNone(proxid)
+        collid = self.get_collid(g.default_role).upper()
+        self.assertReacted(send(alpha, g["main"], "gs;p %s auto off" % proxid))
+        self.assertReacted(send(alpha, g["main"], "gs;c %s name test" % collid))
+
 
 def main():
     global bot, alpha, beta, gamma, g, instance
