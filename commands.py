@@ -199,14 +199,19 @@ class GestaltCommands:
                 (message.author.id, proxid))
         if proxy == None:
             raise RuntimeError("You do not have a proxy with that ID.")
-        if proxy["type"] == ProxyType.override:
-            raise RuntimeError("You cannot autoproxy your override.")
 
         if auto == None:
             auto = 1 - proxy["auto"]
+        # triggers will take care of unsetting other autos as necessary
         self.execute(
                 "update proxies set auto = ? where proxid = ?",
                 (auto, proxid))
+
+        if proxy["type"] == ProxyType.override:
+            # ...but override can't actually be auto'd, that makes no sense
+            self.execute(
+                    "update proxies set auto = 0 where proxid = ?",
+                    (proxid,))
 
         await self.try_add_reaction(message, REACT_CONFIRM)
 

@@ -425,10 +425,6 @@ class GestaltTest(unittest.TestCase):
                 send(alpha, g["main"], "gs;p %s auto on" % betaid))
         self.assertNotReacted(
                 send(beta, g["main"], "gs;p %s tags no:text" % alphaid))
-        # also, override can't be auto'd
-        overid = self.get_proxid(alpha, 0)
-        self.assertNotReacted(
-                send(alpha, g["main"], "gs;p %s auto on" % overid))
 
     def test_05_tags_auto(self):
         # test every combo of auto, tags, and also the switches thereof
@@ -451,6 +447,16 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(alpha, chan, "#tags, no auto#").webhook_id)
         self.assertEqual(chan[-1].content, "tags, no auto")
         self.assertReacted(send(alpha, chan, "gs;p %s tags e:text" % proxid))
+
+        # test setting auto on override to unset other autos
+        overid = self.get_proxid(alpha, 0)
+        self.assertReacted(send(alpha, chan, "gs;p %s auto on" % proxid))
+        self.assertIsNotNone(send(alpha, chan, "auto on").webhook_id)
+        self.assertReacted(send(alpha, chan, "gs;p %s auto on" % overid))
+        self.assertIsNone(send(alpha, chan, "auto off").webhook_id)
+        self.assertEqual(instance.fetchone(
+            "select auto from proxies where proxid = ?",
+            (overid,))[0], 0)
 
         # invalid tags. these should fail
         self.assertNotReacted(send(alpha, chan, "gs;p %s tags " % proxid))
