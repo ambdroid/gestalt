@@ -54,7 +54,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "prefix text,"
                 "postfix text,"
                 "type integer,"             # see enum ProxyType
-                "extraid integer,"          # userid or roleid or NULL
+                "extraid,"                  # userid or collid or NULL
                 "auto integer,"             # 0/1
                 "active integer,"           # 0/1
                 "unique(userid, extraid))")
@@ -253,20 +253,24 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def on_member_role_add(self, member, role):
-        coll = self.fetchone(
-                "select 1 from collectives where roleid = ?",
+        collid = self.fetchone(
+                "select collid from collectives where roleid = ?",
                 (role.id,))
-        if coll:
+        if collid:
             self.execute(
                 "insert or ignore into proxies values "
                 "(?, ?, ?, NULL, NULL, ?, ?, 0, 1)",
                 (self.gen_id(), member.id, member.guild.id,
-                    ProxyType.collective, role.id))
+                    ProxyType.collective, collid[0]))
 
 
     def on_member_role_remove(self, member, role):
-        self.execute("delete from proxies where (userid, extraid) = (?, ?)",
-                (member.id, role.id))
+        collid = self.fetchone(
+                "select collid from collectives where roleid = ?",
+                (role.id,))
+        if collid:
+            self.execute("delete from proxies where (userid, extraid) = (?, ?)",
+                    (member.id, collid[0]))
 
 
     async def on_guild_role_delete(self, role):
@@ -292,7 +296,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def do_proxy_collective(self, message, target, prefs, content):
-        present = self.fetchone("select * from collectives where roleid = ?",
+        present = self.fetchone("select * from collectives where collid = ?",
                 (target,))
 
         if prefs & Prefs.replace:

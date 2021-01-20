@@ -266,15 +266,18 @@ class GestaltTest(unittest.TestCase):
     def get_proxid(self, user, other):
         if type(other) != int:
             other = other.id
+        other = self.get_collid(other) or other
         row = instance.fetchone(
                 "select proxid from proxies where (userid, extraid) = (?, ?)",
                 (user.id, other))
         return row[0] if row else None
 
     def get_collid(self, role):
+        if type(role) != int:
+            role = role.id
         row = instance.fetchone(
                 "select collid from collectives where roleid = ?",
-                (role.id,))
+                (role,))
         return row[0] if row else None
 
     def assertRowExists(self, *args):

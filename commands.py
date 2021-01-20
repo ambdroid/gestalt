@@ -134,10 +134,11 @@ class GestaltCommands:
 
     async def cmd_proxy_list(self, message):
         rows = self.fetchall(
-                "select *,"
-                "(select nick from collectives where roleid = extraid) nick "
-                "from proxies where userid = ?"
-                "order by type asc",
+                "select p.*, c.roleid, c.nick from ("
+                    "select * from proxies where userid = ?"
+                    "order by type asc"
+                ") as p left join collectives as c "
+                "on p.extraid = c.collid",
                 (message.author.id,))
 
         lines = []
@@ -159,7 +160,7 @@ class GestaltCommands:
                 guild = self.get_guild(proxy["guildid"])
                 line += ("%s **%s** on **%s** in **%s**"
                         % (SYMBOL_COLLECTIVE, escape(proxy["nick"]),
-                            escape(guild.get_role(proxy["extraid"]).name),
+                            escape(guild.get_role(proxy["roleid"]).name),
                             escape(guild.name)))
             if proxy["prefix"] is not None:
                 line += (" tags `%s`"
@@ -239,9 +240,10 @@ class GestaltCommands:
 
     async def cmd_collective_new(self, message, role):
         # new collective with name of role and no avatar
+        collid = self.gen_id()
         self.execute("insert or ignore into collectives values"
                 "(?, ?, ?, ?, NULL)",
-                (self.gen_id(), role.guild.id, role.id, role.name))
+                (collid, role.guild.id, role.id, role.name))
         # if there wasn't already a collective on that role
         if self.cur.rowcount == 1:
             for member in role.members:
@@ -251,7 +253,7 @@ class GestaltCommands:
                             "insert into proxies values "
                             "(?, ?, ?, NULL, NULL, ?, ?, 0, 1)",
                             (self.gen_id(), member.id, role.guild.id,
-                                ProxyType.collective, role.id))
+                                ProxyType.collective, collid))
 
             await self.try_add_reaction(message, REACT_CONFIRM)
 
