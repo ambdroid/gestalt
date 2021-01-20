@@ -295,10 +295,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.on_member_role_add(member, member.guild.default_role)
 
 
-    def do_proxy_collective(self, message, target, prefs, content):
-        present = self.fetchone("select * from collectives where collid = ?",
-                (target,))
-
+    def do_proxy_collective(self, message, proxy, prefs, content):
         if prefs & Prefs.replace:
             # do these in order (or else, e.g. "I'm" could become "We'm")
             # which is funny but not what we want here
@@ -306,11 +303,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
-        return (present["nick"], present["avatar"], content)
+        return (proxy["nick"], proxy["avatar"], content)
 
 
-    def do_proxy_swap(self, message, target, prefs, content):
-        member = message.guild.get_member(target)
+    def do_proxy_swap(self, message, proxy, prefs, content):
+        member = message.guild.get_member(proxy["extraid"])
         if member:
             return (member.display_name, member.avatar_url_as(format = "webp"),
                     content)
@@ -355,7 +352,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         adapter = self.adapter)
 
             try:
-                args = (message, proxy["extraid"], prefs, content)
+                args = (message, proxy, prefs, content)
                 proxtype = proxy["type"]
                 if proxtype == ProxyType.collective:
                     present = self.do_proxy_collective(*args)
@@ -427,34 +424,38 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
         match = self.fetchone(
-                "select * from proxies where ("
-                    "("
-                        "userid = ?"
-                    ") and ("
-                        "guildid in (0, ?)"
-                    ") and ("
+                "select p.*, c.nick, c.avatar from ("
+                    "select * from proxies where ("
                         "("
-                            # if no tags are set, match nothing
-                            # postfix is only NULL when prefix is NULL
+                            "userid = ?"
+                        ") and ("
+                            "guildid in (0, ?)"
+                        ") and ("
                             "("
-                                "prefix not NULL"
-                            ") and ("
-                                "substr(?,1,length(prefix)) == prefix"
-                            ") and ("
-                                # 'abcd'[-1] == 'c', so add another character
-                                "substr(?||'_',-1,-length(postfix)) == postfix"
-                            ") and ("
-                                # prevent #text# from matching #
-                                "length(?) >= length(prefix) + length(postfix)"
+                                # if no tags are set, match nothing
+                                # postfix is only NULL when prefix is NULL
+                                "("
+                                    "prefix not NULL"
+                                ") and ("
+                                    "substr(?,1,length(prefix)) == prefix"
+                                ") and ("
+                                    # 'abcd'[-1] == 'c', add another character
+                                    "substr(?||'_',-1,-length(postfix)) "
+                                    "== postfix"
+                                ") and ("
+                                    # prevent #text# from matching #
+                                    "length(?) "
+                                    ">= length(prefix) + length(postfix)"
+                                ")"
+                            # (tags match) XOR (autoproxy enabled)
+                            ") == ("
+                                "auto == 0"
                             ")"
-                        # (tags match) XOR (autoproxy enabled)
-                        ") == ("
-                            "auto == 0"
                         ")"
-                    ")"
-                # if message matches prefix for proxy A but proxy B is auto,
-                # A wins. therefore, rank the proxy with auto = 0 higher
-                ") order by auto asc limit 1",
+                    # if message matches prefix for proxy A but proxy B is auto,
+                    # A wins. therefore, rank the proxy with auto = 0 higher
+                    ") order by auto asc limit 1"
+                ") as p left join collectives as c on p.extraid = c.collid",
                 (authid, message.guild.id, lower, lower, lower))
 
         if match and match["active"]:
