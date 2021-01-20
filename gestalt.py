@@ -455,7 +455,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     # if message matches prefix for proxy A but proxy B is auto,
                     # A wins. therefore, rank the proxy with auto = 0 higher
                     ") order by auto asc limit 1"
-                ") as p left join collectives as c on p.extraid = c.collid",
+                ") as p left join collectives as c on p.extraid = c.collid "
+                "limit 1",
                 (authid, message.guild.id, lower, lower, lower))
 
         if match and match["active"]:
