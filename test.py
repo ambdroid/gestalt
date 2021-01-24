@@ -117,6 +117,15 @@ class Message(Object):
     async def remove_reaction(self, emoji, member):
         del self.reactions[[x.emoji for x in self.reactions].index(emoji)]
 
+class PartialMessage:
+    def __init__(self, *, channel, id):
+        (self.channel, self.id, self.guild) = (channel, id, channel.guild)
+        self._truemsg = discord.utils.get(channel._messages, id = id)
+    async def delete(self):
+        await self._truemsg.delete()
+    async def remove_reaction(self, emoji, member):
+        await self._truemsg.remove_reaction(emoji, member)
+
 class Webhook(Object):
     class NotFound(discord.errors.NotFound):
         def __init__(self):
@@ -166,8 +175,6 @@ class Channel(Object):
         await instance.on_message(msg)
     async def create_webhook(self, name):
         return Webhook(self, name)
-    async def fetch_message(self, id):
-        return self._messages[[x.id for x in self._messages].index(id)]
     async def send(self, content = None, embed = None, file = None):
         msg = Message(author = bot, content = content, embed = embed)
         await self._add(msg)
@@ -762,6 +769,7 @@ def main():
 
 # monkey patch. this probably violates the Geneva Conventions
 discord.Webhook.partial = Webhook.partial
+discord.PartialMessage = PartialMessage
 # don't spam the channel with error messages
 gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
 gestalt.DEFAULT_PREFS |= gestalt.Prefs.replace
