@@ -493,13 +493,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if row == None:
             return
 
-        # we can't fetch the message directly
-        # so fetch the channel first, and use *that* to fetch the message.
-        channel = self.get_channel(payload.channel_id)
         reactor = self.get_user(payload.user_id)
         if reactor.bot:
             return
-        message = await channel.fetch_message(payload.message_id)
+        message = discord.PartialMessage(
+                channel = self.get_channel(payload.channel_id),
+                id = payload.message_id)
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
