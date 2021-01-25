@@ -145,6 +145,8 @@ class GestaltCommands:
         omit = False
         # must be at least one: the override
         for proxy in rows:
+            if proxy["state"] == ProxyState.hidden:
+                continue
             # don't show non-global proxies in other servers
             if message.guild and proxy["guildid"] not in [0, message.guild.id]:
                 omit = True
@@ -167,7 +169,7 @@ class GestaltCommands:
                         % (proxy["prefix"] + "text" + proxy["postfix"])
                         # hack because escaping ` doesn't work in code blocks
                         .replace("`", "\N{REVERSED PRIME}"))
-            if proxy["active"] == 0:
+            if proxy["state"] == ProxyState.inactive:
                 line += " *(inactive)*"
             if proxy["auto"] == 1:
                 line += " auto **on**"
@@ -249,11 +251,12 @@ class GestaltCommands:
             for member in role.members:
                 if not member.bot:
                     self.execute(
-                            # tags = NULL, auto = 0, active = 1
+                            # tags = NULL, auto = 0
                             "insert into proxies values "
-                            "(?, ?, ?, NULL, NULL, ?, ?, 0, 1)",
+                            "(?, ?, ?, NULL, NULL, ?, ?, 0, ?)",
                             (self.gen_id(), member.id, role.guild.id,
-                                ProxyType.collective, collid))
+                                ProxyType.collective, collid,
+                                ProxyState.active))
 
             await self.try_add_reaction(message, REACT_CONFIRM)
 
@@ -304,26 +307,50 @@ class GestaltCommands:
         await self.try_add_reaction(message, REACT_CONFIRM)
 
 
-    async def cmd_swap_open(self, message, member, tags):
+    def make_or_activate_swap(self, authid, targetid, tags):
         (prefix, postfix) = parse_tags(tags) if tags else (None, None)
-        self.execute("insert or ignore into proxies values"
-                # id, auth, guild, prefix, postfix, type, member, auto, active
-                "(?, ?, 0, ?, ?, ?, ?, 0, 0)",
-                (self.gen_id(), message.author.id, prefix, postfix,
-                    ProxyType.swap, member.id))
-        # triggers will take care of activation if necessary
+        swap = self.fetchone(
+                "select state from proxies "
+                "where (userid, extraid) = (?, ?)",
+                (authid, targetid))
+        if not swap:
+            # create swap. author's is inactive, target's is hidden
+            # id, auth, guild, prefix, postfix, type, member, auto, state
+            self.execute("insert or ignore into proxies values"
+                    "(?, ?, 0, ?, ?, ?, ?, 0, ?),"
+                    "(?, ?, 0, NULL, NULL, ?, ?, 0, ?)",
+                    (self.gen_id(), authid, prefix, postfix,
+                        ProxyType.swap, targetid, ProxyState.inactive)
+                    + (self.gen_id(), targetid, ProxyType.swap, authid,
+                        ProxyState.hidden))
+            return bool(self.cur.rowcount)
+        elif swap[0] == ProxyState.hidden:
+            # target is initiator. author can activate swap
+            self.execute(
+                    "update proxies set prefix = ?, postfix = ?, state = ?"
+                    "where (userid, extraid) = (?, ?)",
+                    (prefix, postfix, ProxyState.active, authid, targetid))
+            self.execute(
+                    "update proxies set state = ? "
+                    "where (userid, extraid) = (?, ?)",
+                    (ProxyState.active, targetid, authid))
+            return bool(self.cur.rowcount)
 
-        if self.cur.rowcount == 1:
+        return False
+
+
+    async def cmd_swap_open(self, message, member, tags):
+        if self.make_or_activate_swap(message.author.id, member.id, tags):
             await self.try_add_reaction(message, REACT_CONFIRM)
 
 
-    async def cmd_swap_close(self, message, proxid):
+    async def cmd_swap_close(self, message, proxy):
         self.execute(
-                "delete from proxies where (userid, type, proxid) = (?, ?, ?)",
-                (message.author.id, ProxyType.swap, proxid))
+                "delete from proxies "
+                "where proxid = ? or (userid, extraid) = (?, ?)",
+                (proxy["proxid"], proxy["extraid"], proxy["userid"]))
         if self.cur.rowcount:
             await self.try_add_reaction(message, REACT_CONFIRM)
-        return bool(self.cur.rowcount)
 
 
     # discord.py commands extension throws out bot messages
@@ -479,13 +506,20 @@ class GestaltCommands:
                 return await self.cmd_swap_open(message, member, tags)
 
             elif arg in ["close", "off"]:
-                swapname = reader.read_quote().lower()
-                if swapname == "":
+                proxid = reader.read_quote().lower()
+                if proxid == "":
                     raise RuntimeError("Please provide a swap ID.")
-
-                if not await self.cmd_swap_close(message, swapname):
+                proxy = self.fetchone(
+                        "select * from proxies "
+                        "where (userid, proxid) = (?, ?)",
+                        (authid, proxid))
+                if not proxy:
                     raise RuntimeError(
                             "You do not have a swap with that ID.")
+
+                return await self.cmd_swap_close(message, proxy)
+
+
 
         elif CMD_DEBUG and arg == "debug":
             return await self.cmd_debug(message)

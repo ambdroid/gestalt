@@ -309,8 +309,19 @@ class GestaltTest(unittest.TestCase):
         # alpha opens a swap with beta
         self.assertReacted(
                 send(alpha, chan, 'gs;swap open %s sw text' % beta.mention))
-        self.assertIsNotNone(self.get_proxid(alpha, beta))
-        self.assertIsNone(self.get_proxid(beta, alpha))
+        alphaid = self.get_proxid(alpha, beta)
+        self.assertIsNotNone(alphaid)
+        self.assertIsNotNone(self.get_proxid(beta, alpha))
+        self.assertEqual(instance.fetchone(
+            "select state from proxies where proxid = ?", (alphaid,))[0],
+            gestalt.ProxyState.inactive)
+        # simply trying to open the swap again doesn't work
+        self.assertNotReacted(
+                send(alpha, chan, 'gs;swap open %s' % beta.mention))
+        self.assertEqual(instance.fetchone(
+            "select state from proxies where proxid = ?", (alphaid,))[0],
+            gestalt.ProxyState.inactive)
+
         # alpha tests swap; it should fail
         self.assertIsNone(send(alpha, chan, "sw no swap").webhook_id)
         # beta opens swap
@@ -342,7 +353,6 @@ class GestaltTest(unittest.TestCase):
                 send(gamma, chan, "sww swap").author.name.index(alpha.name)
                 != -1)
         # the alpha-beta swap should still work
-        alphaid = self.get_proxid(alpha, beta)
         self.assertIsNotNone(alphaid)
         self.assertIsNotNone(self.get_proxid(beta, alpha))
         self.assertTrue(
