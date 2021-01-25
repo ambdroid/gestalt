@@ -496,9 +496,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         reactor = self.get_user(payload.user_id)
         if reactor.bot:
             return
-        message = discord.PartialMessage(
-                channel = self.get_channel(payload.channel_id),
-                id = payload.message_id)
+        message = (self.get_channel(payload.channel_id)
+                .get_partial_message(payload.message_id))
 
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
