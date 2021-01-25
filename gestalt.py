@@ -56,7 +56,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "type integer,"             # see enum ProxyType
                 "extraid,"                  # userid or collid or NULL
                 "auto integer,"             # 0/1
-                "active integer,"           # 0/1
+                "state integer,"            # see enum ProxyState
                 "unique(userid, extraid))")
         self.execute(
                 # this is a no-op to kick in the update trigger
@@ -125,37 +125,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                                 "((new.guildid != 0) and "
                                 "(guildid in (0, new.guildid)))"
                         ")"
-                    ");"
-                "end")
-        # these next three link swaps together such that:
-        # - when a swap is inserted, activate the opposite if it exists
-        # - when a swap is updated, activate the opposite if it exists
-        # - when a swap is deleted, delete the opposite swap
-        # the first two work together such that if (a,b) is inserted and (b,a)
-        # exists, then first (b,a) is updated, then the update trigger kicks in
-        # and updates the original (a,b) swap, resulting in both activated.
-        # note that these won't work on other swaps because they rely on
-        # extraid being a user id.
-        self.execute(
-                "create trigger if not exists swap_active_insert "
-                "after insert on proxies begin "
-                    "update proxies set active = 1 where ("
-                        "(userid, extraid) = (new.extraid, new.userid)"
-                    ");"
-                "end")
-        self.execute(
-                "create trigger if not exists swap_active_update "
-                "after update of active on proxies begin "
-                    "update proxies set active = 1 where ("
-                        "(active != 1)" # infinite recursion is bad
-                        "and (userid, extraid) = (new.extraid, new.userid)"
-                    ");"
-                "end")
-        self.execute(
-                "create trigger if not exists swap_delete "
-                "after delete on proxies begin "
-                    "delete from proxies where ("
-                        "(userid, extraid) = (old.extraid, old.userid)"
                     ");"
                 "end")
         self.execute(
@@ -259,9 +228,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if collid:
             self.execute(
                 "insert or ignore into proxies values "
-                "(?, ?, ?, NULL, NULL, ?, ?, 0, 1)",
+                "(?, ?, ?, NULL, NULL, ?, ?, 0, ?)",
                 (self.gen_id(), member.id, member.guild.id,
-                    ProxyType.collective, collid[0]))
+                    ProxyType.collective, collid[0], ProxyState.active))
 
 
     def on_member_role_remove(self, member, role):
@@ -398,8 +367,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.execute("insert into users values (?, ?, ?)",
                     (authid, str(message.author), DEFAULT_PREFS))
             self.execute("insert into proxies values"
-                    "(?, ?, 0, NULL, NULL, ?, 0, 0, 1)",
-                    (self.gen_id(), authid, ProxyType.override))
+                    "(?, ?, 0, NULL, NULL, ?, 0, 0, ?)",
+                    (self.gen_id(), authid, ProxyType.override,
+                        ProxyState.active))
             prefs = DEFAULT_PREFS
         else:
             if author["username"] != str(message.author):
@@ -459,7 +429,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "limit 1",
                 (authid, message.guild.id, lower, lower, lower))
 
-        if match and match["active"]:
+        if match and match["state"] == ProxyState.active:
             latch = prefs & Prefs.latch and not match["auto"]
             if match["type"] == ProxyType.override:
                 if latch:

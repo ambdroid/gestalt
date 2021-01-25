@@ -50,6 +50,13 @@ class ProxyType(enum.IntEnum):
     swap        = 2
 
 
+@enum.unique
+class ProxyState(enum.IntEnum):
+    hidden      = 0
+    inactive    = 1
+    active      = 2
+
+
 DEFAULT_PREFS = reduce(lambda a, b : a | Prefs[b], DEFAULT_PREFS, 0)
 REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
 HELPMSG = HELPMSG.format(p = COMMAND_PREFIX)
