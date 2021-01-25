@@ -388,7 +388,6 @@ class GestaltCommands:
                     # bots, server booster, integrated subscription services
                     # requiring users to pay to participate is antithetical
                     # to community-oriented identity play
-                    # TODO: return to this with RoleTags in 1.6
                     raise RuntimeError(ERROR_CURSED)
 
                 return await self.cmd_collective_new(message, role)
