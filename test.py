@@ -175,6 +175,8 @@ class Channel(Object):
         await instance.on_message(msg)
     async def create_webhook(self, name):
         return Webhook(self, name)
+    def get_partial_message(self, msgid):
+        return PartialMessage(channel = self, id = msgid)
     async def send(self, content = None, embed = None, file = None):
         msg = Message(author = bot, content = content, embed = embed)
         await self._add(msg)
@@ -769,7 +771,6 @@ def main():
 
 # monkey patch. this probably violates the Geneva Conventions
 discord.Webhook.partial = Webhook.partial
-discord.PartialMessage = PartialMessage
 # don't spam the channel with error messages
 gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
 gestalt.DEFAULT_PREFS |= gestalt.Prefs.replace
