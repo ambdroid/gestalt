@@ -285,7 +285,7 @@ class GestaltTest(unittest.TestCase):
         if type(role) != int:
             role = role.id
         row = instance.fetchone(
-                "select collid from collectives where roleid = ?",
+                "select maskid from masks where roleid = ?",
                 (role,))
         return row[0] if row else None
 
