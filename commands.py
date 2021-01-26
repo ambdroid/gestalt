@@ -82,7 +82,7 @@ class CommandReader:
 
 class GestaltCommands:
     async def cmd_debug(self, message):
-        for table in ["users", "proxies", "collectives"]:
+        for table in ["users", "proxies", "masks"]:
             await self.send_embed(message, "```%s```" % "\n".join(
                 ["|".join([str(i) for i in x]) for x in self.fetchall(
                     "select * from %s" % table)]))
@@ -134,11 +134,11 @@ class GestaltCommands:
 
     async def cmd_proxy_list(self, message):
         rows = self.fetchall(
-                "select p.*, c.roleid, c.nick from ("
+                "select p.*, m.roleid, m.nick from ("
                     "select * from proxies where userid = ?"
                     "order by type asc"
-                ") as p left join collectives as c "
-                "on p.extraid = c.collid",
+                ") as p left join masks as m "
+                "on p.extraid = m.maskid",
                 (message.author.id,))
 
         lines = []
@@ -221,7 +221,7 @@ class GestaltCommands:
 
     async def cmd_collective_list(self, message):
         rows = self.fetchall(
-                "select * from collectives where guildid = ?",
+                "select * from masks where guildid = ?",
                 (message.guild.id,))
 
         if len(rows) == 0:
@@ -229,7 +229,7 @@ class GestaltCommands:
         else:
             guild = message.guild
             text = "\n".join(["`%s`: %s %s" %
-                    (row["collid"],
+                    (row["maskid"],
                         "**%s**" % escape(row["nick"]),
                         # @everyone.mention shows up as @@everyone. weird!
                         # note that this is an embed; mentions don't work
@@ -243,7 +243,7 @@ class GestaltCommands:
     async def cmd_collective_new(self, message, role):
         # new collective with name of role and no avatar
         collid = self.gen_id()
-        self.execute("insert or ignore into collectives values"
+        self.execute("insert or ignore into masks values"
                 "(?, ?, ?, ?, NULL)",
                 (collid, role.guild.id, role.id, role.name))
         # if there wasn't already a collective on that role
@@ -263,8 +263,8 @@ class GestaltCommands:
 
     async def cmd_collective_update(self, message, collid, name, value):
         self.execute(
-                "update collectives set %s = ? "
-                "where collid = ?"
+                "update masks set %s = ? "
+                "where maskid = ?"
                 % ("nick" if name == "name" else "avatar"),
                 (value, collid))
         if self.cur.rowcount == 1:
@@ -273,8 +273,7 @@ class GestaltCommands:
 
     async def cmd_collective_delete(self, message, coll):
         self.execute("delete from proxies where extraid = ?", (coll["roleid"],))
-        self.execute("delete from collectives where collid = ?",
-                (coll["collid"],))
+        self.execute("delete from masks where maskid = ?", (coll["maskid"],))
         if self.cur.rowcount == 1:
             await self.try_add_reaction(message, REACT_CONFIRM)
 
@@ -423,8 +422,8 @@ class GestaltCommands:
                 collid = arg
                 action = reader.read_word().lower()
                 row = self.fetchone(
-                        "select * from collectives "
-                        "where (collid, guildid) = (?, ?)",
+                        "select * from masks "
+                        "where (maskid, guildid) = (?, ?)",
                         (collid, guild.id))
                 if row == None:
                     raise RuntimeError(

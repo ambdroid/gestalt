@@ -128,8 +128,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     ");"
                 "end")
         self.execute(
-                "create table if not exists collectives("
-                "collid text primary key collate nocase,"
+                "create table if not exists masks("
+                "maskid text primary key collate nocase,"
                 "guildid integer,"
                 "roleid integer,"
                 "nick text,"
@@ -215,7 +215,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # IDs don't need to be globally unique but it can't hurt
             exists = self.fetchone(
                     "select exists(select 1 from proxies where proxid = ?)"
-                    "or exists(select 1 from collectives where collid = ?)",
+                    "or exists(select 1 from masks where maskid = ?)",
                     (id,) * 2)[0]
             if not exists:
                 return id
@@ -223,7 +223,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     def on_member_role_add(self, member, role):
         collid = self.fetchone(
-                "select collid from collectives where roleid = ?",
+                "select maskid from masks where roleid = ?",
                 (role.id,))
         if collid:
             self.execute(
@@ -235,7 +235,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     def on_member_role_remove(self, member, role):
         collid = self.fetchone(
-                "select collid from collectives where roleid = ?",
+                "select maskid from masks where roleid = ?",
                 (role.id,))
         if collid:
             self.execute("delete from proxies where (userid, extraid) = (?, ?)",
@@ -244,7 +244,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def on_guild_role_delete(self, role):
         # no need to delete proxies; on_member_update takes care of that
-        self.execute("delete from collectives where roleid = ?", (role.id,))
+        self.execute("delete from masks where roleid = ?", (role.id,))
 
 
     async def on_member_update(self, before, after):
@@ -394,7 +394,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
         match = self.fetchone(
-                "select p.*, c.nick, c.avatar from ("
+                "select p.*, m.nick, m.avatar from ("
                     "select * from proxies where ("
                         "("
                             "userid = ?"
@@ -425,7 +425,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     # if message matches prefix for proxy A but proxy B is auto,
                     # A wins. therefore, rank the proxy with auto = 0 higher
                     ") order by auto asc limit 1"
-                ") as p left join collectives as c on p.extraid = c.collid "
+                ") as p left join masks as m on p.extraid = m.maskid "
                 "limit 1",
                 (authid, message.guild.id, lower, lower, lower))
 
