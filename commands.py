@@ -272,7 +272,7 @@ class GestaltCommands:
 
 
     async def cmd_collective_delete(self, message, coll):
-        self.execute("delete from proxies where extraid = ?", (coll["roleid"],))
+        self.execute("delete from proxies where extraid = ?", (coll["maskid"],))
         self.execute("delete from masks where maskid = ?", (coll["maskid"],))
         if self.cur.rowcount == 1:
             await self.try_add_reaction(message, REACT_CONFIRM)
