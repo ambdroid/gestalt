@@ -273,9 +273,10 @@ class GestaltTest(unittest.TestCase):
 
     # ugly hack because parsing gs;p output would be uglier
     def get_proxid(self, user, other):
-        if type(other) != int:
+        if type(other) in [Role, RoleEveryone, User, Member]:
             other = other.id
-        other = self.get_collid(other) or other
+        if type(other) == int:
+            other = self.get_collid(other) or other
         row = instance.fetchone(
                 "select proxid from proxies where (userid, extraid) = (?, ?)",
                 (user.id, other))
@@ -414,14 +415,16 @@ class GestaltTest(unittest.TestCase):
         collid = self.get_collid(role)
         self.assertReacted(send(alpha, g["main"], "gs;c %s delete" % collid))
         self.assertIsNone(self.get_collid(role))
-        self.assertIsNone(self.get_proxid(alpha, role))
+        self.assertIsNone(self.get_proxid(alpha, collid))
 
         # recreate the collective, then delete the role
         self.assertReacted(send(alpha, g["main"], "gs;c new %s" % role.mention))
-        proxid = self.get_proxid(alpha, role)
+        collid = self.get_collid(role)
+        self.assertIsNotNone(collid)
+        proxid = self.get_proxid(alpha, collid)
         self.assertIsNotNone(proxid)
         run(role.delete())
-        self.assertIsNone(self.get_proxid(alpha, role))
+        self.assertIsNone(self.get_proxid(alpha, collid))
         self.assertIsNone(self.get_collid(role))
 
     def test_04_permissions(self):
