@@ -138,7 +138,7 @@ class GestaltCommands:
                     "select * from proxies where userid = ?"
                     "order by type asc"
                 ") as p left join masks as m "
-                "on p.extraid = m.maskid",
+                "on p.maskid = m.maskid",
                 (message.author.id,))
 
         lines = []
@@ -157,7 +157,7 @@ class GestaltCommands:
             elif proxy["type"] == ProxyType.swap:
                 line += ("%s with **%s**"
                         % (SYMBOL_SWAP,
-                            escape(self.get_user(proxy["extraid"]))))
+                            escape(self.get_user(proxy["otherid"]))))
             elif proxy["type"] == ProxyType.collective:
                 guild = self.get_guild(proxy["guildid"])
                 line += ("%s **%s** on **%s** in **%s**"
@@ -253,7 +253,7 @@ class GestaltCommands:
                     self.execute(
                             # tags = NULL, auto = 0
                             "insert into proxies values "
-                            "(?, ?, ?, NULL, NULL, ?, ?, 0, ?)",
+                            "(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, ?)",
                             (self.gen_id(), member.id, role.guild.id,
                                 ProxyType.collective, collid,
                                 ProxyState.active))
@@ -272,7 +272,7 @@ class GestaltCommands:
 
 
     async def cmd_collective_delete(self, message, coll):
-        self.execute("delete from proxies where extraid = ?", (coll["maskid"],))
+        self.execute("delete from proxies where maskid = ?", (coll["maskid"],))
         self.execute("delete from masks where maskid = ?", (coll["maskid"],))
         if self.cur.rowcount == 1:
             await self.try_add_reaction(message, REACT_CONFIRM)
@@ -310,14 +310,14 @@ class GestaltCommands:
         (prefix, postfix) = parse_tags(tags) if tags else (None, None)
         swap = self.fetchone(
                 "select state from proxies "
-                "where (userid, extraid) = (?, ?)",
+                "where (userid, otherid) = (?, ?)",
                 (authid, targetid))
         if not swap:
             # create swap. author's is inactive, target's is hidden
-            # id, auth, guild, prefix, postfix, type, member, auto, state
+            # id, auth, guild, prefix, postfix, type, member, mask, auto, state
             self.execute("insert or ignore into proxies values"
-                    "(?, ?, 0, ?, ?, ?, ?, 0, ?),"
-                    "(?, ?, 0, NULL, NULL, ?, ?, 0, ?)",
+                    "(?, ?, 0, ?, ?, ?, ?, NULL, 0, ?),"
+                    "(?, ?, 0, NULL, NULL, ?, ?, NULL, 0, ?)",
                     (self.gen_id(), authid, prefix, postfix,
                         ProxyType.swap, targetid, ProxyState.inactive)
                     + (self.gen_id(), targetid, ProxyType.swap, authid,
@@ -327,11 +327,11 @@ class GestaltCommands:
             # target is initiator. author can activate swap
             self.execute(
                     "update proxies set prefix = ?, postfix = ?, state = ?"
-                    "where (userid, extraid) = (?, ?)",
+                    "where (userid, otherid) = (?, ?)",
                     (prefix, postfix, ProxyState.active, authid, targetid))
             self.execute(
                     "update proxies set state = ? "
-                    "where (userid, extraid) = (?, ?)",
+                    "where (userid, otherid) = (?, ?)",
                     (ProxyState.active, targetid, authid))
             return bool(self.cur.rowcount)
 
@@ -346,8 +346,8 @@ class GestaltCommands:
     async def cmd_swap_close(self, message, proxy):
         self.execute(
                 "delete from proxies "
-                "where proxid = ? or (userid, extraid) = (?, ?)",
-                (proxy["proxid"], proxy["extraid"], proxy["userid"]))
+                "where proxid = ? or (userid, otherid) = (?, ?)",
+                (proxy["proxid"], proxy["otherid"], proxy["userid"]))
         if self.cur.rowcount:
             await self.try_add_reaction(message, REACT_CONFIRM)
 

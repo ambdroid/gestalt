@@ -33,7 +33,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "msgid integer primary key,"
                 "chanid integer,"
                 "authid integer,"
-                "otherid text,"
+                "otherid integer,"
+                "maskid text,"
                 "content text,"
                 "deleted integer)")
         self.execute(
@@ -54,10 +55,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "prefix text,"
                 "postfix text,"
                 "type integer,"             # see enum ProxyType
-                "extraid,"                  # userid or collid or NULL
+                "otherid integer,"          # userid for swaps
+                "maskid text,"
                 "auto integer,"             # 0/1
                 "state integer,"            # see enum ProxyState
-                "unique(userid, extraid))")
+                "unique(userid, otherid),"
+                "unique(userid, maskid))")
         self.execute(
                 # this is a no-op to kick in the update trigger
                 "create trigger if not exists proxy_tags_conflict_insert "
@@ -204,7 +207,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
             self.execute(
-                    "insert into history values (?, 0, ?, 0, '', 0)",
+                    "insert into history values (?, 0, ?, NULL, NULL, '', 0)",
                     (msg.id, replyto.author.id))
 
 
@@ -228,7 +231,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if collid:
             self.execute(
                 "insert or ignore into proxies values "
-                "(?, ?, ?, NULL, NULL, ?, ?, 0, ?)",
+                "(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, ?)",
                 (self.gen_id(), member.id, member.guild.id,
                     ProxyType.collective, collid[0], ProxyState.active))
 
@@ -238,7 +241,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 "select maskid from masks where roleid = ?",
                 (role.id,))
         if collid:
-            self.execute("delete from proxies where (userid, extraid) = (?, ?)",
+            self.execute("delete from proxies where (userid, maskid) = (?, ?)",
                     (member.id, collid[0]))
 
 
@@ -276,7 +279,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def do_proxy_swap(self, message, proxy, prefs, content):
-        member = message.guild.get_member(proxy["extraid"])
+        member = message.guild.get_member(proxy["otherid"])
         if member:
             return (member.display_name, member.avatar_url_as(format = "webp"),
                     content)
@@ -345,8 +348,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 break
 
         # deleted = 0
-        self.execute("insert into history values (?, ?, ?, ?, ?, 0)",
-                (msg.id, channel.id, authid, proxy["extraid"],
+        self.execute("insert into history values (?, ?, ?, ?, ?, ?, 0)",
+                (msg.id, channel.id, authid, proxy["otherid"], proxy["maskid"],
                     content if LOG_MESSAGE_CONTENT else ""))
 
         delay = DELETE_DELAY if prefs & Prefs.delay else None
@@ -367,7 +370,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.execute("insert into users values (?, ?, ?)",
                     (authid, str(message.author), DEFAULT_PREFS))
             self.execute("insert into proxies values"
-                    "(?, ?, 0, NULL, NULL, ?, 0, 0, ?)",
+                    "(?, ?, 0, NULL, NULL, ?, NULL, NULL, 0, ?)",
                     (self.gen_id(), authid, ProxyType.override,
                         ProxyState.active))
             prefs = DEFAULT_PREFS
@@ -425,7 +428,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     # if message matches prefix for proxy A but proxy B is auto,
                     # A wins. therefore, rank the proxy with auto = 0 higher
                     ") order by auto asc limit 1"
-                ") as p left join masks as m on p.extraid = m.maskid "
+                ") as p left join masks as m on p.maskid = m.maskid "
                 "limit 1",
                 (authid, message.guild.id, lower, lower, lower))
 

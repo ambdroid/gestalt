@@ -273,21 +273,27 @@ class GestaltTest(unittest.TestCase):
 
     # ugly hack because parsing gs;p output would be uglier
     def get_proxid(self, user, other):
-        if type(other) in [Role, RoleEveryone, User, Member]:
-            other = other.id
-        if type(other) == int:
-            other = self.get_collid(other) or other
-        row = instance.fetchone(
-                "select proxid from proxies where (userid, extraid) = (?, ?)",
-                (user.id, other))
+        if other == None:
+            return instance.fetchone(
+                    "select proxid from proxies where (userid, type) = (?, ?)",
+                    (user.id, gestalt.ProxyType.override))[0]
+        elif type(other) in [str, Role, RoleEveryone]:
+            collid = other if type(other) == str else self.get_collid(other)
+            row = instance.fetchone(
+                    "select proxid from proxies "
+                    "where (userid, maskid) = (?, ?)",
+                    (user.id, collid))
+        else:
+            row = instance.fetchone(
+                    "select proxid from proxies "
+                    "where (userid, otherid) is (?, ?)",
+                    (user.id, other.id))
         return row[0] if row else None
 
     def get_collid(self, role):
-        if type(role) != int:
-            role = role.id
         row = instance.fetchone(
                 "select maskid from masks where roleid = ?",
-                (role,))
+                (role.id,))
         return row[0] if row else None
 
     def assertRowExists(self, *args):
@@ -474,7 +480,7 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, "gs;p %s tags e:text" % proxid))
 
         # test setting auto on override to unset other autos
-        overid = self.get_proxid(alpha, 0)
+        overid = self.get_proxid(alpha, None)
         self.assertReacted(send(alpha, chan, "gs;p %s auto on" % proxid))
         self.assertIsNotNone(send(alpha, chan, "auto on").webhook_id)
         self.assertReacted(send(alpha, chan, "gs;p %s auto on" % overid))
@@ -654,7 +660,7 @@ class GestaltTest(unittest.TestCase):
             "gs;swap close %s" % proxswap))
 
     def test_09_override(self):
-        overid = self.get_proxid(alpha, 0)
+        overid = self.get_proxid(alpha, None)
         # alpha has sent messages visible to bot by now, so should have one
         self.assertIsNotNone(overid)
         proxid = self.get_proxid(alpha, g.default_role)
