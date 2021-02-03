@@ -308,10 +308,11 @@ class GestaltCommands:
 
     def make_or_activate_swap(self, authid, targetid, tags):
         (prefix, postfix) = parse_tags(tags) if tags else (None, None)
+        # to support future features, look at proxies from target, not author
         swap = self.fetchone(
                 "select state from proxies "
                 "where (userid, otherid) = (?, ?)",
-                (authid, targetid))
+                (targetid, authid))
         if not swap:
             # create swap. author's is inactive, target's is hidden
             # id, auth, guild, prefix, postfix, type, member, mask, auto, state
@@ -323,7 +324,7 @@ class GestaltCommands:
                     + (self.gen_id(), targetid, ProxyType.swap, authid,
                         ProxyState.hidden))
             return bool(self.cur.rowcount)
-        elif swap[0] == ProxyState.hidden:
+        elif swap[0] == ProxyState.inactive:
             # target is initiator. author can activate swap
             self.execute(
                     "update proxies set prefix = ?, postfix = ?, state = ?"
