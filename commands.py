@@ -155,11 +155,14 @@ class GestaltCommands:
             if proxy["type"] == ProxyType.override:
                 line += SYMBOL_OVERRIDE
             elif proxy["type"] == ProxyType.swap:
-                line += ("%s with **%s**"
-                        % (SYMBOL_SWAP,
-                            escape(self.get_user(proxy["otherid"]))))
+                user = self.get_user(proxy["otherid"])
+                if not user:
+                    continue
+                line += ("%s with **%s**" % (SYMBOL_SWAP, escape(user)))
             elif proxy["type"] == ProxyType.collective:
                 guild = self.get_guild(proxy["guildid"])
+                if not guild:
+                    continue
                 line += ("%s **%s** on **%s** in **%s**"
                         % (SYMBOL_COLLECTIVE, escape(proxy["nick"]),
                             escape(guild.get_role(proxy["roleid"]).name),
