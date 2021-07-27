@@ -307,6 +307,25 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if msgfile == None and content == "":
             return
 
+        embed = None
+        if message.reference:
+            reference = (message.reference.cached_message or
+                    await message.channel.fetch_message(
+                        message.reference.message_id))
+            if reference:
+                embed = discord.Embed(description = (
+                    "**[Reply to:](%s)** %s" % (
+                        reference.jump_url,
+                        # TODO handle markdown
+                        reference.clean_content[:100] + (
+                            REPLY_CUTOFF if len(reference.clean_content) > 100
+                            else ""))
+                    if reference.content else
+                    "*[(click to see attachment)](%s)*" % reference.jump_url))
+                embed.set_author(
+                        name = reference.author.display_name + REPLY_SYMBOL,
+                        icon_url = reference.author.avatar_url)
+
         # this should never loop infinitely but just in case
         for ignored in range(2):
             row = self.fetchone("select * from webhooks where chanid = ?",
@@ -338,7 +357,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
                 msg = await hook.send(wait = True, username = present[0],
                         avatar_url = present[1], content = present[2],
-                        file = msgfile)
+                        file = msgfile, embed = embed)
             except discord.errors.NotFound:
                 # webhook is deleted. delete entry and return to top of loop
                 self.execute("delete from webhooks where chanid = ?",
