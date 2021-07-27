@@ -87,6 +87,7 @@ class Message(Object):
         self.webhook_id = None
         self.attachments = []
         self.reactions = []
+        self.reference = None
         self.type = discord.MessageType.default
         super().__init__(**kwargs)
 
