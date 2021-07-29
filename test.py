@@ -515,7 +515,8 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(alpha, chan, 'no tags, no auto').webhook_id)
 
     def test_06_query_delete(self):
-        msg = send(alpha, g['main'], 'e:reaction test')
+        chan = g['main']
+        msg = send(alpha, chan, 'e:reaction test')
         run(msg._react(gestalt.REACT_QUERY, beta))
         self.assertNotEqual(beta.dm_channel[-1].content.find(alpha.name), -1)
 
@@ -525,6 +526,23 @@ class GestaltTest(unittest.TestCase):
 
         run(msg._react(gestalt.REACT_DELETE, alpha))
         self.assertTrue(msg._deleted)
+
+        # in swaps, sender or swapee may delete message
+        self.assertReacted(send(alpha, chan,
+            'gs;swap open %s swap:text' % beta.mention))
+        self.assertReacted(send(beta, chan, 'gs;swap open %s' % alpha.mention))
+        msg = send(alpha, chan, 'swap:delete me')
+        self.assertIsNotNone(msg.webhook_id)
+        run(msg._react(gestalt.REACT_DELETE, gamma))
+        self.assertFalse(msg._deleted)
+        run(msg._react(gestalt.REACT_DELETE, alpha))
+        self.assertTrue(msg._deleted)
+        msg = send(alpha, chan, 'swap:delete me')
+        self.assertIsNotNone(msg.webhook_id)
+        run(msg._react(gestalt.REACT_DELETE, beta))
+        self.assertTrue(msg._deleted)
+        self.assertReacted(send(alpha, chan,
+            'gs;swap close %s' % self.get_proxid(alpha, beta)))
 
     def test_07_webhook_shenanigans(self):
         # test what happens when a webhook is deleted
