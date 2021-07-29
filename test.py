@@ -79,7 +79,7 @@ class Member:
 
 
 class Message(Object):
-    def __init__(self, **kwargs):
+    def __init__(self, embed = None, **kwargs):
         self._deleted = False
         self.mentions = []
         self.raw_mentions = []
@@ -88,8 +88,11 @@ class Message(Object):
         self.attachments = []
         self.reactions = []
         self.reference = None
+        self.embeds = [embed] if embed else []
         self.type = discord.MessageType.default
         super().__init__(**kwargs)
+        self.clean_content = self.content
+        self.jump_url = 'http://%i' % self.id
 
         if self.content != None:
             # mentions can also be in the embed but that's irrelevant here
@@ -145,8 +148,10 @@ class Webhook(Object):
             raise Webhook.NotFound()
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
         msg.webhook_id = self.id
+        name = username if username else self.name
         msg.author = Object(id = self.id, bot = True,
-                name = username if username else self.name)
+                name = name, display_name = name,
+                avatar_url = 'http://avatar.png')
         await self._channel._add(msg)
         return msg
 
@@ -176,6 +181,8 @@ class Channel(Object):
         await instance.on_message(msg)
     async def create_webhook(self, name):
         return Webhook(self, name)
+    async def fetch_message(self, msgid):
+        return discord.utils.get(self._messages, id = msgid)
     def get_partial_message(self, msgid):
         return PartialMessage(channel = self, id = msgid)
     async def send(self, content = None, embed = None, file = None):
@@ -265,8 +272,8 @@ class TestBot(gestalt.Gestalt):
     def get_channel(self, id):
         return Channel.channels[id]
 
-def send(user, channel, content):
-    msg = Message(author = user, content = content)
+def send(user, channel, content, reference = None):
+    msg = Message(author = user, content = content, reference = reference)
     run(channel._add(msg))
     return channel[-1] if msg._deleted else msg
 
@@ -382,7 +389,7 @@ class GestaltTest(unittest.TestCase):
     def test_02_help(self):
         send(alpha, g['main'], 'gs;help')
         msg = g['main'][-1]
-        self.assertIsNotNone(msg.embed)
+        self.assertEqual(len(msg.embeds), 1)
         self.assertReacted(msg, gestalt.REACT_DELETE)
         run(msg._react(gestalt.REACT_DELETE, alpha))
         self.assertTrue(msg._deleted)
@@ -527,10 +534,14 @@ class GestaltTest(unittest.TestCase):
                 'select 1 from webhooks where hookid = ?',
                 (hookid,))
         Webhook.hooks[hookid]._deleted = True
-        self.assertIsNotNone(send(alpha, g['main'], 'e:asdhgdfjg').webhook_id)
+        newhook = send(alpha, g['main'], 'e:asdhgdfjg').webhook_id
+        self.assertIsNotNone(newhook)
         self.assertRowNotExists(
                 'select 1 from webhooks where hookid = ?',
                 (hookid,))
+        self.assertRowExists(
+                'select 1 from webhooks where hookid = ?',
+                (newhook,))
 
     # this function requires the existence of at least three ongoing wars
     def test_08_global_conflicts(self):
@@ -763,6 +774,24 @@ class GestaltTest(unittest.TestCase):
         collid = self.get_collid(g.default_role).upper()
         self.assertReacted(send(alpha, g['main'], 'gs;p %s auto off' % proxid))
         self.assertReacted(send(alpha, g['main'], 'gs;c %s name test' % collid))
+
+    def test_16_replies(self):
+        chan = g['main']
+        msg = send(alpha, chan, 'e: no reply')
+        self.assertIsNotNone(msg.webhook_id)
+        self.assertEqual(len(msg.embeds), 0)
+        reply = send(alpha, chan, 'e: reply', Object(cached_message = msg))
+        self.assertIsNotNone(reply.webhook_id)
+        self.assertEqual(len(reply.embeds), 1)
+        self.assertEqual(reply.embeds[0].description,
+                '**[Reply to:](%s)** no reply' % msg.jump_url)
+        # again, but this time the message isn't in cache
+        reply = send(alpha, chan, 'e: reply', Object(cached_message = None,
+            message_id = msg.id))
+        self.assertIsNotNone(reply.webhook_id)
+        self.assertEqual(len(reply.embeds), 1)
+        self.assertEqual(reply.embeds[0].description,
+                '**[Reply to:](%s)** no reply' % msg.jump_url)
 
 
 def main():
