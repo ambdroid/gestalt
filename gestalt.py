@@ -478,7 +478,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         # first, make sure this is one of ours
         row = self.fetchone(
-            'select authid,'
+            'select authid, otherid,'
             '(select username from users where userid = authid) username '
             'from history where msgid = ?',
             (payload.message_id,))
@@ -503,8 +503,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 pass
 
         elif emoji == REACT_DELETE:
-            # only sender may delete proxied message
-            if payload.user_id == row['authid']:
+            # sender or swapee may delete proxied message
+            if payload.user_id in (row['authid'], row['otherid']):
                 if self.has_perm(message, manage_messages = True):
                     await message.delete()
                 else:
