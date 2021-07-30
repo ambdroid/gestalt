@@ -356,6 +356,39 @@ class GestaltCommands:
             await self.try_add_reaction(message, REACT_CONFIRM)
 
 
+    async def cmd_edit(self, message, content):
+        if message.reference:
+            proxied = self.fetchone(
+                    'select msgid, authid from history where msgid = ?',
+                    (message.reference.message_id,))
+        else:
+            proxied = self.fetchone(
+                    'select msgid, authid from history '
+                    'where (chanid, authid) = (?, ?)'
+                    'order by msgid desc limit 1',
+                    (message.channel.id, message.author.id))
+        if not proxied:
+            return await self.try_add_reaction(message, REACT_DELETE)
+        if proxied['authid'] != message.author.id:
+            return await self.try_add_reaction(message, REACT_DELETE)
+
+        hook = self.fetchone('select * from webhooks where chanid = ?',
+                (message.channel.id,))
+        if not hook:
+            return await self.try_add_reaction(message, REACT_DELETE)
+        hook = discord.Webhook.partial(hook[1], hook[2], adapter = self.adapter)
+
+        try:
+            await hook.edit_message(proxied['msgid'], content = content)
+            self.execute('update history set content = ? where msgid = ?',
+                    (content, proxied['msgid']))
+            if self.has_perm(message, manage_messages = True):
+                await message.delete()
+        except:
+            # webhook was deleted
+            await self.try_add_reaction(message, REACT_DELETE)
+
+
     # discord.py commands extension throws out bot messages
     # this is incompatible with the test framework so process commands manually
 
@@ -521,6 +554,10 @@ class GestaltCommands:
                             'You do not have a swap with that ID.')
 
                 return await self.cmd_swap_close(message, proxy)
+
+        elif arg in ['edit', 'e']:
+            content = reader.read_remainder()
+            return await self.cmd_edit(message, content)
 
 
 
