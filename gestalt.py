@@ -37,6 +37,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'maskid text,'
                 'content text,'
                 'deleted integer)')
+        # for gs;edit
+        # to quickly find the last message sent by a user in a channel
+        self.execute(
+                'create index if not exists history_chanid_authid '
+                'on history(chanid, authid)')
         self.execute(
                 'create table if not exists users('
                 'userid integer primary key,'

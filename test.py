@@ -143,6 +143,8 @@ class Webhook(Object):
         Webhook.hooks[self.id] = self
     def partial(id, token, adapter):
         return Webhook.hooks[id]
+    async def edit_message(self, message_id, content):
+        (await self._channel.fetch_message(message_id)).content = content
     async def send(self, username, **kwargs):
         if self._deleted:
             raise Webhook.NotFound()
@@ -810,6 +812,25 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(reply.embeds), 1)
         self.assertEqual(reply.embeds[0].description,
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
+
+    def test_17_edit(self):
+        chan = g._add_channel('edit')
+        first = send(alpha, chan, 'e: fisrt')
+        self.assertIsNotNone(first.webhook_id)
+        second = send(alpha, chan, 'e: secnod')
+        self.assertIsNotNone(second.webhook_id)
+
+        msg = send(beta, chan, 'gs;edit second')
+        self.assertReacted(msg, gestalt.REACT_DELETE)
+        self.assertEqual(second.content, 'secnod')
+        msg = send(beta, chan, 'gs;edit first', Object(message_id = first.id))
+        self.assertReacted(msg, gestalt.REACT_DELETE)
+        self.assertEqual(first.content, 'fisrt')
+
+        send(alpha, chan, 'gs;edit second')
+        self.assertEqual(second.content, 'second')
+        send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
+        self.assertEqual(first.content, 'first')
 
 
 def main():
