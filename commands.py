@@ -363,30 +363,61 @@ class GestaltCommands:
                     'where (chanid, authid) = (?, ?)'
                     'order by msgid desc limit 1',
                     (message.channel.id, message.author.id))
-        if not proxied:
+        if not proxied or proxied['authid'] != message.author.id:
             return await self.try_add_reaction(message, REACT_DELETE)
-        if proxied['authid'] != message.author.id:
+        proxied = await message.channel.fetch_message(proxied['msgid'])
+        if not proxied:
             return await self.try_add_reaction(message, REACT_DELETE)
 
         hook = self.fetchone('select * from webhooks where chanid = ?',
                 (message.channel.id,))
-        if not hook:
+        if not hook or proxied.webhook_id != hook[1]:
             return await self.try_add_reaction(message, REACT_DELETE)
         hook = discord.Webhook.partial(hook[1], hook[2], adapter = self.adapter)
 
-        try:
-            await hook.edit_message(proxied['msgid'], content = content)
-            self.execute('update history set content = ? where msgid = ?',
-                    (content, proxied['msgid']))
-            if self.has_perm(message, manage_messages = True):
-                await message.delete()
-        except:
-            # webhook was deleted
-            await self.try_add_reaction(message, REACT_DELETE)
+        await hook.edit_message(proxied.id, content = content)
+        if self.has_perm(message, manage_messages = True):
+            await message.delete()
+
+        logchan = self.fetchone('select logchan from guilds where guildid = ?',
+                (message.guild.id,))
+        if logchan:
+            logchan = logchan[0]
+            embed = discord.Embed(description = content,
+                    timestamp = discord.utils.snowflake_time(message.id))
+            embed.add_field(
+                    name = 'Old message',
+                    value = proxied.content,
+                    inline = False)
+            embed.set_author(
+                    name = '[Edited] #%s: %s' % (message.channel.name,
+                        proxied.author.display_name),
+                    icon_url = proxied.author.avatar_url)
+            embed.set_thumbnail(url = proxied.author.avatar_url)
+            embed.set_footer(text =
+                    'Sender: %s (%i) | '
+                    'Message ID: %i | '
+                    'Original Message ID: %i'
+                    % (str(message.author), message.author.id, proxied.id,
+                        message.id))
+            try:
+                await self.get_channel(logchan).send(proxied.jump_url,
+                        embed = embed)
+            except:
+                pass
 
 
-    # discord.py commands extension throws out bot messages
-    # this is incompatible with the test framework so process commands manually
+    async def cmd_log_channel(self, message, channel):
+        self.execute('insert or replace into guilds values (?, ?)',
+                (message.guild.id, channel.id))
+        await self.try_add_reaction(message, REACT_CONFIRM)
+
+
+    async def cmd_log_disable(self, message):
+        self.execute('delete from guilds where guildid = ?',
+                (message.guild.id,))
+        await self.try_add_reaction(message, REACT_CONFIRM)
+
 
     # parse, convert, and validate arguments, then call the relevant function
     async def do_command(self, message, cmd):
@@ -554,6 +585,30 @@ class GestaltCommands:
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()
             return await self.cmd_edit(message, content)
+
+        elif arg == 'log':
+            if not message.guild:
+                raise RuntimeError(ERROR_DM)
+            if not message.author.guild_permissions.administrator:
+                raise RuntimeError(
+                        'You need `Manage Server` permissions to do that.')
+
+            arg = reader.read_word().lower()
+            if arg == 'channel':
+                arg = reader.read_remainder()
+                if message.channel_mentions:
+                    channel = message.channel_mentions[0]
+                else:
+                    channel = discord.utils.get(
+                            self.get_guild(message.guild.id).channels,
+                            name = arg)
+                    if not channel:
+                        raise RuntimeError('Please provide a channel.')
+
+                return await self.cmd_log_channel(message, channel)
+
+            if arg == 'disable':
+                return await self.cmd_log_disable(message)
 
 
 

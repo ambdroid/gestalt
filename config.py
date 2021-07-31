@@ -1,6 +1,5 @@
 DEFAULT_DB = 'gestalt.db'
 CMD_DEBUG = False
-LOG_MESSAGE_CONTENT = True
 
 DELETE_DELAY = 0.4
 
@@ -38,8 +37,7 @@ COMMAND_PREFIX = 'gs;'
 
 DEFAULT_PREFS = ['replace', 'errors']
 
-PURGE_AGE = 3600*24*7   # 1 week
-PURGE_TIMEOUT = 3600*2  # 2 hours
+SYNC_TIMEOUT = 3600 # in seconds
 
 WEBHOOK_NAME = 'Gestalt webhook'
 
