@@ -192,7 +192,7 @@ class GestaltCommands:
             'update proxies set prefix = ?, postfix = ? where proxid = ?',
             (prefix, postfix, proxid))
 
-        await self.try_add_reaction(message, REACT_CONFIRM)
+        await self.mark_success(message, True)
 
 
     async def cmd_proxy_auto(self, message, proxid, auto):
@@ -215,7 +215,7 @@ class GestaltCommands:
                     'update proxies set auto = 0 where proxid = ?',
                     (proxid,))
 
-        await self.try_add_reaction(message, REACT_CONFIRM)
+        await self.mark_success(message, True)
 
 
     async def cmd_collective_list(self, message):
@@ -257,7 +257,7 @@ class GestaltCommands:
                                 ProxyType.collective, collid,
                                 ProxyState.active))
 
-            await self.try_add_reaction(message, REACT_CONFIRM)
+            await self.mark_success(message, True)
 
 
     async def cmd_collective_update(self, message, collid, name, value):
@@ -267,14 +267,14 @@ class GestaltCommands:
                 % ('nick' if name == 'name' else 'avatar'),
                 (value, collid))
         if self.cur.rowcount == 1:
-            await self.try_add_reaction(message, REACT_CONFIRM)
+            await self.mark_success(message, True)
 
 
     async def cmd_collective_delete(self, message, coll):
         self.execute('delete from proxies where maskid = ?', (coll['maskid'],))
         self.execute('delete from masks where maskid = ?', (coll['maskid'],))
         if self.cur.rowcount == 1:
-            await self.try_add_reaction(message, REACT_CONFIRM)
+            await self.mark_success(message, True)
 
 
     async def cmd_prefs_list(self, message, user):
@@ -289,7 +289,7 @@ class GestaltCommands:
         self.execute(
                 'update users set prefs = ? where userid = ?',
                 (DEFAULT_PREFS, message.author.id))
-        await self.try_add_reaction(message, REACT_CONFIRM)
+        await self.mark_success(message, True)
 
 
     async def cmd_prefs_update(self, message, user, name, value):
@@ -302,7 +302,7 @@ class GestaltCommands:
                 'update users set prefs = ? where userid = ?',
                 (prefs, message.author.id))
 
-        await self.try_add_reaction(message, REACT_CONFIRM)
+        await self.mark_success(message, True)
 
 
     def make_or_activate_swap(self, authid, targetid, tags):
@@ -340,7 +340,7 @@ class GestaltCommands:
 
     async def cmd_swap_open(self, message, member, tags):
         if self.make_or_activate_swap(message.author.id, member.id, tags):
-            await self.try_add_reaction(message, REACT_CONFIRM)
+            await self.mark_success(message, True)
 
 
     async def cmd_swap_close(self, message, proxy):
@@ -349,7 +349,7 @@ class GestaltCommands:
                 'where proxid = ? or (userid, otherid) = (?, ?)',
                 (proxy['proxid'], proxy['otherid'], proxy['userid']))
         if self.cur.rowcount:
-            await self.try_add_reaction(message, REACT_CONFIRM)
+            await self.mark_success(message, True)
 
 
     async def cmd_edit(self, message, content):
@@ -365,22 +365,22 @@ class GestaltCommands:
                     'order by msgid desc limit 1',
                     (channel.id, message.author.id))
         if not proxied or proxied['authid'] != message.author.id:
-            return await self.try_add_reaction(message, REACT_DELETE)
+            return await self.mark_success(message, False)
         proxied = await channel.fetch_message(proxied['msgid'])
         if not proxied:
-            return await self.try_add_reaction(message, REACT_DELETE)
+            return await self.mark_success(message, False)
 
         hook = self.fetchone('select * from webhooks where chanid = ?',
                 (channel.id,))
         if not hook or proxied.webhook_id != hook[1]:
-            return await self.try_add_reaction(message, REACT_DELETE)
+            return await self.mark_success(message, False)
         hook = discord.Webhook.partial(hook[1], hook[2], adapter = self.adapter)
 
         try:
             await hook.edit_message(proxied.id, content = content)
         except discord.errors.NotFound:
             self.execute('delete from webhooks where chanid = ?', (channel.id,))
-            return await self.try_add_reaction(message, REACT_DELETE)
+            return await self.mark_success(message, False)
 
         if self.has_perm(message, manage_messages = True):
             await message.delete()
@@ -416,13 +416,13 @@ class GestaltCommands:
     async def cmd_log_channel(self, message, channel):
         self.execute('insert or replace into guilds values (?, ?)',
                 (message.guild.id, channel.id))
-        await self.try_add_reaction(message, REACT_CONFIRM)
+        await self.mark_success(message, True)
 
 
     async def cmd_log_disable(self, message):
         self.execute('delete from guilds where guildid = ?',
                 (message.guild.id,))
-        await self.try_add_reaction(message, REACT_CONFIRM)
+        await self.mark_success(message, True)
 
 
     # parse, convert, and validate arguments, then call the relevant function
