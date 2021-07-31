@@ -29,14 +29,16 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.conn.row_factory = sqlite.Row
         self.cur = self.conn.cursor()
         self.execute(
+                'create table if not exists guilds('
+                'guildid integer primary key,'
+                'logchan integer)')
+        self.execute(
                 'create table if not exists history('
                 'msgid integer primary key,'
                 'chanid integer,'
                 'authid integer,'
                 'otherid integer,'
-                'maskid text,'
-                'content text,'
-                'deleted integer)')
+                'maskid text)')
         # for gs;edit
         # to quickly find the last message sent by a user in a channel
         self.execute(
@@ -179,7 +181,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         # this could go in __init__ but that would break testing
-        self.purge_loop.start()
+        self.sync_loop.start()
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + 'help'))
 
@@ -189,12 +191,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         await self.adapter.session.close()
 
 
-    @tasks.loop(seconds = PURGE_TIMEOUT)
-    async def purge_loop(self):
-        when = datetime.now() - timedelta(seconds = PURGE_AGE)
-        self.execute('delete from history where deleted = 1 and msgid < ?',
-                # this function is undocumented for some reason?
-                (discord.utils.time_snowflake(when),))
+    @tasks.loop(seconds = SYNC_TIMEOUT)
+    async def sync_loop(self):
         self.conn.commit()
 
 
@@ -211,8 +209,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
-            self.execute(
-                    'insert into history values (?, 0, ?, NULL, NULL, "", 0)',
+            self.execute('insert into history values (?, 0, ?, NULL, NULL)',
                     (msg.id, replyto.author.id))
 
 
@@ -371,13 +368,37 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             else:
                 break
 
-        # deleted = 0
-        self.execute('insert into history values (?, ?, ?, ?, ?, ?, 0)',
-                (msg.id, channel.id, authid, proxy['otherid'], proxy['maskid'],
-                    content if LOG_MESSAGE_CONTENT else ''))
+        self.execute('insert into history values (?, ?, ?, ?, ?)',
+                (msg.id, channel.id, authid, proxy['otherid'], proxy['maskid']))
 
-        delay = DELETE_DELAY if prefs & Prefs.delay else None
+        delay = DELETE_DELAY if prefs & Prefs.delay else 0.0
         await message.delete(delay = delay)
+
+        logchan = self.fetchone('select logchan from guilds where guildid = ?',
+                (message.guild.id,))
+        if logchan:
+            logchan = logchan[0]
+            embed = discord.Embed(description = present[2],
+                    timestamp = discord.utils.snowflake_time(message.id))
+            embed.set_author(name = '#%s: %s' % (channel.name, present[0]),
+                    icon_url = present[1])
+            embed.set_thumbnail(url = present[1])
+            embed.set_footer(text =
+                    ('Collective ID: %s | ' % proxy['maskid']
+                        if proxy['maskid'] else '') +
+                    'Proxy ID: %s | '
+                    'Sender: %s (%i) | '
+                    'Message ID: %i | '
+                    'Original Message ID: %i'
+                    % (proxy['proxid'], str(message.author), authid, msg.id,
+                        message.id))
+            try:
+                await self.get_channel(logchan).send(
+                        # jump_url doesn't work in messages from webhook.send()
+                        channel.get_partial_message(msg.id).jump_url,
+                        embed = embed)
+            except:
+                pass
 
         return msg
 
@@ -515,10 +536,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 else:
                     await self.send_embed(message,
                             'I can\'t delete messages here.')
-                # don't delete the entry immediately.
-                # purge_loop will take care of it later.
                 self.execute(
-                        'update history set deleted = 1 where msgid = ?',
+                        'delete from history where msgid = ?',
                         (payload.message_id,))
             else:
                 if self.has_perm(message, manage_messages = True):
