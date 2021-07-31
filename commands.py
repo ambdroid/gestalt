@@ -353,6 +353,7 @@ class GestaltCommands:
 
 
     async def cmd_edit(self, message, content):
+        channel = message.channel
         if message.reference:
             proxied = self.fetchone(
                     'select msgid, authid from history where msgid = ?',
@@ -362,20 +363,25 @@ class GestaltCommands:
                     'select msgid, authid from history '
                     'where (chanid, authid) = (?, ?)'
                     'order by msgid desc limit 1',
-                    (message.channel.id, message.author.id))
+                    (channel.id, message.author.id))
         if not proxied or proxied['authid'] != message.author.id:
             return await self.try_add_reaction(message, REACT_DELETE)
-        proxied = await message.channel.fetch_message(proxied['msgid'])
+        proxied = await channel.fetch_message(proxied['msgid'])
         if not proxied:
             return await self.try_add_reaction(message, REACT_DELETE)
 
         hook = self.fetchone('select * from webhooks where chanid = ?',
-                (message.channel.id,))
+                (channel.id,))
         if not hook or proxied.webhook_id != hook[1]:
             return await self.try_add_reaction(message, REACT_DELETE)
         hook = discord.Webhook.partial(hook[1], hook[2], adapter = self.adapter)
 
-        await hook.edit_message(proxied.id, content = content)
+        try:
+            await hook.edit_message(proxied.id, content = content)
+        except discord.errors.NotFound:
+            self.execute('delete from webhooks where chanid = ?', (channel.id,))
+            return await self.try_add_reaction(message, REACT_DELETE)
+
         if self.has_perm(message, manage_messages = True):
             await message.delete()
 
@@ -390,7 +396,7 @@ class GestaltCommands:
                     value = proxied.content,
                     inline = False)
             embed.set_author(
-                    name = '[Edited] #%s: %s' % (message.channel.name,
+                    name = '[Edited] #%s: %s' % (channel.name,
                         proxied.author.display_name),
                     icon_url = proxied.author.avatar_url)
             embed.set_thumbnail(url = proxied.author.avatar_url)
