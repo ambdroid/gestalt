@@ -144,7 +144,10 @@ class Webhook(Object):
     def partial(id, token, adapter):
         return Webhook.hooks[id]
     async def edit_message(self, message_id, content):
-        (await self._channel.fetch_message(message_id)).content = content
+        msg = await self._channel.fetch_message(message_id)
+        if self._deleted or msg.webhook_id != self.id:
+            raise Webhook.NotFound()
+        msg.content = content
     async def send(self, username, **kwargs):
         if self._deleted:
             raise Webhook.NotFound()
@@ -829,6 +832,21 @@ class GestaltTest(unittest.TestCase):
 
         send(alpha, chan, 'gs;edit second')
         self.assertEqual(second.content, 'second')
+        send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
+        self.assertEqual(first.content, 'first')
+
+        # make sure that gs;edit on a non-webhook message doesn't cause problems
+        # delete "or proxied.webhook_id != hook[1]" to see this be a problem
+        # this is very important, because if this fails,
+        # there could be a path to a per-channel denial of service
+        first = send(alpha, chan, 'e: fisrt')
+        send(alpha, chan, 'gs;help')
+        second = chan[-1]
+        self.assertEqual(second.author.id, bot.id)
+        third = send(alpha, chan, 'gs;edit lol', Object(message_id = second.id))
+        self.assertEqual(third.content, 'gs;edit lol')
+        self.assertReacted(third, gestalt.REACT_DELETE)
+        self.assertIsNotNone(send(alpha, chan, 'e: another').webhook_id)
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
         self.assertEqual(first.content, 'first')
 
