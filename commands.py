@@ -343,11 +343,17 @@ class GestaltCommands:
             await self.mark_success(message, True)
 
 
-    async def cmd_swap_close(self, message, proxy):
-        self.execute(
-                'delete from proxies '
-                'where proxid = ? or (userid, otherid) = (?, ?)',
-                (proxy['proxid'], proxy['otherid'], proxy['userid']))
+    async def cmd_swap_close(self, message, proxy = None):
+        if proxy:
+            self.execute(
+                    'delete from proxies '
+                    'where proxid = ? or (userid, otherid) = (?, ?)',
+                    (proxy['proxid'], proxy['otherid'], proxy['userid']))
+        else:
+            self.execute(
+                    'delete from proxies '
+                    'where ? in (userid, otherid) and type == ?',
+                    (message.author.id, ProxyType.swap))
         if self.cur.rowcount:
             await self.mark_success(message, True)
 
@@ -578,6 +584,9 @@ class GestaltCommands:
                 proxid = reader.read_quote().lower()
                 if proxid == '':
                     raise RuntimeError('Please provide a swap ID.')
+                elif proxid == 'all':
+                    return await self.cmd_swap_close(message)
+
                 proxy = self.fetchone(
                         'select * from proxies '
                         'where (userid, proxid) = (?, ?)',

@@ -382,14 +382,43 @@ class GestaltTest(unittest.TestCase):
 
         # close the swaps
         self.assertReacted(send(alpha, chan, 'gs;swap close %s' % alphaid))
-        self.assertReacted(
-                send(gamma, chan, 'gs;swap close %s' % gammaid))
         self.assertIsNone(self.get_proxid(alpha, beta))
         self.assertIsNone(self.get_proxid(beta, alpha))
+        self.assertIsNotNone(self.get_proxid(alpha, gamma))
+        self.assertIsNotNone(self.get_proxid(gamma, alpha))
+        self.assertReacted(
+                send(gamma, chan, 'gs;swap close %s' % gammaid))
         self.assertIsNone(self.get_proxid(alpha, gamma))
         self.assertIsNone(self.get_proxid(gamma, alpha))
         self.assertIsNone(send(beta, chan, 'sw no swap').webhook_id)
         self.assertIsNone(send(gamma, chan, 'sww no swap').webhook_id)
+
+        # test closing all swaps at once
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % beta.mention))
+        self.assertReacted(send(beta, chan, 'gs;swap open %s' % alpha.mention))
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % gamma.mention))
+        self.assertReacted(send(gamma, chan, 'gs;swap open %s' % alpha.mention))
+        self.assertReacted(send(beta, chan, 'gs;swap open %s' % gamma.mention))
+        self.assertReacted(send(gamma, chan, 'gs;swap open %s' % beta.mention))
+        self.assertIsNotNone(self.get_proxid(alpha, beta))
+        self.assertIsNotNone(self.get_proxid(beta, alpha))
+        self.assertIsNotNone(self.get_proxid(alpha, gamma))
+        self.assertIsNotNone(self.get_proxid(gamma, alpha))
+        self.assertIsNotNone(self.get_proxid(beta, gamma))
+        self.assertIsNotNone(self.get_proxid(gamma, beta))
+        self.assertReacted(send(alpha, chan, 'gs;swap close all'))
+        self.assertIsNone(self.get_proxid(alpha, beta))
+        self.assertIsNone(self.get_proxid(beta, alpha))
+        self.assertIsNone(self.get_proxid(alpha, gamma))
+        self.assertIsNone(self.get_proxid(gamma, alpha))
+        self.assertIsNotNone(self.get_proxid(beta, gamma))
+        self.assertIsNotNone(self.get_proxid(gamma, beta))
+        self.assertReacted(send(beta, chan, 'gs;swap close all'))
+        self.assertIsNone(self.get_proxid(beta, gamma))
+        self.assertIsNone(self.get_proxid(gamma, beta))
+        self.assertIsNotNone(self.get_proxid(alpha, None))
+        self.assertIsNotNone(self.get_proxid(beta, None))
+        self.assertIsNotNone(self.get_proxid(gamma, None))
 
     def test_02_help(self):
         send(alpha, g['main'], 'gs;help')
