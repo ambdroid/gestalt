@@ -272,7 +272,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.on_member_role_add(member, member.guild.default_role)
 
 
-    def do_proxy_collective(self, message, proxy, prefs, content):
+    def get_proxy_collective(self, message, proxy, prefs, content):
         if prefs & Prefs.replace:
             # do these in order (or else, e.g. "I'm" could become "We'm")
             # which is funny but not what we want here
@@ -280,14 +280,30 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
-        return (proxy['nick'], proxy['avatar'], content)
+        return {'username': proxy['nick'], 'avatar_url': proxy['avatar'],
+                'content': content}
 
 
-    def do_proxy_swap(self, message, proxy, prefs, content):
+    def get_proxy_swap(self, message, proxy, prefs, content):
         member = message.guild.get_member(proxy['otherid'])
         if member:
-            return (member.display_name, member.avatar_url_as(format = 'webp'),
-                    content)
+            return {'username': member.display_name,
+                    'avatar_url': member.avatar_url_as(format = 'webp'),
+                    'content': content}
+
+
+    async def get_webhook(self, message):
+        channel = message.channel
+        row = self.fetchone('select * from webhooks where chanid = ?',
+                (channel.id,))
+        if row == None:
+            hook = await channel.create_webhook(name = WEBHOOK_NAME)
+            self.execute('insert into webhooks values (?, ?, ?)',
+                    (channel.id, hook.id, hook.token))
+        else:
+            hook = discord.Webhook.partial(row[1], row[2],
+                    adapter = self.adapter)
+        return hook
 
 
     async def do_proxy(self, message, proxy, prefs):
@@ -297,8 +313,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         content = message.content if proxy['auto'] else (message.content[
             len(proxy['prefix']) : -len(proxy['postfix']) or None].strip())
-        if content == '' and len(message.attachments) == 0:
-            return
 
         if len(message.attachments) > 0:
             # only copy the first attachment
@@ -328,45 +342,33 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         name = reference.author.display_name + REPLY_SYMBOL,
                         icon_url = reference.author.avatar_url)
 
-        # this should never loop infinitely but just in case
-        for ignored in range(2):
-            row = self.fetchone('select * from webhooks where chanid = ?',
-                    (channel.id,))
-            if row == None:
-                if self.has_perm(message, manage_webhooks = True):
-                    hook = await channel.create_webhook(name = WEBHOOK_NAME)
-                else:
-                    return await self.send_embed(message,
-                            'I need `Manage Webhooks` permission to proxy.')
-                self.execute('insert into webhooks values (?, ?, ?)',
-                        (channel.id, hook.id, hook.token))
-            else:
-                hook = discord.Webhook.partial(row[1], row[2],
-                        adapter = self.adapter)
+        args = (message, proxy, prefs, content)
+        proxtype = proxy['type']
+        if proxtype == ProxyType.collective:
+            present = self.get_proxy_collective(*args)
+        elif proxtype == ProxyType.swap:
+            present = self.get_proxy_swap(*args)
+        else:
+            raise RuntimeError('Unknown proxy type')
+        # in case e.g. it's a swap but the other user isn't in the guild
+        if present == None:
+            return
 
+        try:
+            hook = await self.get_webhook(message)
             try:
-                args = (message, proxy, prefs, content)
-                proxtype = proxy['type']
-                if proxtype == ProxyType.collective:
-                    present = self.do_proxy_collective(*args)
-                elif proxtype == ProxyType.swap:
-                    present = self.do_proxy_swap(*args)
-                else:
-                    raise RuntimeError('Unknown proxy type')
-                # in case e.g. it's a swap but the other user isn't in the guild
-                if present == None:
-                    return
-
-                msg = await hook.send(wait = True, username = present[0],
-                        avatar_url = present[1], content = present[2],
-                        file = msgfile, embed = embed)
+                msg = await hook.send(wait = True, file = msgfile,
+                        embed = embed, **present)
             except discord.errors.NotFound:
-                # webhook is deleted. delete entry and return to top of loop
+                # webhook is deleted
                 self.execute('delete from webhooks where chanid = ?',
                         (channel.id,))
-                continue
-            else:
-                break
+                hook = await self.get_webhook(message)
+                msg = await hook.send(wait = True, file = msgfile,
+                        embed = embed, **present)
+        except discord.errors.Forbidden:
+            return await self.send_embed(message,
+                    'I need `Manage Webhooks` permission to proxy.')
 
         self.execute('insert into history values (?, ?, ?, ?, ?)',
                 (msg.id, channel.id, authid, proxy['otherid'], proxy['maskid']))
@@ -378,11 +380,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (message.guild.id,))
         if logchan:
             logchan = logchan[0]
-            embed = discord.Embed(description = present[2],
+            embed = discord.Embed(description = present['content'],
                     timestamp = discord.utils.snowflake_time(message.id))
-            embed.set_author(name = '#%s: %s' % (channel.name, present[0]),
-                    icon_url = present[1])
-            embed.set_thumbnail(url = present[1])
+            embed.set_author(name = '#%s: %s' %
+                    (channel.name, present['username']),
+                    icon_url = present['avatar_url'])
+            embed.set_thumbnail(url = present['avatar_url'])
             embed.set_footer(text =
                     ('Collective ID: %s | ' % proxy['maskid']
                         if proxy['maskid'] else '') +
