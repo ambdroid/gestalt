@@ -304,10 +304,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # only copy the first attachment
             attach = message.attachments[0]
             if attach.size <= MAX_FILE_SIZE[message.guild.premium_tier]:
-                msgfile = await attach.to_file(
-                        spoiler = attach.is_spoiler()
-                        # lets mobile users upload with spoilers
-                        or content.lower().find('spoiler') != -1)
+                msgfile = await attach.to_file(spoiler = attach.is_spoiler())
         # avoid error when user proxies empty message with invalid attachment
         if msgfile == None and content == '':
             return
