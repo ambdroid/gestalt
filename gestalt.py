@@ -257,8 +257,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     async def on_member_update(self, before, after):
         if after.bot:
             return
-        if len(before.roles) != len(after.roles):
-            role = list(set(before.roles) ^ set(after.roles))[0]
+        # not sure if more than one role can change at a time
+        # but this needs to be airtight
+        for role in set(before.roles) ^ set(after.roles):
             if role in after.roles:
                 self.on_member_role_add(after, role)
             else:
