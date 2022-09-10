@@ -103,6 +103,10 @@ class Message(Object):
     async def delete(self, delay = None):
         self.channel._messages.remove(self)
         self._deleted = True
+        await instance.on_raw_message_delete(
+                discord.raw_models.RawMessageDeleteEvent(data = {
+                    'channel_id': self.channel.id,
+                    'id': self.id}))
     async def _react(self, emoji, user):
         react = discord.Reaction(message = self, emoji = emoji,
                 data = {'count': 1, 'me': None})
@@ -120,6 +124,10 @@ class Message(Object):
         await self._react(emoji, bot)
     async def remove_reaction(self, emoji, member):
         del self.reactions[[x.emoji for x in self.reactions].index(emoji)]
+    async def _bulk_delete(self):
+        await instance.on_raw_bulk_message_delete(
+                discord.raw_models.RawBulkMessageDeleteEvent(data = {
+                    'ids': set([self.id]), 'channel_id': self.channel.id}))
 
 class PartialMessage:
     def __init__(self, *, channel, id):
@@ -863,6 +871,16 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(second.content, 'second')
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
         self.assertEqual(first.content, 'first')
+
+        self.assertReacted(send(beta, chan,
+            'gs;p %s tags e: text' % self.get_proxid(beta, g.default_role)),
+            gestalt.REACT_CONFIRM)
+        first = send(alpha, chan, 'e: edti me')
+        run(send(alpha, chan, 'e: delete me').delete())
+        run(send(alpha, chan, 'e: delete me too')._bulk_delete())
+        self.assertIsNotNone(send(beta, chan, 'e: dont edit me').webhook_id)
+        send(alpha, chan, 'gs;edit edit me');
+        self.assertEqual(first.content, 'edit me');
 
         # make sure that gs;edit on a non-webhook message doesn't cause problems
         # delete "or proxied.webhook_id != hook[1]" to see this be a problem

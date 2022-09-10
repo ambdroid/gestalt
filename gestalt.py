@@ -500,6 +500,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                             'I need `Manage Messages` permission to proxy.')
 
 
+    # these are needed for gs;edit to work
+    async def on_raw_message_delete(self, payload):
+        self.execute('delete from history where msgid = ?',
+                (payload.message_id,))
+
+
+    async def on_raw_bulk_message_delete(self, payload):
+       self.cur.executemany('delete from history where msgid = ?',
+               ((x,) for x in payload.message_ids))
+
+
     # on_reaction_add doesn't catch everything
     async def on_raw_reaction_add(self, payload):
         if payload.user_id == self.user.id:
