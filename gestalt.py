@@ -145,7 +145,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'nick text,'
                 'avatar text,'
                 'unique(guildid, roleid))')
-        self.execute('pragma secure_delete')
 
 
     def __del__(self):
