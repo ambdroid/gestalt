@@ -372,8 +372,9 @@ class GestaltCommands:
                     (channel.id, message.author.id))
         if not proxied or proxied['authid'] != message.author.id:
             return await self.mark_success(message, False)
-        proxied = await channel.fetch_message(proxied['msgid'])
-        if not proxied:
+        try:
+            proxied = await channel.fetch_message(proxied['msgid'])
+        except discord.errors.NotFound:
             return await self.mark_success(message, False)
 
         hook = self.fetchone('select * from webhooks where chanid = ?',

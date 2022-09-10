@@ -325,9 +325,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         embed = None
         if message.reference:
-            reference = (message.reference.cached_message or
-                    await message.channel.fetch_message(
-                        message.reference.message_id))
+            try:
+                reference = (message.reference.cached_message or
+                        await message.channel.fetch_message(
+                            message.reference.message_id))
+            except discord.errors.NotFound:
+                reference = None
             if reference:
                 embed = discord.Embed(description = (
                     '**[Reply to:](%s)** %s' % (
