@@ -897,6 +897,17 @@ class GestaltTest(unittest.TestCase):
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
         self.assertEqual(first.content, 'first')
 
+    def test_18_become(self):
+        chan = g['main']
+        self.assertNotReacted(send(alpha, chan, 'gs;become %s'
+            % self.get_proxid(alpha, None)))
+
+        self.assertReacted(send(alpha, chan, 'gs;become %s'
+            % self.get_proxid(alpha, g.default_role)),
+            gestalt.REACT_CONFIRM)
+        self.assertIsNone(send(alpha, chan, 'not proxied').webhook_id)
+        self.assertIsNotNone(send(alpha, chan, 'proxied').webhook_id)
+
 
 def main():
     global bot, alpha, beta, gamma, g, instance
@@ -927,6 +938,8 @@ discord.Webhook.partial = Webhook.partial
 # don't spam the channel with error messages
 gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
 gestalt.DEFAULT_PREFS |= gestalt.Prefs.replace
+
+gestalt.BECOME_MAX = 1
 
 
 if __name__ == '__main__':
