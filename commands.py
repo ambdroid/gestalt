@@ -172,6 +172,8 @@ class GestaltCommands:
                 line += ' *(inactive)*'
             if proxy['auto'] == 1:
                 line += ' auto **on**'
+            if proxy['become'] < 1.0:
+                line += ' *(%i%%)*' % int(proxy['become'] * 100)
             lines.append(line)
 
         if omit:
@@ -619,6 +621,8 @@ class GestaltCommands:
                     (authid, proxid))
             if not proxy or proxy['type'] == ProxyType.override:
                 raise RuntimeError('You do not have a proxy with that ID.')
+            if proxy['state'] != ProxyState.active:
+                raise RuntimeError('That proxy is not active')
             return await self.cmd_become(message, proxid)
 
         elif arg == 'log':

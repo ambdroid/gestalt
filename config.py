@@ -37,7 +37,7 @@ COMMAND_PREFIX = 'gs;'
 
 DEFAULT_PREFS = ['replace', 'errors']
 
-BECOME_MAX = 25
+BECOME_MAX = 50
 
 SYNC_TIMEOUT = 3600 # in seconds
 
