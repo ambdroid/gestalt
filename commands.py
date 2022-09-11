@@ -602,7 +602,7 @@ class GestaltCommands:
                         'select * from proxies '
                         'where (userid, proxid) = (?, ?)',
                         (authid, proxid))
-                if not proxy:
+                if not proxy or proxy['type'] != ProxyType.swap:
                     raise RuntimeError(
                             'You do not have a swap with that ID.')
 
