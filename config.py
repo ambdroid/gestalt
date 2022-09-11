@@ -37,6 +37,8 @@ COMMAND_PREFIX = 'gs;'
 
 DEFAULT_PREFS = ['replace', 'errors']
 
+BECOME_MAX = 25
+
 SYNC_TIMEOUT = 3600 # in seconds
 
 WEBHOOK_NAME = 'Gestalt webhook'

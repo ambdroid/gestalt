@@ -252,7 +252,7 @@ class GestaltCommands:
                     self.execute(
                             # tags = NULL, auto = 0
                             'insert into proxies values '
-                            '(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, ?)',
+                            '(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
                             (self.gen_id(), member.id, role.guild.id,
                                 ProxyType.collective, collid,
                                 ProxyState.active))
@@ -314,10 +314,10 @@ class GestaltCommands:
                 (targetid, authid))
         if not swap:
             # create swap. author's is inactive, target's is hidden
-            # id, auth, guild, prefix, postfix, type, member, mask, auto, state
+            # id, auth, guild, prefix, postfix, type, member, mask, auto, become, state
             self.execute('insert or ignore into proxies values'
-                    '(?, ?, 0, ?, ?, ?, ?, NULL, 0, ?),'
-                    '(?, ?, 0, NULL, NULL, ?, ?, NULL, 0, ?)',
+                    '(?, ?, 0, ?, ?, ?, ?, NULL, 0, 1.0, ?),'
+                    '(?, ?, 0, NULL, NULL, ?, ?, NULL, 0, 1.0, ?)',
                     (self.gen_id(), authid, prefix, postfix,
                         ProxyType.swap, targetid, ProxyState.inactive)
                     + (self.gen_id(), targetid, ProxyType.swap, authid,
@@ -418,6 +418,16 @@ class GestaltCommands:
                         embed = embed)
             except:
                 pass
+
+
+    async def cmd_become(self, message, proxid):
+        # self.execute('update proxies set become = 1.0 where userid = ?',
+        #         (message.author.id,))
+        self.execute(
+                'update proxies set (auto, become) = (1, 0.0) '
+                'where (userid, proxid) = (?, ?)',
+                (message.author.id, proxid))
+        await self.mark_success(message, True)
 
 
     async def cmd_log_channel(self, message, channel):
@@ -601,6 +611,15 @@ class GestaltCommands:
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()
             return await self.cmd_edit(message, content)
+
+        elif arg in ['become', 'bc']:
+            proxid = reader.read_word()
+            proxy = self.fetchone(
+                    'select * from proxies where (userid, proxid) = (?, ?)',
+                    (authid, proxid))
+            if not proxy or proxy['type'] == ProxyType.override:
+                raise RuntimeError('You do not have a proxy with that ID.')
+            return await self.cmd_become(message, proxid)
 
         elif arg == 'log':
             if not message.guild:

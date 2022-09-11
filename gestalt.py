@@ -65,6 +65,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'otherid integer,'          # userid for swaps
                 'maskid text,'
                 'auto integer,'             # 0/1
+                'become real,'              # 1.0 except in Become mode
                 'state integer,'            # see enum ProxyState
                 'unique(userid, otherid),'
                 'unique(userid, maskid))')
@@ -234,7 +235,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if collid:
             self.execute(
                 'insert or ignore into proxies values '
-                '(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, ?)',
+                '(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
                 (self.gen_id(), member.id, member.guild.id,
                     ProxyType.collective, collid[0], ProxyState.active))
 
@@ -356,6 +357,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if present == None:
             return
 
+        # now that we know the proxy can be used here, do Become mode stuff
+        if proxy['become'] < 1.0:
+            self.execute(
+                    'update proxies set become = ? where proxid = ?',
+                    (proxy['become'] + 1/BECOME_MAX, proxy['proxid']))
+            if random.random() > proxy['become']:
+                return
+
         try:
             hook = await self.get_webhook(message)
             try:
@@ -420,7 +429,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.execute('insert into users values (?, ?, ?)',
                     (authid, str(message.author), DEFAULT_PREFS))
             self.execute('insert into proxies values'
-                    '(?, ?, 0, NULL, NULL, ?, NULL, NULL, 0, ?)',
+                    '(?, ?, 0, NULL, NULL, ?, NULL, NULL, 0, 1.0, ?)',
                     (self.gen_id(), authid, ProxyType.override,
                         ProxyState.active))
             prefs = DEFAULT_PREFS
