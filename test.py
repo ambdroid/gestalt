@@ -908,6 +908,46 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(alpha, chan, 'not proxied').webhook_id)
         self.assertIsNotNone(send(alpha, chan, 'proxied').webhook_id)
 
+    def test_19_swap_close(self):
+        chan = g['main']
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % beta.mention),
+                gestalt.REACT_CONFIRM)
+        self.assertReacted(send(beta, chan, 'gs;swap open %s' % alpha.mention),
+                gestalt.REACT_CONFIRM)
+        self.assertNotReacted(send(alpha, chan, 'gs;swap close %s'
+            % self.get_proxid(alpha, None)))
+        self.assertNotReacted(send(alpha, chan, 'gs;swap close %s'
+            % self.get_proxid(alpha, g.default_role)))
+        self.assertNotReacted(send(alpha, chan, 'gs;swap close aaaaaa'))
+        self.assertReacted(send(alpha, chan, 'gs;swap close %s'
+            % self.get_proxid(alpha, beta)),
+            gestalt.REACT_CONFIRM)
+
+    def test_20_collective_delete(self):
+        g1 = Guild()
+        c1 = g1._add_channel('main')
+        run(g1._add_member(bot))
+        run(g1._add_member(alpha, perms = discord.Permissions(
+            manage_roles = True)))
+        run(g1._add_member(beta, perms = discord.Permissions(
+            manage_roles = False)))
+        g2 = Guild()
+        c2 = g2._add_channel('main')
+        run(g2._add_member(bot))
+        run(g2._add_member(beta, perms = discord.Permissions(
+            manage_roles = True)))
+
+        send(beta, c1, 'gs;c new everyone')
+        self.assertIsNone(self.get_collid(g1.default_role))
+        send(alpha, c1, 'gs;c new everyone')
+        self.assertIsNotNone(self.get_collid(g1.default_role))
+        send(beta, c2, 'gs;c new everyone')
+        self.assertIsNotNone(self.get_collid(g2.default_role))
+        send(beta, c2, 'gs;c %s delete' % self.get_collid(g1.default_role))
+        self.assertIsNotNone(self.get_collid(g1.default_role))
+        send(alpha, c1, 'gs;c %s delete' % self.get_collid(g1.default_role))
+        self.assertIsNone(self.get_collid(g1.default_role))
+
 
 def main():
     global bot, alpha, beta, gamma, g, instance
