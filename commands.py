@@ -182,10 +182,9 @@ class GestaltCommands:
 
 
     async def cmd_proxy_tags(self, message, proxid, tags):
-        exists = self.fetchone(
-                'select 1 from proxies where (userid, proxid) = (?, ?)',
-                (message.author.id, proxid))
-        if not exists:
+        exists = self.fetchone('select userid from proxies where proxid = ?',
+                (proxid,))
+        if not exists or exists['userid'] != message.author.id:
             raise RuntimeError('You do not have a proxy with that ID.')
 
         (prefix, postfix) = parse_tags(tags)
@@ -198,10 +197,9 @@ class GestaltCommands:
 
 
     async def cmd_proxy_auto(self, message, proxid, auto):
-        proxy = self.fetchone(
-                'select * from proxies where (userid, proxid) = (?, ?)',
-                (message.author.id, proxid))
-        if proxy == None:
+        proxy = self.fetchone('select * from proxies where proxid = ?',
+                (proxid,))
+        if proxy == None or proxy['userid'] != message.author.id:
             raise RuntimeError('You do not have a proxy with that ID.')
 
         if auto == None:
@@ -510,11 +508,9 @@ class GestaltCommands:
             else: # arg is collective ID
                 collid = arg
                 action = reader.read_word().lower()
-                row = self.fetchone(
-                        'select * from masks '
-                        'where (maskid, guildid) = (?, ?)',
-                        (collid, guild.id))
-                if row == None:
+                row = self.fetchone('select * from masks where maskid = ?',
+                        (collid,))
+                if row == None or row['guildid'] != guild.id:
                     raise RuntimeError(
                             'This guild has no collective with that ID.')
 
@@ -600,11 +596,10 @@ class GestaltCommands:
                 elif proxid == 'all':
                     return await self.cmd_swap_close(message)
 
-                proxy = self.fetchone(
-                        'select * from proxies '
-                        'where (userid, proxid) = (?, ?)',
-                        (authid, proxid))
-                if not proxy or proxy['type'] != ProxyType.swap:
+                proxy = self.fetchone('select * from proxies where proxid = ?',
+                        (proxid,))
+                if not proxy or ((proxy['userid'], proxy['type'])
+                        != (authid, ProxyType.swap)):
                     raise RuntimeError(
                             'You do not have a swap with that ID.')
 
@@ -616,10 +611,10 @@ class GestaltCommands:
 
         elif arg in ['become', 'bc']:
             proxid = reader.read_word()
-            proxy = self.fetchone(
-                    'select * from proxies where (userid, proxid) = (?, ?)',
-                    (authid, proxid))
-            if not proxy or proxy['type'] == ProxyType.override:
+            proxy = self.fetchone('select * from proxies where proxid = ?',
+                    (proxid,))
+            if (not proxy or proxy['userid'] != authid
+                    or proxy['type'] == ProxyType.override):
                 raise RuntimeError('You do not have a proxy with that ID.')
             if proxy['state'] != ProxyState.active:
                 raise RuntimeError('That proxy is not active')
