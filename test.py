@@ -125,9 +125,11 @@ class Message(Object):
     async def remove_reaction(self, emoji, member):
         del self.reactions[[x.emoji for x in self.reactions].index(emoji)]
     async def _bulk_delete(self):
+        self.channel._messages.remove(self)
+        self._deleted = True
         await instance.on_raw_bulk_message_delete(
                 discord.raw_models.RawBulkMessageDeleteEvent(data = {
-                    'ids': set([self.id]), 'channel_id': self.channel.id}))
+                    'ids': {self.id}, 'channel_id': self.channel.id}))
 
 class PartialMessage:
     def __init__(self, *, channel, id):
