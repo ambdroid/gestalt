@@ -899,11 +899,14 @@ class GestaltTest(unittest.TestCase):
 
     def test_18_become(self):
         chan = g['main']
+        # can't Become override
         self.assertNotReacted(send(alpha, chan, 'gs;become %s'
             % self.get_proxid(alpha, None)))
+        # can't Become someone else's proxy
+        proxid = self.get_proxid(alpha, g.default_role)
+        self.assertNotReacted(send(beta, chan, 'gs;become %s' % proxid))
 
-        self.assertReacted(send(alpha, chan, 'gs;become %s'
-            % self.get_proxid(alpha, g.default_role)),
+        self.assertReacted(send(alpha, chan, 'gs;become %s' % proxid),
             gestalt.REACT_CONFIRM)
         self.assertIsNone(send(alpha, chan, 'not proxied').webhook_id)
         self.assertIsNotNone(send(alpha, chan, 'proxied').webhook_id)
