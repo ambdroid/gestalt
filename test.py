@@ -521,7 +521,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(alpha, chan, '= tags, no auto').webhook_id)
         self.assertEqual(chan[-1].content, 'tags, no auto')
         self.assertReacted(send(alpha, chan, 'gs;p %s auto on' % proxid))
-        self.assertIsNone(send(alpha, chan, '= tags, auto').webhook_id)
+        self.assertIsNotNone(send(alpha, chan, '= tags, auto').webhook_id)
         self.assertIsNotNone(send(alpha, chan, 'no tags, auto').webhook_id)
         self.assertEqual(chan[-1].content, 'no tags, auto')
         # test autoproxy both as on/off and as toggle
@@ -819,7 +819,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(send(alpha, chan, 'no proxy, no auto').webhook_id)
         self.assertIsNotNone(send(alpha, chan, 'e: proxy, no auto').webhook_id)
         self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
-        self.assertIsNone(send(alpha, chan, 'e: proxy, auto').webhook_id)
+        self.assertIsNotNone(send(alpha, chan, 'e: proxy, auto').webhook_id)
         self.assertIsNone(send(alpha, chan, 'x: override').webhook_id)
         self.assertIsNone(send(alpha, chan, 'no proxy, no auto').webhook_id)
         self.assertReacted(send(alpha, chan, 'gs;prefs latch off'))

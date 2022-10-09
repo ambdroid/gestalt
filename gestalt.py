@@ -479,9 +479,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                                     'length(?) '
                                     '>= length(prefix) + length(postfix)'
                                 ')'
-                            # (tags match) XOR (autoproxy enabled)
-                            ') == ('
-                                'auto == 0'
+                            # (tags match) OR (autoproxy enabled)
+                            ') or ('
+                                'auto == 1'
                             ')'
                         ')'
                     # if message matches prefix for proxy A but proxy B is auto,
