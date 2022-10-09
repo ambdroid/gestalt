@@ -522,6 +522,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(chan[-1].content, 'tags, no auto')
         self.assertReacted(send(alpha, chan, 'gs;p %s auto on' % proxid))
         self.assertIsNotNone(send(alpha, chan, '= tags, auto').webhook_id)
+        self.assertEqual(chan[-1].content, 'tags, auto')
         self.assertIsNotNone(send(alpha, chan, 'no tags, auto').webhook_id)
         self.assertEqual(chan[-1].content, 'no tags, auto')
         # test autoproxy both as on/off and as toggle

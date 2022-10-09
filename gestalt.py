@@ -311,8 +311,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         channel = message.channel
         msgfile = None
 
-        content = message.content if proxy['auto'] else (message.content[
-            len(proxy['prefix']) : -len(proxy['postfix']) or None].strip())
+        # tags might be present even if auto is on
+        # and the only way to tell is by matching again
+        # hmmm, maybe not everything possible should be done in SQL...
+        content = message.content
+        if proxy['prefix'] and (content.startswith(proxy['prefix'])
+                and content.endswith(proxy['postfix'])):
+            content = content[len(proxy['prefix'])
+                    : -len(proxy['postfix']) or None].strip()
 
         if len(message.attachments) > 0:
             # only copy the first attachment
