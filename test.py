@@ -515,8 +515,8 @@ class GestaltTest(unittest.TestCase):
         proxid = self.get_proxid(alpha, g.default_role)
 
         self.assertIsNone(send(alpha, chan, 'no tags, no auto').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'e:tags').webhook_id)
-        self.assertEqual(chan[-1].content, 'tags')
+        self.assertIsNotNone(send(alpha, chan, 'E:Tags').webhook_id)
+        self.assertEqual(chan[-1].content, 'Tags')
         self.assertReacted(send(alpha, chan, 'gs;p %s tags "= text"' % proxid))
         self.assertIsNotNone(send(alpha, chan, '= tags, no auto').webhook_id)
         self.assertEqual(chan[-1].content, 'tags, no auto')
