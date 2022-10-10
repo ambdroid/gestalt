@@ -311,16 +311,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         channel = message.channel
         msgfile = None
 
-        # tags might be present even if auto is on
-        # and the only way to tell is by matching again
-        # hmmm, maybe not everything possible should be done in SQL...
-        content = message.content.lower()
-        if proxy['prefix'] and (content.startswith(proxy['prefix'])
-                and content.endswith(proxy['postfix'])):
-            content = message.content[len(proxy['prefix'])
-                    : -len(proxy['postfix']) or None].strip()
-        else:
-            content = message.content
+        content = (message.content[
+            len(proxy['prefix']) : -len(proxy['postfix']) or None].strip()
+            if proxy['matchTags'] else message.content)
 
         if len(message.attachments) > 0:
             # only copy the first attachment
@@ -463,43 +456,22 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
-        match = self.fetchone(
-                'select p.*, m.nick, m.avatar from ('
-                    'select * from proxies where ('
-                        '('
-                            'userid = ?'
-                        ') and ('
-                            'guildid in (0, ?)'
-                        ') and ('
-                            '('
-                                # if no tags are set, match nothing
-                                # postfix is only NULL when prefix is NULL
-                                '('
-                                    'prefix not NULL'
-                                ') and ('
-                                    'substr(?,1,length(prefix)) == prefix'
-                                ') and ('
-                                    # 'abcd'[-1] == 'c', add another character
-                                    'substr(?||"_",-1,-length(postfix)) '
-                                    '== postfix'
-                                ') and ('
-                                    # prevent #text# from matching #
-                                    'length(?) '
-                                    '>= length(prefix) + length(postfix)'
-                                ')'
-                            # (tags match) OR (autoproxy enabled)
-                            ') or ('
-                                'auto == 1'
-                            ')'
-                        ')'
-                    # if message matches prefix for proxy A but proxy B is auto,
-                    # A wins. therefore, rank the proxy with auto = 0 higher
-                    ') order by auto asc limit 1'
-                ') as p left join masks as m on p.maskid = m.maskid '
-                'limit 1',
-                (authid, message.guild.id, lower, lower, lower))
+        proxies = self.fetchall(
+                'select * from proxies where userid = ? and guildid in (0, ?)',
+                (authid, message.guild.id))
+        if not (tags := bool(match := list(filter(
+            lambda proxy : (proxy['prefix']
+                and lower.startswith(proxy['prefix'])
+                and lower.endswith(proxy['postfix'])),
+            proxies)))):
+            match = list(filter(lambda proxy : proxy['auto'] == 1, proxies))
 
-        if match and match['state'] == ProxyState.active:
+        if match and (match := dict(match[0]))['state'] == ProxyState.active:
+            if (mask := self.fetchone(
+                    'select nick, avatar from masks where maskid = ?',
+                    (match['maskid'],))):
+                match.update(dict(mask))
+            match['matchTags'] = tags
             latch = prefs & Prefs.latch and not match['auto']
             if match['type'] == ProxyType.override:
                 if latch:

@@ -559,6 +559,11 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, 'gs;p %s auto off' % proxid))
         self.assertIsNone(send(alpha, chan, 'no tags, no auto').webhook_id)
 
+        # test tag precedence over auto
+        self.assertReacted(send(alpha, chan, 'gs;p %s auto on' % proxid))
+        self.assertEqual(send(alpha, chan, 'auto').author.name, 'no tags')
+        self.assertEqual(send(alpha, chan, 'e: tags').author.name, 'test')
+
     def test_06_query_delete(self):
         chan = g['main']
         msg = send(alpha, chan, 'e:reaction test')
