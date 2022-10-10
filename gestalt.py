@@ -280,7 +280,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
-        return {'username': proxy['nick'], 'avatar_url': proxy['avatar'],
+        mask = self.fetchone('select nick, avatar from masks where maskid = ?',
+                (proxy['maskid'],))
+        return {'username': mask['nick'], 'avatar_url': mask['avatar'],
                 'content': content}
 
 
@@ -467,10 +469,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     proxies)
 
         if match and (match := dict(match))['state'] == ProxyState.active:
-            if match['maskid'] and (mask := self.fetchone(
-                    'select nick, avatar from masks where maskid = ?',
-                    (match['maskid'],))):
-                match.update(dict(mask))
             match['matchTags'] = tags
             latch = prefs & Prefs.latch and not match['auto']
             if match['type'] == ProxyType.override:
