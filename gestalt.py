@@ -458,14 +458,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         proxies = self.fetchall(
                 'select * from proxies where userid = ? and guildid in (0, ?)',
                 (authid, message.guild.id))
-        if not (tags := bool(match := list(filter(
+        if not (tags := bool(match := discord.utils.find(
             lambda proxy : (proxy['prefix']
                 and lower.startswith(proxy['prefix'])
                 and lower.endswith(proxy['postfix'])),
-            proxies)))):
-            match = list(filter(lambda proxy : proxy['auto'] == 1, proxies))
+            proxies))):
+            match = discord.utils.find(lambda proxy : proxy['auto'] == 1,
+                    proxies)
 
-        if match and (match := dict(match[0]))['state'] == ProxyState.active:
+        if match and (match := dict(match))['state'] == ProxyState.active:
             if match['maskid'] and (mask := self.fetchone(
                     'select nick, avatar from masks where maskid = ?',
                     (match['maskid'],))):
