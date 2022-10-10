@@ -442,13 +442,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             prefs = author['prefs']
 
         lower = message.content.lower()
-        # end of prefix or 0
-        offset = len(COMMAND_PREFIX) if lower.startswith(COMMAND_PREFIX) else 0
         # command prefix is optional in DMs
-        if offset or not message.guild:
+        if lower.startswith(COMMAND_PREFIX) or not message.guild:
             # strip() so that e.g. 'gs; help' works (helpful with autocorrect)
             try:
-                await self.do_command(message, message.content[offset:].strip())
+                await self.do_command(message,
+                        message.content.removeprefix(COMMAND_PREFIX).strip())
             except (RuntimeError, sqlite.IntegrityError) as e:
                 if prefs & Prefs.errors:
                     await self.send_embed(message, e.args[0])
