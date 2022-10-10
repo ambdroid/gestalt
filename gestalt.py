@@ -466,7 +466,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             match = list(filter(lambda proxy : proxy['auto'] == 1, proxies))
 
         if match and (match := dict(match[0]))['state'] == ProxyState.active:
-            if (mask := self.fetchone(
+            if match['maskid'] and (mask := self.fetchone(
                     'select nick, avatar from masks where maskid = ?',
                     (match['maskid'],))):
                 match.update(dict(mask))
