@@ -311,19 +311,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     async def do_proxy(self, message, proxy, prefs):
         authid = message.author.id
         channel = message.channel
-        msgfile = None
+        msgfiles = []
 
         content = (message.content[
             len(proxy['prefix']) : -len(proxy['postfix']) or None].strip()
             if proxy['matchTags'] else message.content)
 
-        if len(message.attachments) > 0:
-            # only copy the first attachment
-            attach = message.attachments[0]
-            if attach.size <= MAX_FILE_SIZE[message.guild.premium_tier]:
-                msgfile = await attach.to_file(spoiler = attach.is_spoiler())
-        # avoid error when user proxies empty message with invalid attachment
-        if msgfile == None and content == '':
+        if message.attachments:
+            totalsize = sum((x.size for x in message.attachments))
+            if totalsize <= MAX_FILE_SIZE[message.guild.premium_tier]:
+                msgfiles = [await attach.to_file(spoiler = attach.is_spoiler())
+                        for attach in message.attachments]
+        # avoid error when user proxies empty message with invalid attachments
+        if msgfiles == [] and content == '':
             return
 
         embed = None
@@ -371,14 +371,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         try:
             hook = await self.get_webhook(message)
             try:
-                msg = await hook.send(wait = True, file = msgfile,
+                msg = await hook.send(wait = True, files = msgfiles,
                         embed = embed, **present)
             except discord.errors.NotFound:
                 # webhook is deleted
                 self.execute('delete from webhooks where chanid = ?',
                         (channel.id,))
                 hook = await self.get_webhook(message)
-                msg = await hook.send(wait = True, file = msgfile,
+                msg = await hook.send(wait = True, files = msgfiles,
                         embed = embed, **present)
         except discord.errors.Forbidden:
             return await self.send_embed(message,
