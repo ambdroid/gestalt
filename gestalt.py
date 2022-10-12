@@ -461,7 +461,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'select * from proxies where userid = ? and guildid in (0, ?)',
                 (authid, message.guild.id))
         if not (tags := bool(match := discord.utils.find(
-            lambda proxy : (proxy['prefix']
+            lambda proxy : (proxy['prefix'] is not None
                 and lower.startswith(proxy['prefix'])
                 and lower.endswith(proxy['postfix'])),
             proxies))):

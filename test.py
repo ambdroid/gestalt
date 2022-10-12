@@ -530,6 +530,8 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, chan, 'gs;p %s tags #text#' % proxid))
         self.assertIsNotNone(send(alpha, chan, '#tags, no auto#').webhook_id)
         self.assertEqual(chan[-1].content, 'tags, no auto')
+        self.assertReacted(send(alpha, chan, 'gs;p %s tags text]' % proxid))
+        self.assertIsNotNone(send(alpha, chan, 'postfix tag]').webhook_id)
         self.assertReacted(send(alpha, chan, 'gs;p %s tags e:text' % proxid))
 
         # test setting auto on override to unset other autos
