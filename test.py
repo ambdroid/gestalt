@@ -895,8 +895,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(first.content, 'first')
 
         self.assertReacted(send(beta, chan,
-            'gs;p %s tags e: text' % self.get_proxid(beta, g.default_role)),
-            gestalt.REACT_CONFIRM)
+            'gs;p %s tags e: text' % self.get_proxid(beta, g.default_role)))
         first = send(alpha, chan, 'e: edti me')
         run(send(alpha, chan, 'e: delete me').delete())
         run(send(alpha, chan, 'e: delete me too')._bulk_delete())
@@ -928,25 +927,21 @@ class GestaltTest(unittest.TestCase):
         proxid = self.get_proxid(alpha, g.default_role)
         self.assertNotReacted(send(beta, chan, 'gs;become %s' % proxid))
 
-        self.assertReacted(send(alpha, chan, 'gs;become %s' % proxid),
-            gestalt.REACT_CONFIRM)
+        self.assertReacted(send(alpha, chan, 'gs;become %s' % proxid))
         self.assertIsNone(send(alpha, chan, 'not proxied').webhook_id)
         self.assertIsNotNone(send(alpha, chan, 'proxied').webhook_id)
 
     def test_19_swap_close(self):
         chan = g['main']
-        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % beta.mention),
-                gestalt.REACT_CONFIRM)
-        self.assertReacted(send(beta, chan, 'gs;swap open %s' % alpha.mention),
-                gestalt.REACT_CONFIRM)
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % beta.mention))
+        self.assertReacted(send(beta, chan, 'gs;swap open %s' % alpha.mention))
         self.assertNotReacted(send(alpha, chan, 'gs;swap close %s'
             % self.get_proxid(alpha, None)))
         self.assertNotReacted(send(alpha, chan, 'gs;swap close %s'
             % self.get_proxid(alpha, g.default_role)))
         self.assertNotReacted(send(alpha, chan, 'gs;swap close aaaaaa'))
         self.assertReacted(send(alpha, chan, 'gs;swap close %s'
-            % self.get_proxid(alpha, beta)),
-            gestalt.REACT_CONFIRM)
+            % self.get_proxid(alpha, beta)))
 
     def test_20_collective_delete(self):
         g1 = Guild()
