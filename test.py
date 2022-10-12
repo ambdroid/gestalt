@@ -233,6 +233,7 @@ class Guild(Object):
         self._roles = {}        # role id -> role
         self._members = {}      # user id -> member
         self.name = ''
+        self.premium_tier = 0
         super().__init__(**kwargs)
         self._roles[self.id] = self.default_role = RoleEveryone(self)
     def __getitem__(self, key):
@@ -287,8 +288,19 @@ class TestBot(gestalt.Gestalt):
     def get_channel(self, id):
         return Channel.channels[id]
 
-def send(user, channel, content, reference = None):
-    msg = Message(author = user, content = content, reference = reference)
+# incoming messages have Attachments, outgoing messages have Files
+# but we'll pretend that they're the same for simplicity
+class File:
+    def __init__(self, size):
+        self.size = size
+    def is_spoiler(self):
+        return False
+    async def to_file(self, spoiler):
+        return self
+
+def send(user, channel, content, reference = None, files = []):
+    msg = Message(author = user, content = content, reference = reference,
+            attachments = files)
     run(channel._add(msg))
     return channel[-1] if msg._deleted else msg
 
@@ -960,6 +972,50 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(self.get_collid(g1.default_role))
         send(alpha, c1, 'gs;c %s delete' % self.get_collid(g1.default_role))
         self.assertIsNone(self.get_collid(g1.default_role))
+
+    def test_21_attachments(self):
+        g1 = Guild()
+        c = g1._add_channel('main')
+        run(g1._add_member(bot))
+        run(g1._add_member(alpha, perms = discord.Permissions(
+            manage_roles = True)))
+
+        send(alpha, c, 'gs;c new everyone')
+        send(alpha, c, 'gs;p %s tags [text'
+                % self.get_proxid(alpha, g1.default_role))
+        # normal message
+        self.assertIsNotNone((msg := send(alpha, c, '[test')).webhook_id)
+        self.assertEqual(len(msg.files), 0)
+        # one file, no content
+        self.assertIsNotNone((msg := send(alpha, c, '[',
+            files = [File(12)])).webhook_id)
+        self.assertEqual(msg.content, '')
+        self.assertEqual(len(msg.files), 1)
+        # two files, no content
+        self.assertIsNotNone((msg := send(alpha, c, '[',
+            files = [File(12), File(9)])).webhook_id)
+        self.assertEqual(len(msg.files), 2)
+        # two files, with content
+        self.assertIsNotNone((msg := send(alpha, c, '[files!',
+            files = [File(12), File(9)])).webhook_id)
+        self.assertEqual(msg.content, 'files!')
+        self.assertEqual(len(msg.files), 2)
+        # no files or content
+        self.assertIsNone(send(alpha, c, '[', files = []).webhook_id)
+        # big file, no content
+        self.assertIsNone(send(alpha, c, '[',
+            files = [File(999999999)]).webhook_id)
+        half = gestalt.MAX_FILE_SIZE[0]/2
+        # files at the limit, no content
+        self.assertIsNotNone(send(alpha, c, '[',
+            files = [File(half), File(half)]).webhook_id)
+        # files too big, no content
+        self.assertIsNone(send(alpha, c, '[',
+            files = [File(half), File(half+1)]).webhook_id)
+        # files too big, with content
+        self.assertIsNotNone((msg := send(alpha, c, '[files!',
+            files = [File(half), File(half+1)])).webhook_id)
+        self.assertEqual(msg.files, [])
 
 
 def main():
