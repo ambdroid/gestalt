@@ -221,7 +221,7 @@ class RoleEveryone:
     def __init__(self, guild):
         self.guild = guild
         self.id = guild.id
-        self.name = guild.name
+        self.name = '@everyone'
         self.managed = False
     # note that this doesn't update when guild._members updates
     @property
@@ -934,6 +934,9 @@ class GestaltTest(unittest.TestCase):
     def test_19_swap_close(self):
         chan = g['main']
         self.assertReacted(send(alpha, chan, 'gs;swap open %s' % beta.mention))
+        self.assertReacted(send(alpha, chan, 'gs;swap close %s'
+            % self.get_proxid(alpha, beta)))
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % beta.mention))
         self.assertReacted(send(beta, chan, 'gs;swap open %s' % alpha.mention))
         self.assertNotReacted(send(alpha, chan, 'gs;swap close %s'
             % self.get_proxid(alpha, None)))
@@ -1011,6 +1014,60 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone((msg := send(alpha, c, '[files!',
             files = [File(half), File(half+1)])).webhook_id)
         self.assertEqual(msg.files, [])
+
+    def test_22_names(self):
+        g1 = Guild(name = 'guildy guild')
+        c = g1._add_channel('main')
+        run(g1._add_member(bot))
+        run(g1._add_member(alpha, perms = discord.Permissions(
+            manage_roles = True)))
+        run(g1._add_member(beta))
+
+        send(alpha, c, 'gs;c new everyone')
+        self.assertReacted(send(alpha, c, 'gs;p "guildy guild" tags [text'))
+        self.assertEqual(send(alpha, c, '[no proxid!').author.name,
+                'guildy guild')
+        self.assertReacted(send(alpha, c, 'gs;p "guildy guild" rename "guild"'))
+        self.assertReacted(send(alpha, c, 'gs;p guild auto on'))
+        self.assertEqual(send(alpha, c, 'yay!').author.name, 'guildy guild')
+        self.assertReacted(send(alpha, c, 'gs;become guild'))
+        self.assertIsNone(send(alpha, c, 'not proxied').webhook_id)
+        self.assertIsNotNone(send(alpha, c, 'proxied').webhook_id)
+        self.assertReacted(send(alpha, c, 'gs;p guild auto off'))
+
+        send(alpha, c, 'gs;swap open %s' % beta.mention)
+        send(beta, c, 'gs;swap open %s' % alpha.mention)
+        self.assertReacted(send(alpha, c, 'gs;p test-beta tags b:text'))
+        self.assertNotReacted(send(beta, c, 'gs;swap close test-beta'))
+        self.assertReacted(send(alpha, c, 'gs;swap close test-beta'))
+
+        self.assertNotReacted(send(beta, c, 'gs;p guild tags g:text'))
+        self.assertNotReacted(send(beta, c, 'gs;p guild auto on'))
+        self.assertNotReacted(send(beta, c, 'gs;become guild'))
+        self.assertIsNone(send(alpha, c, 'not proxied').webhook_id)
+
+        # With names, users can infer *and control* names of hidden proxies.
+        # We must ensure that hidden proxies can't be used in commands.
+        # If not, an (ugh) "Sybil" attack is possible:
+        # 1. user A on account a1 opens a swap with user B; B agrees
+        # 2. B uses gs;p to view their proxies, giving A the proxid
+        # 3. A renames acount a2 to the proxid and opens a swap with B
+        # 4. A renames account a3 to the same as a1 and opens a swap with B
+        # 5. B can no longer close the swap with a1:
+        #   - The name and proxid of the swap with a1 are both ambiguous.
+        #   - B cannot see the proxids of the swaps with a2 & a3.
+        # It may be possible to escape the softlock via confirming the swaps;
+        # however, B may not realize this, and feel unable to revoke consent.
+        # Furthermore, if A controls the guild, they can isolate a2 & a3
+        # to a channel hidden to B, giving them no idea of what's happening.
+        send(alpha, c, 'gs;swap open %s' % beta.mention)
+        self.assertIsNotNone(self.get_proxid(beta, alpha))
+        self.assertIsNotNone(instance.get_user_proxy(c[-1], 'test-beta'))
+        self.assertNotReacted(send(beta, c, 'gs;p test-alpha auto on'))
+        self.assertNotReacted(send(beta, c, 'gs;swap close test-alpha'))
+        with self.assertRaises(RuntimeError):
+            instance.get_user_proxy(c[-1], 'test-alpha')
+        self.assertReacted(send(alpha, c, 'gs;swap close test-beta'))
 
 
 def main():
