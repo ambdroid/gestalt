@@ -177,6 +177,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     async def on_ready(self):
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
+        print('In %i guild(s).' % len(self.guilds))
         self.adapter = discord.AsyncWebhookAdapter(aiohttp.ClientSession())
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
