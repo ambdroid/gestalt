@@ -81,6 +81,25 @@ class CommandReader:
 
 
 class GestaltCommands:
+    def get_user_proxy(self, message, name):
+        if name == '':
+            raise RuntimeError('Please provide a proxy name/ID.')
+
+        # can't do 'and ? in (proxid, cmdname)'; breaks case insensitivity
+        proxies = self.fetchall(
+                'select * from proxies where userid = ? '
+                'and (proxid = ? or cmdname = ?) '
+                'and state != ?',
+                (message.author.id, name, name, ProxyState.hidden))
+
+        if not proxies:
+            raise RuntimeError('You have no proxy with that name/ID.')
+        if len(proxies) > 1:
+            raise RuntimeError('You have multiple proxies with that name/ID.')
+
+        return proxies[0]
+
+
     async def cmd_debug(self, message):
         for table in ['users', 'proxies', 'masks']:
             await self.send_embed(message, '```%s```' % '\n'.join(
@@ -147,33 +166,43 @@ class GestaltCommands:
             if message.guild and proxy['guildid'] not in [0, message.guild.id]:
                 omit = True
                 continue
-            line = '`%s`' % proxy['proxid']
+            line = '[`%s`] ' % proxy['proxid']
+            if proxy['cmdname']:
+                line += '**%s**' % escape(proxy['cmdname'])
+            else:
+                line += '*no name*'
+
             if proxy['type'] == ProxyType.override:
-                line += SYMBOL_OVERRIDE
+                line = SYMBOL_OVERRIDE + line
+                parens = ''
             elif proxy['type'] == ProxyType.swap:
+                line = SYMBOL_SWAP + line
                 user = self.get_user(proxy['otherid'])
                 if not user:
                     continue
-                line += ('%s with **%s**' % (SYMBOL_SWAP, escape(user)))
+                parens = 'with **%s**' % escape(user)
             elif proxy['type'] == ProxyType.collective:
+                line = SYMBOL_COLLECTIVE + line
                 guild = self.get_guild(proxy['guildid'])
-                if not guild:
+                if not guild or not (role := guild.get_role(proxy['roleid'])):
                     continue
-                line += ('%s **%s** on **%s** in **%s**'
-                        % (SYMBOL_COLLECTIVE, escape(proxy['nick']),
-                            escape(guild.get_role(proxy['roleid']).name),
+                parens = ('**%s** on **%s** in **%s**'
+                        % (escape(proxy['nick']), escape(role.name),
                             escape(guild.name)))
             if proxy['prefix'] is not None:
-                line += (' tags `%s`'
+                parens += (' `%s`'
                         % (proxy['prefix'] + 'text' + proxy['postfix'])
                         # hack because escaping ` doesn't work in code blocks
                         .replace('`', '\N{REVERSED PRIME}'))
             if proxy['state'] == ProxyState.inactive:
-                line += ' *(inactive)*'
+                parens += ' *(inactive)*'
             if proxy['auto'] == 1:
-                line += ' auto **on**'
+                parens += ' auto **on**'
             if proxy['become'] < 1.0:
-                line += ' *(%i%%)*' % int(proxy['become'] * 100)
+                parens += ' *%i%%*' % int(proxy['become'] * 100)
+
+            if parens:
+                line += ' (%s)' % parens.strip()
             lines.append(line)
 
         if omit:
@@ -182,11 +211,6 @@ class GestaltCommands:
 
 
     async def cmd_proxy_tags(self, message, proxid, tags):
-        exists = self.fetchone('select userid from proxies where proxid = ?',
-                (proxid,))
-        if not exists or exists['userid'] != message.author.id:
-            raise RuntimeError('You do not have a proxy with that ID.')
-
         (prefix, postfix) = parse_tags(tags)
 
         self.execute(
@@ -196,24 +220,26 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
-    async def cmd_proxy_auto(self, message, proxid, auto):
-        proxy = self.fetchone('select * from proxies where proxid = ?',
-                (proxid,))
-        if proxy == None or proxy['userid'] != message.author.id:
-            raise RuntimeError('You do not have a proxy with that ID.')
-
+    async def cmd_proxy_auto(self, message, proxy, auto):
         if auto == None:
             auto = 1 - proxy['auto']
         # triggers will take care of unsetting other autos as necessary
         self.execute(
                 'update proxies set auto = ? where proxid = ?',
-                (auto, proxid))
+                (auto, proxy['proxid']))
 
         if proxy['type'] == ProxyType.override:
             # ...but override can't actually be auto'd, that makes no sense
             self.execute(
                     'update proxies set auto = 0 where proxid = ?',
-                    (proxid,))
+                    (proxy['proxid'],))
+
+        await self.mark_success(message, True)
+
+
+    async def cmd_proxy_rename(self, message, proxid, newname):
+        self.execute('update proxies set cmdname = ? where proxid = ?',
+                (newname, proxid))
 
         await self.mark_success(message, True)
 
@@ -242,9 +268,11 @@ class GestaltCommands:
     async def cmd_collective_new(self, message, role):
         # new collective with name of role and no avatar
         collid = self.gen_id()
+        # '@everyone' is awkward and more likely to cause collisions as cmdname
+        name = role.guild.name if role == role.guild.default_role else role.name
         self.execute('insert or ignore into masks values'
                 '(?, ?, ?, ?, NULL)',
-                (collid, role.guild.id, role.id, role.name))
+                (collid, role.guild.id, role.id, name))
         # if there wasn't already a collective on that role
         if self.cur.rowcount == 1:
             for member in role.members:
@@ -252,8 +280,8 @@ class GestaltCommands:
                     self.execute(
                             # tags = NULL, auto = 0
                             'insert into proxies values '
-                            '(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
-                            (self.gen_id(), member.id, role.guild.id,
+                            '(?, ?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
+                            (self.gen_id(), name, member.id, role.guild.id,
                                 ProxyType.collective, collid,
                                 ProxyState.active))
 
@@ -305,41 +333,41 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
-    def make_or_activate_swap(self, authid, targetid, tags):
+    def make_or_activate_swap(self, auth, other, tags):
         (prefix, postfix) = parse_tags(tags) if tags else (None, None)
         # to support future features, look at proxies from target, not author
         swap = self.fetchone(
                 'select state from proxies '
                 'where (userid, otherid) = (?, ?)',
-                (targetid, authid))
+                (other.id, auth.id))
         if not swap:
             # create swap. author's is inactive, target's is hidden
-            # id, auth, guild, prefix, postfix, type, member, mask, auto, become, state
+            # id, cmdname, auth, guild, prefix, postfix, type, member, mask, auto, become, state
             self.execute('insert or ignore into proxies values'
-                    '(?, ?, 0, ?, ?, ?, ?, NULL, 0, 1.0, ?),'
-                    '(?, ?, 0, NULL, NULL, ?, ?, NULL, 0, 1.0, ?)',
-                    (self.gen_id(), authid, prefix, postfix,
-                        ProxyType.swap, targetid, ProxyState.inactive)
-                    + (self.gen_id(), targetid, ProxyType.swap, authid,
-                        ProxyState.hidden))
+                    '(?, ?, ?, 0, ?, ?, ?, ?, NULL, 0, 1.0, ?),'
+                    '(?, ?, ?, 0, NULL, NULL, ?, ?, NULL, 0, 1.0, ?)',
+                    (self.gen_id(), other.name, auth.id, prefix, postfix,
+                        ProxyType.swap, other.id, ProxyState.inactive)
+                    + (self.gen_id(), auth.name, other.id, ProxyType.swap,
+                        auth.id, ProxyState.hidden))
             return bool(self.cur.rowcount)
         elif swap[0] == ProxyState.inactive:
             # target is initiator. author can activate swap
             self.execute(
                     'update proxies set prefix = ?, postfix = ?, state = ?'
                     'where (userid, otherid) = (?, ?)',
-                    (prefix, postfix, ProxyState.active, authid, targetid))
+                    (prefix, postfix, ProxyState.active, auth.id, other.id))
             self.execute(
                     'update proxies set state = ? '
                     'where (userid, otherid) = (?, ?)',
-                    (ProxyState.active, targetid, authid))
+                    (ProxyState.active, other.id, auth.id))
             return bool(self.cur.rowcount)
 
         return False
 
 
     async def cmd_swap_open(self, message, member, tags):
-        if self.make_or_activate_swap(message.author.id, member.id, tags):
+        if self.make_or_activate_swap(message.author, member, tags):
             await self.mark_success(message, True)
 
 
@@ -461,15 +489,17 @@ class GestaltCommands:
             return await self.cmd_permcheck(message, guildid)
 
         elif arg in ['proxy', 'p']:
-            proxid = reader.read_word()
-            arg = reader.read_word().lower()
+            name = reader.read_quote()
 
-            if proxid == '':
+            if name == '':
                 return await self.cmd_proxy_list(message)
+
+            arg = reader.read_word().lower()
+            proxy = self.get_user_proxy(message, name)
 
             if arg == 'tags':
                 arg = reader.read_remainder()
-                return await self.cmd_proxy_tags(message, proxid, arg)
+                return await self.cmd_proxy_tags(message, proxy['proxid'], arg)
 
             elif arg == 'auto':
                 if reader.is_empty():
@@ -478,7 +508,14 @@ class GestaltCommands:
                     val = reader.read_bool_int()
                     if val == None:
                         raise RuntimeError('Please specify "on" or "off".')
-                return await self.cmd_proxy_auto(message, proxid, val)
+                return await self.cmd_proxy_auto(message, proxy, val)
+
+            elif arg == 'rename':
+                newname = reader.read_remainder()
+                if not newname:
+                    raise RuntimeError('Please provide a new name.')
+                return await self.cmd_proxy_rename(message, proxy['proxid'],
+                        newname)
 
         elif arg in ['collective', 'c']:
             if not message.guild:
@@ -590,16 +627,12 @@ class GestaltCommands:
                 return await self.cmd_swap_open(message, member, tags)
 
             elif arg in ['close', 'off']:
-                proxid = reader.read_quote().lower()
-                if proxid == '':
-                    raise RuntimeError('Please provide a swap ID.')
-                elif proxid == 'all':
+                name = reader.read_quote()
+                if name.lower() == 'all':
                     return await self.cmd_swap_close(message)
 
-                proxy = self.fetchone('select * from proxies where proxid = ?',
-                        (proxid,))
-                if not proxy or ((proxy['userid'], proxy['type'])
-                        != (authid, ProxyType.swap)):
+                proxy = self.get_user_proxy(message, name)
+                if proxy['type'] != ProxyType.swap:
                     raise RuntimeError(
                             'You do not have a swap with that ID.')
 
@@ -610,15 +643,13 @@ class GestaltCommands:
             return await self.cmd_edit(message, content)
 
         elif arg in ['become', 'bc']:
-            proxid = reader.read_word()
-            proxy = self.fetchone('select * from proxies where proxid = ?',
-                    (proxid,))
-            if (not proxy or proxy['userid'] != authid
-                    or proxy['type'] == ProxyType.override):
-                raise RuntimeError('You do not have a proxy with that ID.')
+            proxy = self.get_user_proxy(message, reader.read_quote())
+            if (proxy['type'] == ProxyType.override):
+                raise RuntimeError('You are already yourself!')
             if proxy['state'] != ProxyState.active:
-                raise RuntimeError('That proxy is not active')
-            return await self.cmd_become(message, proxid)
+                raise RuntimeError('That proxy is not active.')
+
+            return await self.cmd_become(message, proxy['proxid'])
 
         elif arg == 'log':
             if not message.guild:

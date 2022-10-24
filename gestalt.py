@@ -57,6 +57,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.execute(
                 'create table if not exists proxies('
                 'proxid text primary key collate nocase,'   # of form 'abcde'
+                'cmdname text collate nocase,'
                 'userid integer,'
                 'guildid integer,'          # 0 for swaps, overrides
                 'prefix text,'
@@ -230,15 +231,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def on_member_role_add(self, member, role):
-        collid = self.fetchone(
-                'select maskid from masks where roleid = ?',
+        mask = self.fetchone(
+                'select maskid, nick from masks where roleid = ?',
                 (role.id,))
-        if collid:
+        if mask:
             self.execute(
                 'insert or ignore into proxies values '
-                '(?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
-                (self.gen_id(), member.id, member.guild.id,
-                    ProxyType.collective, collid[0], ProxyState.active))
+                '(?, ?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
+                (self.gen_id(), mask['nick'], member.id, member.guild.id,
+                    ProxyType.collective, mask['maskid'], ProxyState.active))
 
 
     def on_member_role_remove(self, member, role):
@@ -433,7 +434,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.execute('insert into users values (?, ?, ?)',
                     (authid, str(message.author), DEFAULT_PREFS))
             self.execute('insert into proxies values'
-                    '(?, ?, 0, NULL, NULL, ?, NULL, NULL, 0, 1.0, ?)',
+                    '(?, "", ?, 0, NULL, NULL, ?, NULL, NULL, 0, 1.0, ?)',
                     (self.gen_id(), authid, ProxyType.override,
                         ProxyState.active))
             prefs = DEFAULT_PREFS
