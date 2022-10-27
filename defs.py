@@ -59,5 +59,6 @@ class ProxyState(enum.IntEnum):
 
 DEFAULT_PREFS = reduce(lambda a, b : a | Prefs[b], DEFAULT_PREFS, 0)
 REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
-HELPMSG = HELPMSG.format(p = COMMAND_PREFIX)
+HELPMSGS = {topic: text.format(p = COMMAND_PREFIX) for topic, text
+        in HELPMSGS.items()}
 

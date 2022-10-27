@@ -107,8 +107,8 @@ class GestaltCommands:
                     'select * from %s' % table)]))
 
 
-    async def cmd_help(self, message):
-        await self.send_embed(message, HELPMSG)
+    async def cmd_help(self, message, topic):
+        await self.send_embed(message, HELPMSGS.get(topic, HELPMSGS['']))
 
 
     async def cmd_invite(self, message):
@@ -477,7 +477,8 @@ class GestaltCommands:
         authid = message.author.id
 
         if arg == 'help':
-            return await self.cmd_help(message)
+            topic = reader.read_word()
+            return await self.cmd_help(message, topic)
 
         elif arg == 'invite':
             return await self.cmd_invite(message)
