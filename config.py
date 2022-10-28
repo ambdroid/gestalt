@@ -144,6 +144,22 @@ HELPMSGS = {
         '(If you don\'t receive the DM, DM this bot first.)\n'
         }
 
+# parody of PluralKit/PluralKit.Bot/Commands/Help.cs
+EXPLAIN = (
+        '> **About Gestalt**\n'
+        'Gestalt detects messages enclosed in specific tags associated with a '
+        'profile, then replaces that message under a "pseudo-account" of that '
+        'profile using Discord webhooks.\n'
+        '\n'
+        'This is useful for multiple bodies sharing one person (aka. '
+        '*hiveminds*), people who wish to role-play as each other without '
+        'having to share Discord accounts, or anyone else who may want to be '
+        'really weird about identity from the same Discord account.\n'
+        '\n'
+        'Due to Discord limitations, these messages will show up with the '
+        '`[BOT]` tag - however, they are not bots. Unless they are.'
+        )
+
 ERROR_DM = 'You need to be in a server to do that!'
 ERROR_MANAGE_ROLES = 'You need `Manage Roles` permission to do that!'
 ERROR_CURSED = 'No.'

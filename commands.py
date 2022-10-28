@@ -676,6 +676,9 @@ class GestaltCommands:
             if arg == 'disable':
                 return await self.cmd_log_disable(message)
 
+        elif arg == 'explain':
+            return await message.channel.send(EXPLAIN)
+
 
 
         elif CMD_DEBUG and arg == 'debug':
