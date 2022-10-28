@@ -100,13 +100,6 @@ class GestaltCommands:
         return proxies[0]
 
 
-    async def cmd_debug(self, message):
-        for table in ['users', 'proxies', 'masks']:
-            await self.send_embed(message, '```%s```' % '\n'.join(
-                ['|'.join([str(i) for i in x]) for x in self.fetchall(
-                    'select * from %s' % table)]))
-
-
     async def cmd_help(self, message, topic):
         await self.send_embed(message, HELPMSGS.get(topic, HELPMSGS['']))
 
@@ -682,9 +675,4 @@ class GestaltCommands:
                 self.execute('insert into history values (?, 0, ?, NULL, NULL)',
                         (reply.id, authid))
                 return
-
-
-
-        elif CMD_DEBUG and arg == 'debug':
-            return await self.cmd_debug(message)
 
