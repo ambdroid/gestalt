@@ -515,7 +515,7 @@ class GestaltCommands:
             if not message.guild:
                 raise RuntimeError(ERROR_DM)
             guild = message.guild
-            arg = reader.read_word()
+            arg = reader.read_quote()
 
             if arg == '':
                 return await self.cmd_collective_list(message)
@@ -536,14 +536,22 @@ class GestaltCommands:
 
                 return await self.cmd_collective_new(message, role)
 
-            else: # arg is collective ID
+            else: # arg is collective ID/proxy name
                 collid = arg
                 action = reader.read_word().lower()
+
+                try:
+                    # if get_user_proxy succeeds, ['maskid'] must exist
+                    collid = self.get_user_proxy(message, collid)['maskid']
+                except RuntimeError:
+                    pass # could save error, but would be confusing
                 row = self.fetchone('select * from masks where maskid = ?',
                         (collid,))
-                if row == None or row['guildid'] != guild.id:
+                if row == None:
+                    raise RuntimeError('Collective not found.')
+                if row['guildid'] != guild.id:
                     raise RuntimeError(
-                            'This guild has no collective with that ID.')
+                            'That collective belongs to another guild.')
 
                 if action in ['name', 'avatar']:
                     arg = reader.read_remainder()
