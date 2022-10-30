@@ -158,7 +158,7 @@ class Webhook(Object):
         if self._deleted or msg.webhook_id != self.id:
             raise Webhook.NotFound()
         msg.content = content
-    async def send(self, username, **kwargs):
+    async def send(self, username, avatar_url, **kwargs):
         if self._deleted:
             raise Webhook.NotFound()
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
@@ -166,7 +166,7 @@ class Webhook(Object):
         name = username if username else self.name
         msg.author = Object(id = self.id, bot = True,
                 name = name, display_name = name,
-                avatar_url = 'http://avatar.png')
+                avatar_url = avatar_url)
         await self._channel._add(msg)
         return msg
 
@@ -1045,6 +1045,17 @@ class GestaltTest(unittest.TestCase):
         self.assertNotReacted(send(beta, c, 'gs;p guild auto on'))
         self.assertNotReacted(send(beta, c, 'gs;become guild'))
         self.assertIsNone(send(alpha, c, 'not proxied').webhook_id)
+
+        self.assertReacted(send(alpha, c, 'gs;c "guild" name guild!'))
+        self.assertEqual(send(alpha, c, '[proxied').author.name, 'guild!')
+        self.assertReacted(send(alpha, c, 'gs;c guild avatar http://newavatar'))
+        self.assertEqual(send(alpha, c, '[proxied').author.avatar_url,
+                'http://newavatar')
+        self.assertNotReacted(send(beta, c, 'gs;c guild name guild'))
+        instance.get_user_proxy(send(alpha, c, 'command'), 'guild')
+        self.assertReacted(send(alpha, c, 'gs;c guild delete'))
+        with self.assertRaises(RuntimeError):
+            instance.get_user_proxy(c[-1], 'guild')
 
         # With names, users can infer *and control* names of hidden proxies.
         # We must ensure that hidden proxies can't be used in commands.
