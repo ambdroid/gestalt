@@ -53,6 +53,7 @@ class ProxyType(enum.IntEnum):
 @enum.unique
 class ProxyFlags(enum.IntFlag):
     auto        = 1 << 0
+    keepproxy   = 1 << 1
 
 
 @enum.unique

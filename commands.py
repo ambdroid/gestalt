@@ -228,6 +228,18 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
+    async def cmd_proxy_keepproxy(self, message, proxy, keep):
+        if keep == None:
+            keep = not bool(proxy['flags'] & ProxyFlags.keepproxy)
+        self.execute(
+                'update proxies set flags = (flags & ~?) | ? '
+                'where proxid = ?',
+                (ProxyFlags.keepproxy, ProxyFlags.keepproxy * int(keep),
+                proxy['proxid']))
+
+        await self.mark_success(message, True)
+
+
     async def cmd_collective_list(self, message):
         rows = self.fetchall(
                 'select * from masks where guildid = ?',
@@ -496,6 +508,10 @@ class GestaltCommands:
                     raise RuntimeError('Please provide a new name.')
                 return await self.cmd_proxy_rename(message, proxy['proxid'],
                         newname)
+
+            elif arg == 'keepproxy':
+                keep = reader.read_bool_int()
+                return await self.cmd_proxy_keepproxy(message, proxy, keep)
 
         elif arg in ['collective', 'c']:
             if not message.guild:
