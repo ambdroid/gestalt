@@ -329,7 +329,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         content = (message.content[
             len(proxy['prefix']) : -len(proxy['postfix']) or None].strip()
-            if proxy['matchTags'] else message.content)
+            if proxy['matchTags'] and proxy['flags'] & ProxyFlags.keepproxy == 0
+            else message.content)
 
         if message.attachments:
             totalsize = sum((x.size for x in message.attachments))
