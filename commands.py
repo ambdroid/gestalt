@@ -189,7 +189,7 @@ class GestaltCommands:
                         .replace('`', '\N{REVERSED PRIME}'))
             if proxy['state'] == ProxyState.inactive:
                 parens += ' *(inactive)*'
-            if proxy['auto'] == 1:
+            if proxy['flags'] & ProxyFlags.auto:
                 parens += ' auto **on**'
             if proxy['become'] < 1.0:
                 parens += ' *%i%%*' % int(proxy['become'] * 100)
@@ -215,17 +215,8 @@ class GestaltCommands:
 
     async def cmd_proxy_auto(self, message, proxy, auto):
         if auto == None:
-            auto = 1 - proxy['auto']
-        # triggers will take care of unsetting other autos as necessary
-        self.execute(
-                'update proxies set auto = ? where proxid = ?',
-                (auto, proxy['proxid']))
-
-        if proxy['type'] == ProxyType.override:
-            # ...but override can't actually be auto'd, that makes no sense
-            self.execute(
-                    'update proxies set auto = 0 where proxid = ?',
-                    (proxy['proxid'],))
+            auto = not bool(proxy['flags'] & ProxyFlags.auto)
+        self.set_proxy_auto(proxy, bool(auto))
 
         await self.mark_success(message, True)
 
@@ -435,13 +426,14 @@ class GestaltCommands:
                 pass
 
 
-    async def cmd_become(self, message, proxid):
+    async def cmd_become(self, message, proxy):
         # self.execute('update proxies set become = 1.0 where userid = ?',
         #         (message.author.id,))
+        self.set_proxy_auto(proxy, True)
         self.execute(
-                'update proxies set (auto, become) = (1, 0.0) '
+                'update proxies set become = 0.0 '
                 'where (userid, proxid) = (?, ?)',
-                (message.author.id, proxid))
+                (message.author.id, proxy['proxid']))
         await self.mark_success(message, True)
 
 
@@ -642,7 +634,7 @@ class GestaltCommands:
             if proxy['state'] != ProxyState.active:
                 raise RuntimeError('That proxy is not active.')
 
-            return await self.cmd_become(message, proxy['proxid'])
+            return await self.cmd_become(message, proxy)
 
         elif arg == 'log':
             if not message.guild:

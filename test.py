@@ -241,6 +241,9 @@ class Guild(Object):
     @property
     def members(self):
         return self._members.values()
+    @property
+    def roles(self):
+        return list(self._roles.values())
     def _add_channel(self, name):
         chan = Channel(name = name, guild = self)
         self._channels[chan.id] = chan
@@ -495,6 +498,11 @@ class GestaltTest(unittest.TestCase):
                 send(beta, g['main'], 'gs;p %s tags no:text' % alphaid))
 
     def test_05_tags_auto(self):
+        def assertFlags(proxid, flags):
+            self.assertEqual(instance.fetchone(
+                'select flags from proxies where proxid = ?',
+                (proxid,))[0], flags)
+
         # test every combo of auto, tags, and also the switches thereof
         chan = g['main']
         proxid = self.get_proxid(alpha, g.default_role)
@@ -525,9 +533,32 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(alpha, chan, 'auto on').webhook_id)
         self.assertReacted(send(alpha, chan, 'gs;p %s auto on' % overid))
         self.assertIsNone(send(alpha, chan, 'auto off').webhook_id)
-        self.assertEqual(instance.fetchone(
-            'select auto from proxies where proxid = ?',
-            (overid,))[0], 0)
+        assertFlags(overid, 0)
+
+        # test guild/global autoproxy shenanigans
+        # somewhat redundant with test_global_conflicts
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % beta.mention))
+        self.assertReacted(send(beta, chan, 'gs;swap open %s' % alpha.mention))
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % gamma.mention))
+        self.assertReacted(send(gamma, chan, 'gs;swap open %s' % alpha.mention))
+        run(g.get_member(alpha.id)._add_role(role := g._add_role('not global')))
+        self.assertReacted(send(alpha, chan, 'gs;c new "not global"'))
+        self.assertReacted(send(alpha, chan, 'gs;p test-beta auto on'))
+        assertFlags(self.get_proxid(alpha, beta), 1)
+        self.assertReacted(send(alpha, chan, 'gs;p test-gamma auto on'))
+        assertFlags(self.get_proxid(alpha, gamma), 1)
+        assertFlags(self.get_proxid(alpha, beta), 0)
+        self.assertReacted(send(alpha, chan, 'gs;p %s auto on' % proxid))
+        assertFlags(proxid, 1)
+        assertFlags(self.get_proxid(alpha, gamma), 0)
+        self.assertReacted(send(alpha, chan, 'gs;p "not global" auto on'))
+        assertFlags(self.get_proxid(alpha, role), 1)
+        assertFlags(proxid, 0)
+        self.assertReacted(send(alpha, chan, 'gs;p test-beta auto on'))
+        assertFlags(self.get_proxid(alpha, beta), 1)
+        assertFlags(self.get_proxid(alpha, role), 0)
+        send(alpha, chan, 'gs;swap close test-beta')
+        send(alpha, chan, 'gs;swap close test-gamma')
 
         # invalid tags. these should fail
         self.assertNotReacted(send(alpha, chan, 'gs;p %s tags ' % proxid))
@@ -645,6 +676,7 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(
                 send(alpha, g2['main'], 'gs;p %s auto on' % proxsecond))
         self.assertIsNotNone(send(alpha, g['main'], 'auto on').webhook_id)
+        self.assertIsNotNone(send(alpha, g2['main'], 'auto on').webhook_id)
 
         # test global tags conflict; this should fail
         self.assertNotReacted(
