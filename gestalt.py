@@ -65,7 +65,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'type integer,'             # see enum ProxyType
                 'otherid integer,'          # userid for swaps
                 'maskid text,'
-                'auto integer,'             # 0/1
+                'flags integer,'            # see enum ProxyFlags
                 'become real,'              # 1.0 except in Become mode
                 'state integer,'            # see enum ProxyState
                 'unique(userid, otherid),'
@@ -123,22 +123,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 ') begin select (raise(abort,'
                     '"Those tags conflict with another proxy."'
                 ')); end')
-        self.execute(
-                # NB: this does not trigger if a proxy is inserted with auto = 1
-                # including 'insert or replace'
-                'create trigger if not exists auto_exclusive '
-                'after update of auto on proxies when (new.auto = 1) begin '
-                    'update proxies set auto = 0 where ('
-                        '(userid = new.userid) and (proxid != new.proxid) and ('
-                            # if updated proxy is global, remove all other auto
-                                '(new.guildid == 0)'
-                            'or'
-                            # else, remove auto from global and same guild
-                                '((new.guildid != 0) and '
-                                '(guildid in (0, new.guildid)))'
-                        ')'
-                    ');'
-                'end')
         self.execute(
                 'create table if not exists masks('
                 'maskid text primary key collate nocase,'
@@ -228,6 +212,34 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     (id,) * 2)[0]
             if not exists:
                 return id
+
+
+    def set_proxy_auto(self, proxy, auto):
+        if proxy['type'] == ProxyType.override:
+            if auto:
+                self.execute(
+                        'update proxies set flags = flags & ~? '
+                        'where flags & ? != 0 and userid = ?',
+                        (ProxyFlags.auto, ProxyFlags.auto, proxy['userid']))
+        else:
+            self.execute(
+                    'update proxies set flags = (flags & ~?) | ? '
+                    'where proxid = ?',
+                    (ProxyFlags.auto, ProxyFlags.auto * int(auto),
+                        proxy['proxid']))
+            if auto:
+                self.execute(
+                        'update proxies set flags = (flags & ~?) where ('
+                            '(userid = ?) and (proxid != ?) and ('
+                            # if updated proxy is global, remove all other auto
+                                '(? == 0)'
+                            'or'
+                            # else, remove auto from global and same guild
+                                '((? != 0) and '
+                                '(guildid in (0, ?)))'
+                            ')'
+                        ')', (ProxyFlags.auto, proxy['userid'], proxy['proxid'],
+                        proxy['guildid'], proxy['guildid'], proxy['guildid']))
 
 
     def on_member_role_add(self, member, role):
@@ -467,25 +479,21 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 and lower.startswith(proxy['prefix'])
                 and lower.endswith(proxy['postfix'])),
             proxies))):
-            match = discord.utils.find(lambda proxy : proxy['auto'] == 1,
+            match = discord.utils.find(
+                    lambda proxy : proxy['flags'] & ProxyFlags.auto != 0,
                     proxies)
 
         if match and (match := dict(match))['state'] == ProxyState.active:
             match['matchTags'] = tags
-            latch = prefs & Prefs.latch and not match['auto']
+            latch = prefs & Prefs.latch and not match['flags'] & ProxyFlags.auto
             if match['type'] == ProxyType.override:
                 if latch:
-                    # override can't be auto'd so disable other autos instead
-                    self.execute(
-                            'update proxies set auto = 0 '
-                            'where auto = 1 and userid = ?',
-                            (authid,))
+                    # this disables other autos
+                    self.set_proxy_auto(match, True)
             else:
                 if self.has_perm(message, manage_messages = True):
                     if await self.do_proxy(message, match, prefs) and latch:
-                        self.execute(
-                                'update proxies set auto = 1 where proxid = ?',
-                                (match['proxid'],))
+                        self.set_proxy_auto(match, True)
                 else:
                     await self.send_embed(message,
                             'I need `Manage Messages` permission to proxy.')

@@ -51,6 +51,11 @@ class ProxyType(enum.IntEnum):
 
 
 @enum.unique
+class ProxyFlags(enum.IntFlag):
+    auto        = 1 << 0
+
+
+@enum.unique
 class ProxyState(enum.IntEnum):
     hidden      = 0
     inactive    = 1
