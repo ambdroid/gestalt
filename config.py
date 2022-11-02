@@ -90,6 +90,8 @@ HELPMSGS = {
         '`{p}proxy (id/name) tags [tags]`: set tags\n'
         '`{p}proxy (id/name) auto (on/off/blank)`: set or toggle autoproxy\n'
         '`{p}proxy (id/name) rename (new name)`: rename proxy\n'
+        '`{p}proxy (id/name) keepproxy (on/off/blank)`: set or toggle '
+        'keepproxy\n'
         '`{p}become (id/name)`: enables autoproxy, and with every message, '
         'the chance that your message will be proxied increases from 0%\n',
 
