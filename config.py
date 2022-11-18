@@ -190,6 +190,7 @@ EXPLAIN = (
         )
 
 ERROR_DM = 'You need to be in a server to do that!'
+ERROR_TAGS = 'Those tags conflict with another proxy.'
 ERROR_MANAGE_ROLES = 'You need `Manage Roles` permission to do that!'
 ERROR_CURSED = 'No.'
 ERROR_BLURSED = 'I\'m flattered, but no.'

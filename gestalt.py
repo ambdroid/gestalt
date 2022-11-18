@@ -120,7 +120,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     ')'
                 # this exception will be passed to the user
                 ') begin select (raise(abort,'
-                    '"Those tags conflict with another proxy."'
+                    '"You shouldn\'t see this error message."'
                 ')); end')
         self.execute(
                 'create table if not exists masks('
@@ -496,7 +496,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             try:
                 await self.do_command(message,
                         message.content.removeprefix(COMMAND_PREFIX).strip())
-            except (RuntimeError, sqlite.IntegrityError) as e:
+            except RuntimeError as e:
                 if prefs & Prefs.errors:
                     await self.send_embed(message, e.args[0])
             return
