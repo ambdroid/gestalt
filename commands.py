@@ -521,15 +521,19 @@ class GestaltCommands:
                 receipt = '%s\'s %s' % (swap['cmdname'], member['name'])
             else:
                 receipt = '%s (Receipt)' % member['name']
-            self.cur.executemany(
+            self.execute(
                     'insert into proxies values'
                     '(?, ?, ?, 0, NULL, NULL, ?, ?, ?, 0, 1.0, ?)',
-                    [(proxid := self.gen_id(), member['name'], swap['otherid'],
+                    (proxid := self.gen_id(), member['name'], swap['otherid'],
                         ProxyType.pkswap, swap['userid'], member['uuid'],
-                        ProxyState.active),
-                    (self.gen_id(), receipt, swap['userid'],
-                        ProxyType.pkreceipt, swap['otherid'], proxid,
-                        ProxyState.inactive)])
+                        ProxyState.active))
+            if swap['userid'] != swap['otherid']:
+                self.execute(
+                        'insert into proxies values'
+                        '(?, ?, ?, 0, NULL, NULL, ?, ?, ?, 0, 1.0, ?)',
+                        (self.gen_id(), receipt, swap['userid'],
+                            ProxyType.pkreceipt, swap['otherid'], proxid,
+                            ProxyState.inactive))
         except KeyError:
             raise RuntimeError(ERROR_PKAPI)
 
