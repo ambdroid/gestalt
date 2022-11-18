@@ -280,6 +280,7 @@ class Guild(Object):
 class TestBot(gestalt.Gestalt):
     def __init__(self):
         super().__init__(dbfile = ':memory:')
+        self.session = ClientSession()
         self.adapter = None
     def __del__(self):
         pass # suppress 'closing database' message
@@ -300,6 +301,18 @@ class File:
         return False
     async def to_file(self, spoiler):
         return self
+
+class ClientSession:
+    class Response:
+        def __init__(self, text): self._text = text
+        async def text(self, encoding): return self._text
+        @property
+        def status(self): return 200 if type(self._text) == str else self._text
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+    _data = {}
+    def get(self, url, **kwargs): return self.Response(self._data[url])
+    def _add(self, path, data): self._data[gestalt.PK_ENDPOINT + path] = data
 
 def send(user, channel, content, reference = None, files = []):
     msg = Message(author = user, content = content, reference = reference,
@@ -378,6 +391,18 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(alpha, chan, 'sw swap').webhook_id)
         self.assertIsNotNone(send(beta, chan, 'sw swap').webhook_id)
 
+        # try to redundantly open another swap; it should fail
+        self.assertNotReacted(
+                send(alpha, chan, 'gs;swap open %s' % beta.mention))
+        self.assertNotReacted(
+                send(beta, chan, 'gs;swap open %s' % alpha.mention))
+        self.assertEqual(instance.fetchone(
+            'select count() from proxies where (userid, otherid) = (?, ?)',
+            (alpha.id, beta.id))[0], 1)
+        self.assertEqual(instance.fetchone(
+            'select count() from proxies where (userid, otherid) = (?, ?)',
+            (beta.id, alpha.id))[0], 1)
+
         # now, with the alpha-beta swap active, alpha opens swap with gamma
         # this one should fail due to tags conflict
         self.assertNotReacted(
@@ -417,6 +442,20 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(self.get_proxid(gamma, alpha))
         self.assertIsNone(send(beta, chan, 'sw no swap').webhook_id)
         self.assertIsNone(send(gamma, chan, 'sww no swap').webhook_id)
+
+        # test self-swaps
+        self.assertReacted(send(alpha, chan, 'gs;swap open %s' % alpha.mention))
+        self.assertIsNotNone(self.get_proxid(alpha, alpha))
+        self.assertReacted(send(alpha, chan, 'gs;p test-alpha tags me:text'))
+        self.assertIsNotNone(send(alpha, chan, 'me:self-swap').webhook_id)
+        self.assertEqual(chan[-1].author.name, 'test-alpha')
+        self.assertNotReacted(
+                send(alpha, chan, 'gs;swap open %s' % alpha.mention))
+        self.assertEqual(instance.fetchone(
+            'select count() from proxies where (userid, otherid) = (?, ?)',
+            (alpha.id, alpha.id))[0], 1)
+        self.assertReacted(send(alpha, chan, 'gs;swap close test-alpha'))
+        self.assertIsNone(self.get_proxid(alpha, alpha))
 
     def test_02_help(self):
         send(alpha, g['main'], 'gs;help')
@@ -1093,6 +1132,99 @@ class GestaltTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             instance.get_user_proxy(c[-1], 'test-alpha')
         self.assertReacted(send(alpha, c, 'gs;swap close test-beta'))
+
+    def test_23_pk_swap(self):
+        g1 = Guild(name = 'guildy guild')
+        c = g1._add_channel('main')
+        run(g1._add_member(bot))
+        run(g1._add_member(alpha))
+        run(g1._add_member(beta))
+        run(g1._add_member(gamma))
+        pkhook = Webhook(c, 'pk webhook')
+
+        instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
+        instance.session._add('/members/aaaaa',
+                '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!"}')
+
+        self.assertReacted(send(alpha, c, 'gs;swap open %s' % beta.mention))
+        # swap needs to be active
+        self.assertNotReacted(send(alpha, c, 'gs;pk swap test-beta aaaaa'))
+        self.assertReacted(send(beta, c, 'gs;swap open %s' % alpha.mention))
+        self.assertReacted(send(alpha, c, 'gs;pk swap test-beta aaaaa'))
+        # shouldn't work twice
+        self.assertNotReacted(send(alpha, c, 'gs;pk swap test-beta aaaaa'))
+        # should be able to send to two users
+        self.assertReacted(send(alpha, c, 'gs;swap open %s' % gamma.mention))
+        self.assertReacted(send(gamma, c, 'gs;swap open %s' % alpha.mention))
+        self.assertReacted(send(alpha, c, 'gs;pk swap test-gamma aaaaa'))
+        self.assertNotReacted(send(alpha, c, 'gs;pk swap test-gamma aaaaa'))
+        self.assertIsNotNone(instance.get_user_proxy(send(gamma, c, 'a'),
+            'member!'))
+        # should be deleted upon swap close
+        self.assertReacted(send(alpha, c, 'gs;swap close test-gamma'))
+        with self.assertRaises(RuntimeError):
+            instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
+        # handle PluralKit linked accounts
+        instance.session._add('/systems/' + str(gamma.id), '{"id": "exmpl"}')
+        self.assertReacted(send(beta, c, 'gs;swap open %s' % gamma.mention))
+        self.assertReacted(send(gamma, c, 'gs;swap open %s' % beta.mention))
+        self.assertNotReacted(send(gamma, c, 'gs;pk swap test-beta aaaaa'))
+
+        # test using it!
+        self.assertReacted(send(beta, c, 'gs;p member! tags [text]'))
+        self.assertIsNone(send(beta, c, '[test]').webhook_id)
+        old = run(pkhook.send('member!', '', content = 'old message'))
+        new = run(pkhook.send('member!', '', content = 'new message'))
+        nope = run(pkhook.send('someone else', '', content = 'irrelevant'))
+        instance.session._add('/messages/' + str(old.id),
+                '{"member": {"uuid": "a-a-a-a-a"}}')
+        instance.session._add('/messages/' + str(new.id),
+                '{"member": {"uuid": "a-a-a-a-a"}}')
+        instance.session._add('/messages/' + str(nope.id),
+                '{"member": {"uuid": "z-z-z-z-z"}}')
+        self.assertNotReacted(send(beta, c, 'gs;pk sync'))
+        self.assertNotReacted(send(beta, c, 'gs;pk sync',
+            Object(cached_message = None, message_id = nope.id)))
+        self.assertReacted(send(beta, c, 'gs;pk sync',
+            Object(cached_message = None, message_id = new.id)))
+        self.assertNotReacted(send(beta, c, 'gs;pk sync',
+            Object(cached_message = None, message_id = old.id)))
+        self.assertIsNotNone(send(beta, c, '[test]').webhook_id)
+        self.assertEqual(c[-1].author.name, 'member!')
+        # test a message with no pk entry
+        instance.session._add('/messages/' + str(c[-1].id), 404)
+        self.assertNotReacted(send(beta, c, 'gs;pk sync',
+            Object(cached_message = c[-1])))
+
+        # make sure other "mask" commands don't work
+        self.assertNotReacted(send(beta, c, 'gs;c pk-a-a-a-a-a name nope'))
+        self.assertNotReacted(send(beta, c,
+            'gs;c pk-a-a-a-a-a avatar http://nope.png'))
+        self.assertNotReacted(send(beta, c, 'gs;c pk-a-a-a-a-a delete'))
+
+        # test closing specific pkswap
+        # first by receipt
+        instance.get_user_proxy(send(beta, c, 'a'), 'member!')
+        self.assertReacted(send(alpha, c, 'gs;pk close "test-beta\'s member!"'))
+        with self.assertRaises(RuntimeError):
+            instance.get_user_proxy(send(beta, c, 'a'), 'member!')
+        with self.assertRaises(RuntimeError):
+            instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
+        instance.get_user_proxy(send(beta, c, 'a'), 'test-alpha')
+        instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta')
+
+        # then by pkswap
+        self.assertReacted(send(alpha, c, 'gs;pk swap test-beta aaaaa'))
+        instance.get_user_proxy(send(beta, c, 'a'), 'member!')
+        self.assertReacted(send(beta, c, 'gs;pk close member!'))
+        with self.assertRaises(RuntimeError):
+            instance.get_user_proxy(send(beta, c, 'a'), 'member!')
+        with self.assertRaises(RuntimeError):
+            instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
+        instance.get_user_proxy(send(beta, c, 'a'), 'test-alpha')
+        instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta')
+
+        self.assertNotReacted(send(beta, c, 'gs;pk close test-alpha'))
 
 
 def main():

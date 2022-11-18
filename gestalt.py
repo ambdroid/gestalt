@@ -68,7 +68,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'flags integer,'            # see enum ProxyFlags
                 'become real,'              # 1.0 except in Become mode
                 'state integer,'            # see enum ProxyState
-                'unique(userid, otherid),'
                 'unique(userid, maskid))')
         self.execute(
                 # this is a no-op to kick in the update trigger
@@ -125,11 +124,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 ')); end')
         self.execute(
                 'create table if not exists masks('
-                'maskid text primary key collate nocase,'
+                'maskid text collate nocase,'
                 'guildid integer,'
                 'roleid integer,'
                 'nick text,'
                 'avatar text,'
+                'type int,'     # also uses enum ProxyType
+                'updated int,'  # snowflake; for future automatic pk syncing
+                'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
 
 
@@ -163,7 +165,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
         print('In %i guild(s).' % len(self.guilds), flush = True)
-        self.adapter = discord.AsyncWebhookAdapter(aiohttp.ClientSession())
+        self.session = aiohttp.ClientSession()
+        self.adapter = discord.AsyncWebhookAdapter(self.session)
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         # this could go in __init__ but that would break testing
@@ -174,7 +177,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def close(self):
         await super().close()
-        await self.adapter.session.close()
+        await self.session.close()
 
 
     @tasks.loop(seconds = SYNC_TIMEOUT)
@@ -186,6 +189,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if self.has_perm(message, add_reactions = True):
             await message.add_reaction(
                     REACT_CONFIRM if success else REACT_DELETE)
+
+
+    class InProgress:
+        def __init__(self, client, message):
+            (self.client, self.message) = (client, message)
+        async def __aenter__(self):
+            if self.client.has_perm(self.message, add_reactions = True):
+                await self.message.add_reaction(REACT_WAIT)
+        async def __aexit__(self, *args):
+            await self.message.remove_reaction(REACT_WAIT, self.client.user)
+
+
+    def in_progress(self, message):
+        return self.InProgress(self, message)
 
 
     async def send_embed(self, replyto, text):
@@ -308,6 +325,18 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     'content': content}
 
 
+    def get_proxy_pkswap(self, message, proxy, prefs, content):
+        if not message.guild.get_member(proxy['otherid']):
+            return
+        mask = self.fetchone(
+                'select nick, avatar from masks '
+                'where (guildid, maskid) = (?, ?)',
+                (message.guild.id, 'pk-' + proxy['maskid']))
+        if mask:
+            return {'username': mask['nick'], 'avatar_url': mask['avatar'],
+                    'content': content}
+
+
     async def get_webhook(self, message):
         channel = message.channel
         row = self.fetchone('select * from webhooks where chanid = ?',
@@ -369,6 +398,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             present = self.get_proxy_collective(*args)
         elif proxtype == ProxyType.swap:
             present = self.get_proxy_swap(*args)
+        elif proxtype == ProxyType.pkswap:
+            present = self.get_proxy_pkswap(*args)
         else:
             raise RuntimeError('Unknown proxy type')
         # in case e.g. it's a swap but the other user isn't in the guild
@@ -417,7 +448,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             embed.set_thumbnail(url = present['avatar_url'])
             embed.set_footer(text =
                     ('Collective ID: %s | ' % proxy['maskid']
-                        if proxy['maskid'] else '') +
+                        if proxy['type'] == ProxyType.collective else '') +
                     'Proxy ID: %s | '
                     'Sender: %s (%i) | '
                     'Message ID: %i | '
