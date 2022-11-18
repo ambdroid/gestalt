@@ -48,6 +48,8 @@ class ProxyType(enum.IntEnum):
     override    = 0
     collective  = 1
     swap        = 2
+    pkswap      = 3
+    pkreceipt   = 4
 
 
 @enum.unique

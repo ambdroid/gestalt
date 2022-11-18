@@ -1,3 +1,7 @@
+import json
+import asyncio
+
+import aiohttp
 import discord
 
 from defs import *
@@ -182,6 +186,14 @@ class GestaltCommands:
                 parens = ('**%s** on **%s** in **%s**'
                         % (escape(proxy['nick']), escape(role.name),
                             escape(guild.name)))
+            elif proxy['type'] == ProxyType.pkswap:
+                line = SYMBOL_PKSWAP + line
+                # we don't have pkhids
+                # parens = 'PluralKit member **%s**' % proxy['maskid']
+                parens = ''
+            elif proxy['type'] == ProxyType.pkreceipt:
+                line = SYMBOL_RECEIPT + line
+
             if proxy['prefix'] is not None:
                 parens += (' `%s`'
                         % (proxy['prefix'] + 'text' + proxy['postfix'])
@@ -194,7 +206,7 @@ class GestaltCommands:
             if proxy['become'] < 1.0:
                 parens += ' *%i%%*' % int(proxy['become'] * 100)
 
-            if parens:
+            if parens and proxy['type'] != ProxyType.pkreceipt:
                 line += ' (%s)' % parens.strip()
             lines.append(line)
 
@@ -242,8 +254,8 @@ class GestaltCommands:
 
     async def cmd_collective_list(self, message):
         rows = self.fetchall(
-                'select * from masks where guildid = ?',
-                (message.guild.id,))
+                'select * from masks where (guildid, type) = (?, ?)',
+                (message.guild.id, ProxyType.collective))
 
         if len(rows) == 0:
             text = 'This guild does not have any collectives.'
@@ -267,8 +279,8 @@ class GestaltCommands:
         # '@everyone' is awkward and more likely to cause collisions as cmdname
         name = role.guild.name if role == role.guild.default_role else role.name
         self.execute('insert or ignore into masks values'
-                '(?, ?, ?, ?, NULL)',
-                (collid, role.guild.id, role.id, name))
+                '(?, ?, ?, ?, NULL, ?, NULL)',
+                (collid, role.guild.id, role.id, name, ProxyType.collective))
         # if there wasn't already a collective on that role
         if self.cur.rowcount == 1:
             for member in role.members:
@@ -334,19 +346,26 @@ class GestaltCommands:
         # to support future features, look at proxies from target, not author
         swap = self.fetchone(
                 'select state from proxies '
-                'where (userid, otherid) = (?, ?)',
-                (other.id, auth.id))
+                'where (userid, otherid, type) = (?, ?, ?)',
+                (other.id, auth.id, ProxyType.swap))
         if not swap:
+            if auth.id == other.id:
+                # no need to ask yourself for confirmation, just do it
+                self.execute('insert into proxies values'
+                        '(?, ?, ?, 0, ?, ?, ?, ?, NULL, 0, 1.0, ?)',
+                        (self.gen_id(), auth.name, auth.id, prefix, postfix,
+                            ProxyType.swap, auth.id, ProxyState.active))
+                return True
             # create swap. author's is inactive, target's is hidden
             # id, cmdname, auth, guild, prefix, postfix, type, member, mask, auto, become, state
-            self.execute('insert or ignore into proxies values'
+            self.execute('insert into proxies values'
                     '(?, ?, ?, 0, ?, ?, ?, ?, NULL, 0, 1.0, ?),'
                     '(?, ?, ?, 0, NULL, NULL, ?, ?, NULL, 0, 1.0, ?)',
                     (self.gen_id(), other.name, auth.id, prefix, postfix,
                         ProxyType.swap, other.id, ProxyState.inactive)
                     + (self.gen_id(), auth.name, other.id, ProxyType.swap,
                         auth.id, ProxyState.hidden))
-            return bool(self.cur.rowcount)
+            return True
         elif swap[0] == ProxyState.inactive:
             # target is initiator. author can activate swap
             self.execute(
@@ -357,7 +376,7 @@ class GestaltCommands:
                     'update proxies set state = ? '
                     'where (userid, otherid) = (?, ?)',
                     (ProxyState.active, other.id, auth.id))
-            return bool(self.cur.rowcount)
+            return True
 
         return False
 
@@ -370,10 +389,11 @@ class GestaltCommands:
     async def cmd_swap_close(self, message, proxy):
         self.execute(
                 'delete from proxies '
-                'where proxid = ? or (userid, otherid) = (?, ?)',
-                (proxy['proxid'], proxy['otherid'], proxy['userid']))
-        if self.cur.rowcount:
-            await self.mark_success(message, True)
+                'where (userid, otherid) = (?, ?)'
+                'or (otherid, userid) = (?, ?)',
+                (proxy['userid'], proxy['otherid'])*2)
+
+        await self.mark_success(message, True)
 
 
     async def cmd_edit(self, message, content):
@@ -458,6 +478,109 @@ class GestaltCommands:
     async def cmd_log_disable(self, message):
         self.execute('delete from guilds where guildid = ?',
                 (message.guild.id,))
+        await self.mark_success(message, True)
+
+
+    async def pk_api_get(self, url):
+        try:
+            async with self.session.get(PK_ENDPOINT + url,
+                    timeout = aiohttp.ClientTimeout(total = 5.0)) as r:
+                if r.status != 200:
+                    raise RuntimeError(ERROR_PKAPI)
+                response = await r.text(encoding = 'UTF-8')
+                try:
+                    return json.loads(response)
+                except json.decoder.JSONDecodeError:
+                    raise RuntimeError(ERROR_PKAPI)
+        except asyncio.TimeoutError:
+            raise RuntimeError('Could not reach PluralKit API.')
+
+
+    async def cmd_pk_swap(self, message, swap, pkhid):
+        async with self.in_progress(message):
+            system = await self.pk_api_get('/systems/' + str(swap['userid']))
+            member = await self.pk_api_get('/members/' + pkhid)
+        try:
+            if system['id'] != member['system']:
+                raise RuntimeError('That member is not in your system.')
+            # in the unlikely that PK goes rogue and tries to mess with us
+            if len(member['uuid']) == 5:
+                raise RuntimeError(ERROR_PKAPI)
+            # it would be really nice to just check the pkhid in the command
+            # that way we could check if the proxy exists as the first step
+            # unfortunately, pkhids are NOT guaranteed to be constant!
+            # therefore, we're forced to use the pkuuid...
+            # NB: a pk system may be attached to multiple accounts
+            if self.fetchone(
+                    'select 1 from proxies '
+                    'where (userid, maskid, type, state) = (?, ?, ?, ?)',
+                    (swap['otherid'], member['uuid'], ProxyType.pkswap,
+                        ProxyState.active)):
+                return
+            if swap['cmdname']:
+                receipt = '%s\'s %s' % (swap['cmdname'], member['name'])
+            else:
+                receipt = '%s (Receipt)' % member['name']
+            self.cur.executemany(
+                    'insert into proxies values'
+                    '(?, ?, ?, 0, NULL, NULL, ?, ?, ?, 0, 1.0, ?)',
+                    [(proxid := self.gen_id(), member['name'], swap['otherid'],
+                        ProxyType.pkswap, swap['userid'], member['uuid'],
+                        ProxyState.active),
+                    (self.gen_id(), receipt, swap['userid'],
+                        ProxyType.pkreceipt, swap['otherid'], proxid,
+                        ProxyState.inactive)])
+        except KeyError:
+            raise RuntimeError(ERROR_PKAPI)
+
+        await self.mark_success(message, True)
+
+
+    async def cmd_pk_close(self, message, proxy):
+        if proxy['type'] == ProxyType.pkreceipt:
+            self.execute('delete from proxies where proxid in (?, ?)',
+                    (proxy['proxid'], proxy['maskid']))
+        else: # pkswap
+            self.execute(
+                    'delete from proxies where (proxid = ?) '
+                    'or (userid, maskid) = (?, ?)', # uses index; faster
+                    (proxy['proxid'], proxy['otherid'], proxy['proxid']))
+
+        await self.mark_success(message, True)
+
+
+    async def cmd_pk_sync(self, message):
+        ref = message.reference
+        ref = ref.cached_message or await message.channel.fetch_message(
+                ref.message_id)
+        if not (ref and ref.webhook_id):
+                raise RuntimeError('Please reply to a proxied message.')
+
+        async with self.in_progress(message):
+            proxied = await self.pk_api_get('/messages/' + str(ref.id))
+        try:
+            pkuuid = proxied['member']['uuid']
+        except KeyError:
+            raise RuntimeError(ERROR_PKAPI)
+
+        exists = self.fetchone(
+                'select 1 from proxies where (type, maskid, state) = (?, ?, ?)',
+                (ProxyType.pkswap, pkuuid, ProxyState.active))
+        if not exists:
+            raise RuntimeError('That member has no Gestalt proxies.')
+
+        mask = self.fetchone(
+                'select updated from masks '
+                'where (maskid, guildid) = (?, ?)',
+                ('pk-' + pkuuid, message.guild.id))
+        if mask and mask['updated'] > ref.id:
+            raise RuntimeError('Please use a more recent proxied message.')
+
+        self.execute(
+                'insert or replace into masks values (?, ?, NULL, ?, ?, ?, ?)',
+                ('pk-' + pkuuid, message.guild.id, ref.author.display_name,
+                    str(ref.author.avatar_url), ProxyType.pkswap, ref.id))
+
         await self.mark_success(message, True)
 
 
@@ -549,7 +672,9 @@ class GestaltCommands:
                     pass # could save error, but would be confusing
                 row = self.fetchone('select * from masks where maskid = ?',
                         (collid,))
-                if row == None:
+                # non-collective masks shouldn't have visible ids
+                # but check just to be safe
+                if row == None or row['type'] != ProxyType.collective:
                     raise RuntimeError('Collective not found.')
                 if row['guildid'] != guild.id:
                     raise RuntimeError(
@@ -651,6 +776,33 @@ class GestaltCommands:
                 raise RuntimeError('That proxy is not active.')
 
             return await self.cmd_become(message, proxy)
+
+        elif arg in ['pluralkit', 'pk']:
+
+            arg = reader.read_word()
+            if arg == 'swap':
+                swap = self.get_user_proxy(message, reader.read_quote())
+                if (swap['type'] != ProxyType.swap
+                        or swap['state'] != ProxyState.active):
+                    raise RuntimeError('Please provide an active swap.')
+                pkid = reader.read_word()
+
+                return await self.cmd_pk_swap(message, swap, pkid)
+
+            elif arg == 'close':
+                swap = self.get_user_proxy(message, reader.read_quote())
+                if swap['type'] not in (ProxyType.pkreceipt, ProxyType.pkswap):
+                    raise RuntimeError('Please provide a swap receipt.')
+
+                return await self.cmd_pk_close(message, swap)
+
+            elif arg == 'sync':
+                if not message.guild:
+                    raise RuntimeError(ERROR_DM)
+                if not message.reference:
+                    raise RuntimeError('Please reply to a proxied message.')
+
+                return await self.cmd_pk_sync(message)
 
         elif arg == 'log':
             if not message.guild:
