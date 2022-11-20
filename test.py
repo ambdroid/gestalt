@@ -829,20 +829,19 @@ class GestaltTest(unittest.TestCase):
     # by far the most ominous test
     def test_10_replacements(self):
         chan = g['main']
+        before = 'I am myself. i was and am. I\'m. im. am I? I me my mine.'
+        after = (
+                'We are Ourselves. We were and are. We\'re. We\'re. are We? '
+                'We Us Our Ours.')
         self.assertReacted(send(alpha, chan, 'gs;prefs replace off'))
-        msg = send(alpha, chan,
-                'e:' + 'I am. i was. I\'m. im. am I? I me my mine.')
-        self.assertEqual(msg.content,
-                'I am. i was. I\'m. im. am I? I me my mine.')
+        msg = send(alpha, chan, 'e:' + before)
+        self.assertEqual(msg.content, before)
         self.assertReacted(send(alpha, chan, 'gs;prefs replace'))
-        msg = send(alpha, chan,
-                'e:' + 'I am. i was. I\'m. im. am I? I me my mine.')
-        self.assertEqual(msg.content,
-                'We are. We were. We\'re. We\'re. are We? We Us Our Ours.')
+        msg = send(alpha, chan, 'e:' + before)
+        self.assertEqual(msg.content, after)
         self.assertReacted(send(alpha, chan, 'gs;prefs replace off'))
         self.assertReacted(send(alpha, chan, 'gs;prefs defaults'))
-        self.assertEqual(msg.content,
-                'We are. We were. We\'re. We\'re. are We? We Us Our Ours.')
+        self.assertEqual(msg.content, after)
 
     def test_11_avatar_url(self):
         chan = g['main']

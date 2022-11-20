@@ -5,7 +5,8 @@ PK_ENDPOINT = 'https://api.pluralkit.me/v2'
 DELETE_DELAY = 0.4
 
 REPLACEMENTS = [
-        ('\\bi\\s+am\\b', 'We are'),
+        ('\\bam\\b', 'are'),
+        ('\\bmyself\\b', 'Ourselves'),
         ('\\bi\\s+was\\b', 'We were'),
         ('\\bi\'m\\b', 'We\'re'),
         ('\\bim\\b', 'We\'re'),
