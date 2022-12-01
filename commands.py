@@ -290,13 +290,9 @@ class GestaltCommands:
         if self.cur.rowcount == 1:
             for member in role.members:
                 if not member.bot:
-                    self.execute(
-                            # tags = NULL, auto = 0
-                            'insert into proxies values '
-                            '(?, ?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
-                            (self.gen_id(), name, member.id, role.guild.id,
-                                ProxyType.collective, collid,
-                                ProxyState.active))
+                    self.mkproxy(member.id, ProxyType.collective,
+                            cmdname = name, guildid = role.guild.id,
+                            maskid = collid)
 
             await self.mark_success(message, True)
 
@@ -356,20 +352,15 @@ class GestaltCommands:
         if not swap:
             if auth.id == other.id:
                 # no need to ask yourself for confirmation, just do it
-                self.execute('insert into proxies values'
-                        '(?, ?, ?, 0, ?, ?, ?, ?, NULL, 0, 1.0, ?)',
-                        (self.gen_id(), auth.name, auth.id, prefix, postfix,
-                            ProxyType.swap, auth.id, ProxyState.active))
+                self.mkproxy(auth.id, ProxyType.swap, cmdname = auth.name,
+                        prefix = prefix, postfix = postfix, otherid = auth.id)
                 return True
             # create swap. author's is inactive, target's is hidden
-            # id, cmdname, auth, guild, prefix, postfix, type, member, mask, auto, become, state
-            self.execute('insert into proxies values'
-                    '(?, ?, ?, 0, ?, ?, ?, ?, NULL, 0, 1.0, ?),'
-                    '(?, ?, ?, 0, NULL, NULL, ?, ?, NULL, 0, 1.0, ?)',
-                    (self.gen_id(), other.name, auth.id, prefix, postfix,
-                        ProxyType.swap, other.id, ProxyState.inactive)
-                    + (self.gen_id(), auth.name, other.id, ProxyType.swap,
-                        auth.id, ProxyState.hidden))
+            self.mkproxy(auth.id, ProxyType.swap, cmdname = other.name,
+                    prefix = prefix, postfix = postfix, otherid = other.id,
+                    state = ProxyState.inactive)
+            self.mkproxy(other.id, ProxyType.swap, cmdname = auth.name,
+                    otherid = auth.id, state = ProxyState.hidden)
             return True
         elif swap[0] == ProxyState.inactive:
             # target is initiator. author can activate swap
@@ -526,19 +517,13 @@ class GestaltCommands:
                 receipt = '%s\'s %s' % (swap['cmdname'], member['name'])
             else:
                 receipt = '%s (Receipt)' % member['name']
-            self.execute(
-                    'insert into proxies values'
-                    '(?, ?, ?, 0, NULL, NULL, ?, ?, ?, 0, 1.0, ?)',
-                    (proxid := self.gen_id(), member['name'], swap['otherid'],
-                        ProxyType.pkswap, swap['userid'], member['uuid'],
-                        ProxyState.active))
+            proxid = self.mkproxy(swap['otherid'], ProxyType.pkswap,
+                    cmdname = member['name'], otherid = swap['userid'],
+                    maskid = member['uuid'])
             if swap['userid'] != swap['otherid']:
-                self.execute(
-                        'insert into proxies values'
-                        '(?, ?, ?, 0, NULL, NULL, ?, ?, ?, 0, 1.0, ?)',
-                        (self.gen_id(), receipt, swap['userid'],
-                            ProxyType.pkreceipt, swap['otherid'], proxid,
-                            ProxyState.inactive))
+                self.mkproxy(swap['userid'], ProxyType.pkreceipt,
+                        cmdname = receipt, otherid = swap['otherid'],
+                        maskid = proxid, state = ProxyState.inactive)
         except KeyError:
             raise RuntimeError(ERROR_PKAPI)
 

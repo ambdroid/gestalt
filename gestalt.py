@@ -231,6 +231,18 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 return id
 
 
+    def mkproxy(self, userid, proxtype, cmdname = '', guildid = 0,
+            prefix = None, postfix = None, otherid = None, maskid = None,
+            flags = ProxyFlags(0), become = 1.0, state = ProxyState.active):
+        self.execute(
+                'insert into proxies values '
+                '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (proxid := self.gen_id(), cmdname, userid, guildid,
+                    prefix, postfix, proxtype, otherid, maskid,
+                    flags, become, state))
+        return proxid
+
+
     def set_proxy_auto(self, proxy, auto):
         if proxy['type'] == ProxyType.override:
             if auto:
@@ -264,11 +276,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'select maskid, nick from masks where roleid = ?',
                 (role.id,))
         if mask:
-            self.execute(
-                'insert or ignore into proxies values '
-                '(?, ?, ?, ?, NULL, NULL, ?, NULL, ?, 0, 1.0, ?)',
-                (self.gen_id(), mask['nick'], member.id, member.guild.id,
-                    ProxyType.collective, mask['maskid'], ProxyState.active))
+            try:
+                self.mkproxy(member.id, ProxyType.collective,
+                        cmdname = mask['nick'], guildid = member.guild.id,
+                        maskid = mask['maskid'])
+            except IntegrityError:
+                pass
 
 
     def on_member_role_remove(self, member, role):
@@ -477,10 +490,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if author == None:
             self.execute('insert into users values (?, ?, ?)',
                     (authid, str(message.author), DEFAULT_PREFS))
-            self.execute('insert into proxies values'
-                    '(?, "", ?, 0, NULL, NULL, ?, NULL, NULL, 0, 1.0, ?)',
-                    (self.gen_id(), authid, ProxyType.override,
-                        ProxyState.active))
+            self.mkproxy(authid, ProxyType.override)
             prefs = DEFAULT_PREFS
         else:
             if author['username'] != str(message.author):
