@@ -146,13 +146,18 @@ class GestaltCommands:
 
 
     async def cmd_proxy_list(self, message):
-        rows = self.fetchall(
+        rows = sorted(self.fetchall(
                 'select p.*, m.roleid, m.nick from ('
                     'select * from proxies where userid = ?'
                     'order by type asc'
                 ') as p left join masks as m '
                 'on p.maskid = m.maskid',
-                (message.author.id,))
+                (message.author.id,)),
+                key = lambda row: (
+                    row['otherid']
+                    if row['type'] in (ProxyType.swap, ProxyType.pkswap,
+                        ProxyType.pkreceipt)
+                    else row['type']))
 
         lines = []
         omit = False
