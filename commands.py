@@ -154,7 +154,8 @@ class GestaltCommands:
                 'on p.maskid = m.maskid',
                 (message.author.id,)),
                 key = lambda row: (
-                    row['otherid']
+                    # randomize so it's not just in order of account creation
+                    1000 + abs(hash(str(row['otherid'])))
                     if row['type'] in (ProxyType.swap, ProxyType.pkswap,
                         ProxyType.pkreceipt)
                     else row['type']))
