@@ -575,10 +575,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         emoji = payload.emoji.name
         if emoji == REACT_QUERY:
             try:
+                author = str(self.get_user(row['authid'])
+                        or await self.fetch_user(row['authid']))
+            except discord.errors.NotFound:
+                author = row['username']
+
+            try:
                 # this can fail depending on user's DM settings & prior messages
                 await reactor.send(
-                        'Message sent by %s, id %d'
-                        % (row['username'], row['authid']))
+                        'Message sent by %s (id %d)' % (author, row['authid']))
                 await message.remove_reaction(emoji, reactor)
             except discord.errors.Forbidden:
                 pass
