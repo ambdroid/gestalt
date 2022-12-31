@@ -27,12 +27,19 @@ class Object:
 class User(Object):
     users = {}
     def __init__(self, **kwargs):
+        self._deleted = False
         self.bot = False
         self.dm_channel = None
         self.discriminator = '0001'
         super().__init__(**kwargs)
         self.mention = '<@!%d>' % self.id
         User.users[self.id] = self
+    def _delete(self):
+        self._deleted = True
+        del User.users[self.id]
+        for guild in Guild.guilds.values():
+            if self.id in guild._members:
+                del guild._members[self.id]
     def __str__(self):
         return self.name + '#' + self.discriminator
     async def send(self, content = None, embed = None, file = None):
@@ -89,6 +96,7 @@ class Message(Object):
         self.reactions = []
         self.reference = None
         self.embeds = [embed] if embed else []
+        self.guild = None
         self.type = discord.MessageType.default
         super().__init__(**kwargs)
         self.clean_content = self.content
@@ -141,9 +149,6 @@ class PartialMessage:
         await self._truemsg.remove_reaction(emoji, member)
 
 class Webhook(Object):
-    class NotFound(discord.errors.NotFound):
-        def __init__(self):
-            pass
     hooks = {}
     def __init__(self, channel, name):
         super().__init__()
@@ -156,11 +161,11 @@ class Webhook(Object):
     async def edit_message(self, message_id, content):
         msg = await self._channel.fetch_message(message_id)
         if self._deleted or msg.webhook_id != self.id:
-            raise Webhook.NotFound()
+            raise NotFound()
         msg.content = content
     async def send(self, username, avatar_url, **kwargs):
         if self._deleted:
-            raise Webhook.NotFound()
+            raise NotFound()
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
         msg.webhook_id = self.id
         name = username if username else self.name
@@ -228,6 +233,7 @@ class RoleEveryone:
     def members(self): return self.guild._members.values()
 
 class Guild(Object):
+    guilds = {}
     def __init__(self, **kwargs):
         self._channels = {}     # channel id -> channel
         self._roles = {}        # role id -> role
@@ -236,6 +242,7 @@ class Guild(Object):
         self.premium_tier = 0
         super().__init__(**kwargs)
         self._roles[self.id] = self.default_role = RoleEveryone(self)
+        Guild.guilds[self.id] = self
     def __getitem__(self, key):
         return discord.utils.get(self._channels.values(), name = key)
     @property
@@ -288,7 +295,12 @@ class TestBot(gestalt.Gestalt):
     def user(self):
         return bot
     def get_user(self, id):
-        return User.users[id]
+        return User.users.get(id)
+    async def fetch_user(self, id):
+        try:
+            return User.users[id]
+        except KeyError:
+            raise NotFound()
     def get_channel(self, id):
         return Channel.channels[id]
 
@@ -313,6 +325,10 @@ class ClientSession:
     _data = {}
     def get(self, url, **kwargs): return self.Response(self._data[url])
     def _add(self, path, data): self._data[gestalt.PK_ENDPOINT + path] = data
+
+class NotFound(discord.errors.NotFound):
+    def __init__(self):
+        pass
 
 def send(user, channel, content, reference = None, files = []):
     msg = Message(author = user, content = content, reference = reference,
@@ -631,17 +647,30 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(send(alpha, chan, 'e: tags').author.name, 'test')
 
     def test_06_query_delete(self):
+        run(g._add_member(deleteme := User(name = 'deleteme')))
         chan = g['main']
-        msg = send(alpha, chan, 'e:reaction test')
+        self.assertReacted(send(deleteme, chan, 'gs;swap open %s'
+            % deleteme.mention))
+        self.assertReacted(send(deleteme, chan, 'gs;p deleteme tags e:text'))
+        msg = send(deleteme, chan, 'e:reaction test')
         run(msg._react(gestalt.REACT_QUERY, beta))
-        self.assertNotEqual(beta.dm_channel[-1].content.find(alpha.name), -1)
+        self.assertNotEqual(beta.dm_channel[-1].content.find(str(deleteme)), -1)
 
         run(msg._react(gestalt.REACT_DELETE, beta))
         self.assertEqual(len(msg.reactions), 0)
         self.assertFalse(msg._deleted)
 
-        run(msg._react(gestalt.REACT_DELETE, alpha))
+        run(msg._react(gestalt.REACT_DELETE, deleteme))
         self.assertTrue(msg._deleted)
+
+        msg = send(deleteme, chan, 'e:bye!')
+        deleteme._delete()
+        self.assertIsNone(instance.get_user(deleteme.id))
+        with self.assertRaises(NotFound):
+            run(instance.fetch_user(deleteme.id))
+        send(beta, beta.dm_channel, 'buffer')
+        run(msg._react(gestalt.REACT_QUERY, beta))
+        self.assertNotEqual(beta.dm_channel[-1].content.find(str(deleteme)), -1)
 
         # in swaps, sender or swapee may delete message
         self.assertReacted(send(alpha, chan,
