@@ -133,6 +133,21 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'updated int,'  # snowflake; for future automatic pk syncing
                 'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
+        self.execute(
+                'create table if not exists deleted('
+                'id text unique collate nocase'
+                ')')
+        # make these temp to avoid interference during maintenance
+        self.execute(
+                'create temp trigger delete_proxy '
+                'after delete on proxies begin '
+                    'insert into deleted values (old.proxid);'
+                'end')
+        self.execute(
+                'create temp trigger delete_mask '
+                'after delete on masks begin '
+                    'insert into deleted values (old.maskid);'
+                'end')
 
 
     def __del__(self):
@@ -225,8 +240,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # IDs don't need to be globally unique but it can't hurt
             exists = self.fetchone(
                     'select exists(select 1 from proxies where proxid = ?)'
-                    'or exists(select 1 from masks where maskid = ?)',
-                    (id,) * 2)[0]
+                    'or exists(select 1 from masks where maskid = ?)'
+                    'or exists(select 1 from deleted where id = ?)',
+                    (id,) * 3)[0]
             if not exists:
                 return id
 
