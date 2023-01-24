@@ -399,6 +399,8 @@ class GestaltCommands:
 
 
     async def cmd_edit(self, message, content):
+        if not content:
+            raise RuntimeError('We need a message here!')
         channel = message.channel
         if message.reference:
             proxied = self.fetchone(

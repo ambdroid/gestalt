@@ -960,6 +960,7 @@ class GestaltTest(unittest.TestCase):
         chan = g._add_channel('edit')
         first = send(alpha, chan, 'e: fisrt')
         self.assertIsNotNone(first.webhook_id)
+        self.assertNotReacted(send(alpha, chan, 'gs;e'))
         second = send(alpha, chan, 'e: secnod')
         self.assertIsNotNone(second.webhook_id)
 
