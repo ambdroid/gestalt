@@ -201,7 +201,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def mark_success(self, message, success):
-        if self.has_perm(message, add_reactions = True):
+        if self.has_perm(message, add_reactions = True,
+                read_message_history = True):
             await message.add_reaction(
                     REACT_CONFIRM if success else REACT_DELETE)
 
@@ -210,7 +211,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         def __init__(self, client, message):
             (self.client, self.message) = (client, message)
         async def __aenter__(self):
-            if self.client.has_perm(self.message, add_reactions = True):
+            if self.client.has_perm(self.message, add_reactions = True,
+                    read_message_history = True):
                 await self.message.add_reaction(REACT_WAIT)
         async def __aexit__(self, *args):
             await self.message.remove_reaction(REACT_WAIT, self.client.user)
@@ -227,7 +229,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 embed = discord.Embed(description = text))
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
-            if self.has_perm(msg, add_reactions = True):
+            if self.has_perm(msg, add_reactions = True,
+                    read_message_history = True):
                 await msg.add_reaction(REACT_DELETE)
             self.execute('insert into history values (?, 0, ?, NULL, NULL)',
                     (msg.id, replyto.author.id))

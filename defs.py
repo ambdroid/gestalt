@@ -22,7 +22,8 @@ PERMS = discord.permissions.Permissions(
         embed_links = True,
         attach_files = True,
         use_external_emojis = True,
-        manage_webhooks = True)
+        manage_webhooks = True,
+        read_message_history = True)
 
 
 # limits for non-Nitro users by boost level
