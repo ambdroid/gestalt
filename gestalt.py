@@ -35,15 +35,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.execute(
                 'create table if not exists history('
                 'msgid integer primary key,'
+                'threadid integer,' # not used yet but soon!
                 'chanid integer,'
                 'authid integer,'
                 'otherid integer,'
+                'proxid text,'
                 'maskid text)')
         # for gs;edit
         # to quickly find the last message sent by a user in a channel
         self.execute(
-                'create index if not exists history_chanid_authid '
-                'on history(chanid, authid)')
+                'create index if not exists history_threadid_chanid_authid '
+                'on history(threadid, chanid, authid)')
         self.execute(
                 'create table if not exists users('
                 'userid integer primary key,'
@@ -232,7 +234,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             if self.has_perm(msg, add_reactions = True,
                     read_message_history = True):
                 await msg.add_reaction(REACT_DELETE)
-            self.execute('insert into history values (?, 0, ?, NULL, NULL)',
+            self.execute(
+                    'insert into history values (?, 0, 0, ?, NULL, NULL, NULL)',
                     (msg.id, replyto.author.id))
 
 
@@ -462,8 +465,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             return await self.send_embed(message,
                     'I need `Manage Webhooks` permission to proxy.')
 
-        self.execute('insert into history values (?, ?, ?, ?, ?)',
-                (msg.id, channel.id, authid, proxy['otherid'], proxy['maskid']))
+        self.execute('insert into history values (?, 0, ?, ?, ?, ?, ?)',
+                (msg.id, channel.id, authid, proxy['otherid'], proxy['proxid'],
+                    proxy['maskid']))
 
         delay = DELETE_DELAY if prefs & Prefs.delay else 0.0
         await message.delete(delay = delay)
