@@ -370,6 +370,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if mask:
             return {'username': mask['nick'], 'avatar_url': mask['avatar'],
                     'content': content}
+        raise RuntimeError('That proxy has not been synced yet.')
 
 
     async def get_webhook(self, message):
@@ -462,8 +463,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 msg = await hook.send(wait = True, files = msgfiles,
                         embed = embed, **present)
         except discord.errors.Forbidden:
-            return await self.send_embed(message,
-                    'I need `Manage Webhooks` permission to proxy.')
+            raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
 
         self.execute('insert into history values (?, 0, ?, ?, ?, ?, ?)',
                 (msg.id, channel.id, authid, proxy['otherid'], proxy['proxid'],
