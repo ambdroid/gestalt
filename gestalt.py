@@ -502,36 +502,24 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         return msg
 
 
-    async def on_message(self, message):
-        if message.type != discord.MessageType.default or message.author.bot:
-            return
+    def init_user(self, user):
+        self.execute('insert into users values (?, ?, ?)',
+                (user.id, str(user), DEFAULT_PREFS))
+        self.mkproxy(user.id, ProxyType.override)
 
+
+    async def on_user_message(self, message, user):
         authid = message.author.id
-        author = self.fetchone(
-                'select * from users where userid = ?',
-                (authid,))
-        if author == None:
-            self.execute('insert into users values (?, ?, ?)',
-                    (authid, str(message.author), DEFAULT_PREFS))
-            self.mkproxy(authid, ProxyType.override)
-            prefs = DEFAULT_PREFS
-        else:
-            if author['username'] != str(message.author):
-                self.execute(
-                        'update users set username = ? where userid = ?',
-                        (str(message.author), authid))
-            prefs = author['prefs']
-
         lower = message.content.lower()
         # command prefix is optional in DMs
         if lower.startswith(COMMAND_PREFIX) or not message.guild:
+            # init user if hasn't been init'd yet
+            # it's impossible for the row to matter before they use a command
+            if not user:
+                self.init_user(message.author)
             # strip() so that e.g. 'gs; help' works (helpful with autocorrect)
-            try:
-                await self.do_command(message,
-                        message.content.removeprefix(COMMAND_PREFIX).strip())
-            except RuntimeError as e:
-                if prefs & Prefs.errors:
-                    await self.send_embed(message, e.args[0])
+            await self.do_command(message,
+                    message.content.removeprefix(COMMAND_PREFIX).strip())
             return
 
         # this is where the magic happens
@@ -549,6 +537,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     proxies)
 
         if match and (match := dict(match))['state'] == ProxyState.active:
+            # if user can use a proxy, they must have used a cmd and be init'd
+            prefs = user['prefs']
             match['matchTags'] = tags
             latch = prefs & Prefs.latch and not match['flags'] & ProxyFlags.auto
             if match['type'] == ProxyType.override:
@@ -562,6 +552,24 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 else:
                     await self.send_embed(message,
                             'I need `Manage Messages` permission to proxy.')
+
+
+    async def on_message(self, message):
+        authid = message.author.id
+        if (message.type == discord.MessageType.default
+                and not message.author.bot):
+            user = self.fetchone('select * from users where userid = ?',
+                    (authid,))
+            try:
+                await self.on_user_message(message, user)
+            except RuntimeError as e:
+                # an uninit'd user shouldn't ever get errors, but just in case
+                if ((user and user['prefs']) or DEFAULT_PREFS) & Prefs.errors:
+                    await self.send_embed(message, e.args[0])
+            # do this after because it's less important than proxying
+            if user and user['username'] != str(message.author):
+                self.execute('update users set username = ? where userid = ?',
+                        (str(message.author), authid))
 
 
     # these are needed for gs;edit to work
