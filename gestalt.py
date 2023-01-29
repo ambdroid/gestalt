@@ -624,12 +624,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             if payload.user_id in (row['authid'], row['otherid']):
                 if self.has_perm(message, manage_messages = True):
                     await message.delete()
+                    self.execute(
+                            'delete from history where msgid = ?',
+                            (payload.message_id,))
                 else:
                     await self.send_embed(message,
                             'I can\'t delete messages here.')
-                self.execute(
-                        'delete from history where msgid = ?',
-                        (payload.message_id,))
             else:
                 if self.has_perm(message, manage_messages = True):
                     await message.remove_reaction(emoji, reactor)
