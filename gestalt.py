@@ -522,6 +522,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     message.content.removeprefix(COMMAND_PREFIX).strip())
             return
 
+        if not user:
+            return # if user isn't init'd, they can't have any proxies
+
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
         proxies = self.fetchall(
@@ -537,7 +540,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     proxies)
 
         if match and (match := dict(match))['state'] == ProxyState.active:
-            # if user can use a proxy, they must have used a cmd and be init'd
             prefs = user['prefs']
             match['matchTags'] = tags
             latch = prefs & Prefs.latch and not match['flags'] & ProxyFlags.auto
