@@ -541,6 +541,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         if match and (match := dict(match))['state'] == ProxyState.active:
             prefs = user['prefs']
+            if lower.startswith('\\') and not tags:
+                if lower.startswith('\\\\') and prefs & Prefs.latch:
+                    self.set_proxy_auto(match, False)
+                return
+
             match['matchTags'] = tags
             latch = prefs & Prefs.latch and not match['flags'] & ProxyFlags.auto
             if match['type'] == ProxyType.override:

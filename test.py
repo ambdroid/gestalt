@@ -923,7 +923,24 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(alpha, chan, 'e: proxy, auto').webhook_id)
         self.assertIsNone(send(alpha, chan, 'x: override').webhook_id)
         self.assertIsNone(send(alpha, chan, 'no proxy, no auto').webhook_id)
+
+        # test \escape and \\unlatch
+        proxid = self.get_proxid(alpha, g.default_role)
+        self.assertIsNotNone(send(alpha, chan, 'e: proxy, no auto').webhook_id)
+        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
+        self.assertIsNone(send(alpha, chan, '\escape').webhook_id)
+        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
+        self.assertIsNone(send(alpha, chan, '\\\\unlatch').webhook_id)
+        self.assertIsNone(send(alpha, chan, 'no proxy, no auto').webhook_id)
         self.assertReacted(send(alpha, chan, 'gs;prefs latch off'))
+
+        self.assertReacted(send(alpha, chan, 'gs;p %s auto on' % proxid))
+        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
+        self.assertIsNone(send(alpha, chan, '\escape').webhook_id)
+        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
+        self.assertIsNone(send(alpha, chan, '\\\\unlatch').webhook_id)
+        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
+        self.assertReacted(send(alpha, chan, 'gs;p %s auto off' % proxid))
 
     # test member joining when the guild has an @everyone collective
     def test_14_member_join(self):
