@@ -22,6 +22,8 @@ import auth
 
 
 class Gestalt(discord.Client, commands.GestaltCommands):
+    session = None
+
     def __init__(self, *, dbfile):
         super().__init__(intents = INTENTS)
 
@@ -179,6 +181,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_ready(self):
+        if self.session:
+            return
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
         print('In %i guild(s).' % len(self.guilds), flush = True)
@@ -205,8 +209,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     async def mark_success(self, message, success):
         if self.has_perm(message, add_reactions = True,
                 read_message_history = True):
-            await message.add_reaction(
+            try:
+                await message.add_reaction(
                     REACT_CONFIRM if success else REACT_DELETE)
+            except discord.errors.NotFound:
+                pass
 
 
     class InProgress:
@@ -217,7 +224,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     read_message_history = True):
                 await self.message.add_reaction(REACT_WAIT)
         async def __aexit__(self, *args):
-            await self.message.remove_reaction(REACT_WAIT, self.client.user)
+            try:
+                await self.message.remove_reaction(REACT_WAIT, self.client.user)
+            except discord.errors.NotFound:
+                pass
 
 
     def in_progress(self, message):
@@ -291,6 +301,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                             ')'
                         ')', (ProxyFlags.auto, proxy['userid'], proxy['proxid'],
                         proxy['guildid'], proxy['guildid'], proxy['guildid']))
+            else:
+                self.execute('update proxies set become = 1 where proxid = ?',
+                        (proxy['proxid'],))
 
 
     def on_member_role_add(self, member, role):
@@ -302,7 +315,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 self.mkproxy(member.id, ProxyType.collective,
                         cmdname = mask['nick'], guildid = member.guild.id,
                         maskid = mask['maskid'])
-            except IntegrityError:
+            except sqlite.IntegrityError:
                 pass
 
 
@@ -512,14 +525,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         authid = message.author.id
         lower = message.content.lower()
         # command prefix is optional in DMs
-        if lower.startswith(COMMAND_PREFIX) or not message.guild:
+        if (prefix := lower.startswith(COMMAND_PREFIX)) or not message.guild:
             # init user if hasn't been init'd yet
             # it's impossible for the row to matter before they use a command
             if not user:
                 self.init_user(message.author)
             # strip() so that e.g. 'gs; help' works (helpful with autocorrect)
             await self.do_command(message,
-                    message.content.removeprefix(COMMAND_PREFIX).strip())
+                    message.content[
+                        len(COMMAND_PREFIX) if prefix else 0:].strip())
             return
 
         if not user:
@@ -562,6 +576,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_message(self, message):
+        if message.channel.type == discord.ChannelType.voice:
+            return
         authid = message.author.id
         if (message.type == discord.MessageType.default
                 and not message.author.bot):

@@ -28,8 +28,8 @@ PERMS = discord.permissions.Permissions(
 
 # limits for non-Nitro users by boost level
 MAX_FILE_SIZE = [
-        8*1024*1024,
-        8*1024*1024,
+        25*1024*1024,
+        25*1024*1024,
         50*1024*1024,
         100*1024*1024]
 

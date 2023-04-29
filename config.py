@@ -167,6 +167,7 @@ HELPMSGS = {
         '**Utilities**:\n'
         '`{p}edit (message)`/`{p}e (message)`: edit your last message or a '
         'replied message\n'
+        '`{p}invite`: get Gestalt\'s invite link\n'
         'Reactions:\n'
         ':x: : delete a message you sent. In the case of Swaps, either the '
         'swapper or swappee may delete the message.\n'

@@ -474,7 +474,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(self.get_proxid(alpha, alpha))
 
     def test_02_help(self):
-        send(alpha, g['main'], 'gs;help')
+        send(alpha, g['main'], 'GS;help')
         msg = g['main'][-1]
         self.assertEqual(len(msg.embeds), 1)
         self.assertReacted(msg, gestalt.REACT_DELETE)
