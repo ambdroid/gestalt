@@ -836,8 +836,8 @@ class GestaltCommands:
         elif arg == 'explain':
             if self.has_perm(message, send_messages = True):
                 reply = await message.channel.send(EXPLAIN)
-                self.execute('insert into history values (?, 0, 0, ?, NULL,
-                        NULL, NULL)',
+                self.execute('insert into history values (?, 0, 0, ?, NULL, '
+                        'NULL, NULL)',
                         (reply.id, authid))
                 return
 
