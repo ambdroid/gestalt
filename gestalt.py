@@ -22,8 +22,6 @@ import auth
 
 
 class Gestalt(discord.Client, commands.GestaltCommands):
-    session = None
-
     def __init__(self, *, dbfile):
         super().__init__(intents = INTENTS)
 
@@ -174,31 +172,30 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def has_perm(self, message, **kwargs):
         if not message.guild:
             return True
-        # ClientUser.permissions_in() is broken for some reason
         member = message.guild.get_member(self.user.id)
         return discord.Permissions(**kwargs).is_subset(
-                member.permissions_in(message.channel))
+                message.channel.permissions_for(member))
 
 
-    async def on_ready(self):
-        if self.session:
-            return
+    async def setup_hook(self):
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
-        print('In %i guild(s).' % len(self.guilds), flush = True)
         self.session = aiohttp.ClientSession()
-        self.adapter = discord.AsyncWebhookAdapter(self.session)
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         # this could go in __init__ but that would break testing
         self.sync_loop.start()
+
+
+    async def on_ready(self):
+        print('In %i guild(s).' % len(self.guilds), flush = True)
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + 'help'))
 
 
     async def close(self):
-        await super().close()
         await self.session.close()
+        await super().close()
 
 
     @tasks.loop(seconds = SYNC_TIMEOUT)
@@ -369,7 +366,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         member = message.guild.get_member(proxy['otherid'])
         if member:
             return {'username': member.display_name,
-                    'avatar_url': member.avatar_url_as(format = 'webp'),
+                    'avatar_url': member.display_avatar.replace(
+                        format = 'webp'),
                     'content': content}
 
 
@@ -396,7 +394,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     (channel.id, hook.id, hook.token))
         else:
             hook = discord.Webhook.partial(row[1], row[2],
-                    adapter = self.adapter)
+                    session = self.session)
         return hook
 
 
@@ -439,7 +437,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     '*[(click to see attachment)](%s)*' % reference.jump_url))
                 embed.set_author(
                         name = reference.author.display_name + REPLY_SYMBOL,
-                        icon_url = reference.author.avatar_url)
+                        icon_url = reference.author.display_avatar)
 
         args = (message, proxy, prefs, content)
         proxtype = proxy['type']
@@ -576,11 +574,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_message(self, message):
-        if message.channel.type == discord.ChannelType.voice:
+        # no threads or other channel types yet
+        if message.channel.type not in (discord.ChannelType.text,
+                discord.ChannelType.private):
             return
         authid = message.author.id
-        if (message.type == discord.MessageType.default
-                and not message.author.bot):
+        if (message.type in (discord.MessageType.default,
+            discord.MessageType.reply)
+            and not message.author.bot):
             user = self.fetchone('select * from users where userid = ?',
                     (authid,))
             try:

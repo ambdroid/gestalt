@@ -128,12 +128,12 @@ class GestaltCommands:
         memberbot = guild.get_member(self.user.id)
         lines = ['**%s**:' % guild.name]
         for chan in guild.text_channels:
-            if not memberauth.permissions_in(chan).view_channel:
+            if not chan.permissions_for(memberauth).view_channel:
                 continue
 
             errors = []
             for p in PERMS: # p = ('name', bool)
-                if p[1] and not p in list(memberbot.permissions_in(chan)):
+                if p[1] and not p in list(chan.permissions_for(memberbot)):
                     errors += [p[0]]
 
             # lack of access implies lack of other perms, so leave them out
@@ -423,7 +423,7 @@ class GestaltCommands:
                 (channel.id,))
         if not hook or proxied.webhook_id != hook[1]:
             return await self.mark_success(message, False)
-        hook = discord.Webhook.partial(hook[1], hook[2], adapter = self.adapter)
+        hook = discord.Webhook.partial(hook[1], hook[2], session = self.session)
 
         try:
             await hook.edit_message(proxied.id, content = content)
@@ -447,8 +447,8 @@ class GestaltCommands:
             embed.set_author(
                     name = '[Edited] #%s: %s' % (channel.name,
                         proxied.author.display_name),
-                    icon_url = proxied.author.avatar_url)
-            embed.set_thumbnail(url = proxied.author.avatar_url)
+                    icon_url = proxied.author.display_avatar)
+            embed.set_thumbnail(url = proxied.author.display_avatar)
             embed.set_footer(text =
                     'Sender: %s (%i) | '
                     'Message ID: %i | '
@@ -581,7 +581,8 @@ class GestaltCommands:
         self.execute(
                 'insert or replace into masks values (?, ?, NULL, ?, ?, ?, ?)',
                 ('pk-' + pkuuid, message.guild.id, ref.author.display_name,
-                    str(ref.author.avatar_url), ProxyType.pkswap, ref.id))
+                    str(ref.author.display_avatar),
+                    ProxyType.pkswap, ref.id))
 
         await self.mark_success(message, True)
 
