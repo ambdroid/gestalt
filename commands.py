@@ -127,7 +127,9 @@ class GestaltCommands:
         memberauth = guild.get_member(message.author.id)
         memberbot = guild.get_member(self.user.id)
         lines = ['**%s**:' % guild.name]
-        for chan in guild.text_channels:
+        for chan in guild.channels:
+            if chan.type not in ALLOWED_CHANNELS:
+                continue
             if not chan.permissions_for(memberauth).view_channel:
                 continue
 
@@ -140,7 +142,7 @@ class GestaltCommands:
             if 'read_messages' in errors:
                 errors = ['read_messages']
             errors = REACT_CONFIRM if errors == [] else ', '.join(errors)
-            lines.append('`#%s`: %s' % (chan.name, errors))
+            lines.append('%s: %s' % (chan.mention, errors))
 
         await self.send_embed(message, '\n'.join(lines))
 

@@ -575,8 +575,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def on_message(self, message):
         # no threads or other channel types yet
-        if message.channel.type not in (discord.ChannelType.text,
-                discord.ChannelType.private):
+        if message.channel.type not in ALLOWED_CHANNELS:
             return
         authid = message.author.id
         if (message.type in (discord.MessageType.default,

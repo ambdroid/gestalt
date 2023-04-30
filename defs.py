@@ -35,6 +35,10 @@ MAX_FILE_SIZE = [
         100*1024*1024]
 
 
+ALLOWED_CHANNELS = (discord.ChannelType.text, discord.ChannelType.private,
+        discord.ChannelType.voice)
+
+
 @enum.unique
 class Prefs(enum.IntFlag):
 #   auto        = 1 << 0
