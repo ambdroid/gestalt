@@ -32,8 +32,10 @@ class User(Object):
         self.dm_channel = None
         self.discriminator = '0001'
         super().__init__(**kwargs)
-        self.mention = '<@!%d>' % self.id
         User.users[self.id] = self
+    @property
+    def mention(self):
+        return '<@!%d>' % self.id
     def _delete(self):
         self._deleted = True
         del User.users[self.id]
@@ -71,6 +73,10 @@ class Member:
         role.remove(self)
         await instance.on_member_update(before, self)
     @property
+    def display_avatar(self):
+        # TODO: guild avatars
+        return Object(replace = lambda format : 'http://avatar.png')
+    @property
     def id(self): return self.user.id
     @property
     def bot(self): return self.user.bot
@@ -78,36 +84,43 @@ class Member:
     def name(self): return self.user.name
     @property
     def display_name(self): return self.user.name
-    def avatar_url_as(self, **kwargs):
-        return 'http://avatar.png' # who gives a damn
-    def permissions_in(self, channel):
-        # TODO need channel-level permissions
-        return self.guild_permissions
-
 
 class Message(Object):
     def __init__(self, embed = None, **kwargs):
         self._deleted = False
-        self.mentions = []
-        self.raw_mentions = []
-        self.role_mentions = []
         self.webhook_id = None
         self.attachments = []
         self.reactions = []
         self.reference = None
         self.embeds = [embed] if embed else []
         self.guild = None
-        self.type = discord.MessageType.default
         super().__init__(**kwargs)
-        self.clean_content = self.content
-        self.jump_url = 'http://%i' % self.id
-
-        if self.content != None:
-            # mentions can also be in the embed but that's irrelevant here
-            for mention in re.findall('(?<=\<\@\!)[0-9]+(?=\>)', self.content):
-                self.raw_mentions.append(int(mention))
-            for mention in re.findall('(?<=\<\@\&)[0-9]+(?=\>)', self.content):
-                self.role_mentions.append(Role.roles[int(mention)])
+    @property
+    def clean_content(self):
+        return self.content # only used in reply embeds
+    @property
+    def jump_url(self):
+        return 'http://%i' % self.id
+    @property
+    def mentions(self):
+        # mentions can also be in the embed but that's irrelevant here
+        if self.content:
+            mentions = map(int, re.findall('(?<=\<\@\!)[0-9]+(?=\>)',
+                self.content))
+            if self.guild:
+                mentions = map(self.guild.get_member, mentions)
+            return list(mentions)
+        return []
+    @property
+    def role_mentions(self):
+        if self.content:
+            return [Role.roles[int(mention)] for mention
+                    in re.findall('(?<=\<\@\&)[0-9]+(?=\>)', self.content)]
+        return []
+    @property
+    def type(self):
+        return (discord.MessageType.reply if self.reference
+                else discord.MessageType.default)
     async def delete(self, delay = None):
         self.channel._messages.remove(self)
         self._deleted = True
@@ -156,13 +169,16 @@ class Webhook(Object):
         (self._channel, self.name) = (channel, name)
         self.token = 't0k3n' + str(self.id)
         Webhook.hooks[self.id] = self
-    def partial(id, token, adapter):
+    def partial(id, token, session):
         return Webhook.hooks[id]
     async def edit_message(self, message_id, content):
         msg = await self._channel.fetch_message(message_id)
         if self._deleted or msg.webhook_id != self.id:
             raise NotFound()
-        msg.content = content
+        newmsg = Message(**msg.__dict__)
+        newmsg.content = content
+        msg.channel._messages[msg.channel._messages.index(msg)] = newmsg
+        return newmsg
     async def send(self, username, avatar_url, **kwargs):
         if self._deleted:
             raise NotFound()
@@ -171,7 +187,7 @@ class Webhook(Object):
         name = username if username else self.name
         msg.author = Object(id = self.id, bot = True,
                 name = name, display_name = name,
-                avatar_url = avatar_url)
+                display_avatar = avatar_url)
         await self._channel._add(msg)
         return msg
 
@@ -181,22 +197,20 @@ class Channel(Object):
         self._messages = []
         self.name = ''
         self.guild = None
-        self.members = []
         self.type = discord.ChannelType.text
         super().__init__(**kwargs)
-        if self.guild:
-            self.members = self.guild.members
         Channel.channels[self.id] = self
     def __getitem__(self, key):
         return self._messages[key]
+    @property
+    def members(self):
+        return self.guild.members
     async def _add(self, msg):
         msg.channel = self
         if self.guild:
             msg.guild = self.guild
             if not msg.author.id in Webhook.hooks:
                 msg.author = self.guild.get_member(msg.author.id)
-            for userid in msg.raw_mentions:
-                msg.mentions.append(msg.guild.get_member(userid))
         self._messages.append(msg)
         await instance.on_message(msg)
     async def create_webhook(self, name):
@@ -205,6 +219,9 @@ class Channel(Object):
         return discord.utils.get(self._messages, id = msgid)
     def get_partial_message(self, msgid):
         return PartialMessage(channel = self, id = msgid)
+    def permissions_for(self, user):
+        # TODO need channel-level permissions
+        return self.guild.get_member(user.id).guild_permissions
     async def send(self, content = None, embed = None, file = None):
         msg = Message(author = bot, content = content, embed = embed)
         await self._add(msg)
@@ -217,8 +234,10 @@ class Role(Object):
         self.guild = None
         self.managed = False
         super().__init__(**kwargs)
-        self.mention = '<@&%i>' % self.id
         Role.roles[self.id] = self
+    @property
+    def mention(self):
+        return '<@&%i>' % self.id
     async def delete(self):
         await self.guild._del_role(self)
 
@@ -241,10 +260,13 @@ class Guild(Object):
         self.name = ''
         self.premium_tier = 0
         super().__init__(**kwargs)
-        self._roles[self.id] = self.default_role = RoleEveryone(self)
+        self._roles[self.id] = RoleEveryone(self)
         Guild.guilds[self.id] = self
     def __getitem__(self, key):
         return discord.utils.get(self._channels.values(), name = key)
+    @property
+    def default_role(self):
+        return self._roles[self.id]
     @property
     def members(self):
         return self._members.values()
@@ -288,7 +310,6 @@ class TestBot(gestalt.Gestalt):
     def __init__(self):
         super().__init__(dbfile = ':memory:')
         self.session = ClientSession()
-        self.adapter = None
     def __del__(self):
         pass # suppress 'closing database' message
     @property
@@ -974,6 +995,11 @@ class GestaltTest(unittest.TestCase):
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
 
     def test_17_edit(self):
+        def assert_edited_content(message, content):
+            self.assertEqual(
+                    run(message.channel.fetch_message(message.id)).content,
+                    content)
+
         chan = g._add_channel('edit')
         first = send(alpha, chan, 'e: fisrt')
         self.assertIsNotNone(first.webhook_id)
@@ -983,15 +1009,15 @@ class GestaltTest(unittest.TestCase):
 
         msg = send(beta, chan, 'gs;edit second')
         self.assertReacted(msg, gestalt.REACT_DELETE)
-        self.assertEqual(second.content, 'secnod')
+        assert_edited_content(second, 'secnod')
         msg = send(beta, chan, 'gs;edit first', Object(message_id = first.id))
         self.assertReacted(msg, gestalt.REACT_DELETE)
-        self.assertEqual(first.content, 'fisrt')
+        assert_edited_content(first, 'fisrt')
 
         send(alpha, chan, 'gs;edit second')
-        self.assertEqual(second.content, 'second')
+        assert_edited_content(second, 'second')
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
-        self.assertEqual(first.content, 'first')
+        assert_edited_content(first, 'first')
 
         self.assertReacted(send(beta, chan,
             'gs;p %s tags e: text' % self.get_proxid(beta, g.default_role)))
@@ -1000,7 +1026,7 @@ class GestaltTest(unittest.TestCase):
         run(send(alpha, chan, 'e: delete me too')._bulk_delete())
         self.assertIsNotNone(send(beta, chan, 'e: dont edit me').webhook_id)
         send(alpha, chan, 'gs;edit edit me');
-        self.assertEqual(first.content, 'edit me');
+        assert_edited_content(first, 'edit me');
 
         # make sure that gs;edit on a non-webhook message doesn't cause problems
         # delete "or proxied.webhook_id != hook[1]" to see this be a problem
@@ -1011,11 +1037,11 @@ class GestaltTest(unittest.TestCase):
         second = chan[-1]
         self.assertEqual(second.author.id, bot.id)
         third = send(alpha, chan, 'gs;edit lol', Object(message_id = second.id))
-        self.assertEqual(third.content, 'gs;edit lol')
+        assert_edited_content(third, 'gs;edit lol')
         self.assertReacted(third, gestalt.REACT_DELETE)
         self.assertIsNotNone(send(alpha, chan, 'e: another').webhook_id)
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
-        self.assertEqual(first.content, 'first')
+        assert_edited_content(first, 'first')
 
     def test_18_become(self):
         chan = g['main']
@@ -1148,7 +1174,7 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, c, 'gs;c "guild" name guild!'))
         self.assertEqual(send(alpha, c, '[proxied').author.name, 'guild!')
         self.assertReacted(send(alpha, c, 'gs;c guild avatar http://newavatar'))
-        self.assertEqual(send(alpha, c, '[proxied').author.avatar_url,
+        self.assertEqual(send(alpha, c, '[proxied').author.display_avatar,
                 'http://newavatar')
         self.assertNotReacted(send(beta, c, 'gs;c guild name guild'))
         instance.get_user_proxy(send(alpha, c, 'command'), 'guild')

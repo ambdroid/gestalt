@@ -10,6 +10,7 @@ from config import *
 INTENTS = discord.Intents(
         guilds = True,
         members = True,
+        message_content = True,
         messages = True,
         reactions = True)
 
