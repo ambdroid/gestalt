@@ -158,6 +158,8 @@ class PartialMessage:
         self._truemsg = discord.utils.get(channel._messages, id = id)
     async def delete(self):
         await self._truemsg.delete()
+    async def fetch(self):
+        return self._truemsg
     async def remove_reaction(self, emoji, member):
         await self._truemsg.remove_reaction(emoji, member)
 
@@ -709,6 +711,24 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(msg._deleted)
         self.assertReacted(send(alpha, chan,
             'gs;swap close %s' % self.get_proxid(alpha, beta)))
+
+        # test DMs
+        msg1 = beta.dm_channel[-1]
+        msg2 = send(beta, beta.dm_channel, 'test')
+        run(msg1._react(gestalt.REACT_DELETE, beta))
+        self.assertTrue(msg1._deleted)
+        run(msg2._react(gestalt.REACT_DELETE, beta))
+        self.assertFalse(msg2._deleted)
+
+        # and finally normal messages
+        msg = send(beta, chan, "we're just normal messages")
+        buf = send(beta, beta.dm_channel, "we're just innocent messages")
+        self.assertIsNone(msg.webhook_id)
+        run(msg._react(gestalt.REACT_QUERY, beta))
+        run(msg._react(gestalt.REACT_DELETE, beta))
+        self.assertFalse(msg._deleted)
+        self.assertEqual(len(msg.reactions), 2)
+        self.assertEqual(beta.dm_channel[-1], buf)
 
     def test_07_webhook_shenanigans(self):
         # test what happens when a webhook is deleted
