@@ -611,22 +611,31 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if payload.user_id == self.user.id:
             return
 
-        # first, make sure this is one of ours
-        row = self.fetchone(
-            'select authid, otherid,'
-            '(select username from users where userid = authid) username '
-            'from history where msgid = ?',
-            (payload.message_id,))
-        if row == None:
+        channel = (self.get_channel(payload.channel_id)
+                or await self.fetch_channel(payload.channel_id))
+        message = channel.get_partial_message(payload.message_id)
+        emoji = payload.emoji.name
+        if channel.guild:
+            # make sure this is one of ours
+            row = self.fetchone(
+                'select authid, otherid,'
+                '(select username from users where userid = authid) username '
+                'from history where msgid = ?',
+                (payload.message_id,))
+            if row == None:
+                return
+        else:
+            if emoji == REACT_DELETE:
+                # just to be sure
+                if (await message.fetch()).author == self.user:
+                    await message.delete()
             return
+
 
         reactor = self.get_user(payload.user_id)
         if reactor.bot:
             return
-        message = (self.get_channel(payload.channel_id)
-                .get_partial_message(payload.message_id))
 
-        emoji = payload.emoji.name
         if emoji == REACT_QUERY:
             try:
                 author = str(self.get_user(row['authid'])
