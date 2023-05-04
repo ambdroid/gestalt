@@ -312,6 +312,8 @@ class TestBot(gestalt.Gestalt):
     def __init__(self):
         super().__init__(dbfile = ':memory:')
         self.session = ClientSession()
+        self.pk_ratelimit = discord.gateway.GatewayRatelimiter(count = 1000,
+                per = 1.0)
     def __del__(self):
         pass # suppress 'closing database' message
     @property

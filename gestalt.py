@@ -1,13 +1,11 @@
 #!/usr/bin/python3
 
-from datetime import datetime, timedelta
 from functools import reduce
 import sqlite3 as sqlite
 import asyncio
 import random
 import signal
 import string
-import enum
 import math
 import sys
 import re
@@ -181,6 +179,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         print('Logged in as %s, id %d!' % (self.user, self.user.id),
                 flush = True)
         self.session = aiohttp.ClientSession()
+        # if it ain't broke don't fix it
+        # (except it does seem slightly broken? it needs the -1 in testing)
+        # (but this works and pkapi is *usually* too slow for it to matter)
+        self.pk_ratelimit = discord.gateway.GatewayRatelimiter(
+                count = PK_RATELIMIT - 1, per = PK_WINDOW)
+        self.pk_ratelimit.shard_id = 'PluralKit'
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         # this could go in __init__ but that would break testing
