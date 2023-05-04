@@ -488,6 +488,7 @@ class GestaltCommands:
 
 
     async def pk_api_get(self, url):
+        await self.pk_ratelimit.block()
         try:
             async with self.session.get(PK_ENDPOINT + url,
                     timeout = aiohttp.ClientTimeout(total = 5.0)) as r:

@@ -1,6 +1,9 @@
 DEFAULT_DB = 'gestalt.db'
 
 PK_ENDPOINT = 'https://api.pluralkit.me/v2'
+# see https://pluralkit.me/api/#rate-limiting; 2/s but may change
+PK_RATELIMIT = 2
+PK_WINDOW = 1.0
 
 DELETE_DELAY = 0.4
 
