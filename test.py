@@ -1047,6 +1047,7 @@ class GestaltTest(unittest.TestCase):
         run(send(alpha, chan, 'e: delete me').delete())
         run(send(alpha, chan, 'e: delete me too')._bulk_delete())
         self.assertIsNotNone(send(beta, chan, 'e: dont edit me').webhook_id)
+        send(alpha, chan, 'gs;help this message should be ignored')
         send(alpha, chan, 'gs;edit edit me');
         assert_edited_content(first, 'edit me');
 

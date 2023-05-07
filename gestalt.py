@@ -245,9 +245,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             if self.has_perm(msg, add_reactions = True,
                     read_message_history = True):
                 await msg.add_reaction(REACT_DELETE)
-            self.execute(
-                    'insert into history values (?, 0, 0, ?, NULL, NULL, NULL)',
-                    (msg.id, replyto.author.id))
+            self.mkhistory(msg, replyto.author, include_channel = False)
 
 
     def gen_id(self):
@@ -274,6 +272,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     prefix, postfix, proxtype, otherid, maskid,
                     flags, become, state))
         return proxid
+
+
+    def mkhistory(self, message, author,
+            proxy = {'otherid': None, 'proxid': None, 'maskid': None},
+            include_channel = True):
+        self.execute('insert into history values (?, 0, ?, ?, ?, ?, ?)',
+                (message.id, message.channel.id if include_channel else None,
+                    author.id, proxy['otherid'], proxy['proxid'],
+                    proxy['maskid']))
 
 
     def set_proxy_auto(self, proxy, auto):
@@ -480,9 +487,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         except discord.errors.Forbidden:
             raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
 
-        self.execute('insert into history values (?, 0, ?, ?, ?, ?, ?)',
-                (msg.id, channel.id, authid, proxy['otherid'], proxy['proxid'],
-                    proxy['maskid']))
+        self.mkhistory(msg, message.author, proxy)
 
         delay = DELETE_DELAY if prefs & Prefs.delay else 0.0
         await message.delete(delay = delay)
