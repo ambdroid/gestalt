@@ -19,12 +19,14 @@ PERMS = discord.permissions.Permissions(
         add_reactions = True,
         read_messages = True,
         send_messages = True,
+        send_messages_in_threads = True,
         manage_messages = True,
         embed_links = True,
         attach_files = True,
         use_external_emojis = True,
         manage_webhooks = True,
-        read_message_history = True)
+        read_message_history = True,
+        )
 
 
 # limits for non-Nitro users by boost level
@@ -35,8 +37,13 @@ MAX_FILE_SIZE = [
         100*1024*1024]
 
 
-ALLOWED_CHANNELS = (discord.ChannelType.text, discord.ChannelType.private,
-        discord.ChannelType.voice)
+ALLOWED_CHANNELS = (
+        discord.ChannelType.text,
+        discord.ChannelType.private,
+        discord.ChannelType.voice,
+        discord.ChannelType.public_thread,
+        discord.ChannelType.private_thread,
+        )
 
 
 @enum.unique

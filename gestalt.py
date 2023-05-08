@@ -33,7 +33,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.execute(
                 'create table if not exists history('
                 'msgid integer primary key,'
-                'threadid integer,' # not used yet but soon!
+                'threadid integer,'
                 'chanid integer,'
                 'authid integer,'
                 'otherid integer,'
@@ -52,7 +52,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.execute(
                 'create table if not exists webhooks('
                 'chanid integer primary key,'
-                'hookid integer,'
+                'hookid integer unique,'
                 'token text)')
         self.execute(
                 'create table if not exists proxies('
@@ -245,7 +245,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             if self.has_perm(msg, add_reactions = True,
                     read_message_history = True):
                 await msg.add_reaction(REACT_DELETE)
-            self.mkhistory(msg, replyto.author, include_channel = False)
+            self.mkhistory(msg, replyto.author)
 
 
     def gen_id(self):
@@ -274,13 +274,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         return proxid
 
 
-    def mkhistory(self, message, author,
-            proxy = {'otherid': None, 'proxid': None, 'maskid': None},
-            include_channel = True):
-        self.execute('insert into history values (?, 0, ?, ?, ?, ?, ?)',
-                (message.id, message.channel.id if include_channel else None,
-                    author.id, proxy['otherid'], proxy['proxid'],
-                    proxy['maskid']))
+    def mkhistory(self, message, author, channel = None,
+            proxy = {'otherid': None, 'proxid': None, 'maskid': None}):
+        if channel:
+            (threadid, chanid) = ((channel.id, channel.parent.id)
+                    if type(channel) == discord.Thread
+                    else (0, channel.id))
+        else:
+            (threadid, chanid) = (0, 0)
+        self.execute('insert into history values (?, ?, ?, ?, ?, ?, ?)',
+                (message.id, threadid, chanid, author.id, proxy['otherid'],
+                    proxy['proxid'], proxy['maskid']))
 
 
     def set_proxy_auto(self, proxy, auto):
@@ -397,6 +401,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def get_webhook(self, message):
         channel = message.channel
+        if type(channel) == discord.Thread:
+            channel = channel.parent
         row = self.fetchone('select * from webhooks where chanid = ?',
                 (channel.id,))
         if row == None:
@@ -407,6 +413,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             hook = discord.Webhook.partial(row[1], row[2],
                     session = self.session)
         return hook
+
+
+    async def confirm_webhook_deletion(self, hook):
+        # this is rare so we can afford an extra call to be really sure
+        try:
+            await hook.fetch()
+        except discord.errors.NotFound:
+            self.execute('delete from webhooks where hookid = ?', (hook.id,))
+            return True
+        else:
+            print('False NotFound for webhook %i' % hook.id, flush = True)
 
 
     async def do_proxy(self, message, proxy, prefs):
@@ -474,20 +491,22 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         try:
             hook = await self.get_webhook(message)
+            thread = (channel if type(channel) == discord.Thread
+                    else discord.utils.MISSING)
             try:
                 msg = await hook.send(wait = True, files = msgfiles,
-                        embed = embed, **present)
+                        embed = embed, thread = thread, **present)
             except discord.errors.NotFound:
-                # webhook is deleted
-                self.execute('delete from webhooks where chanid = ?',
-                        (channel.id,))
-                hook = await self.get_webhook(message)
-                msg = await hook.send(wait = True, files = msgfiles,
-                        embed = embed, **present)
+                if await self.confirm_webhook_deletion(hook):
+                    # webhook is deleted
+                    hook = await self.get_webhook(message)
+                    msg = await hook.send(wait = True, files = msgfiles,
+                            embed = embed, thread = thread, **present)
         except discord.errors.Forbidden:
             raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
 
-        self.mkhistory(msg, message.author, proxy)
+        self.mkhistory(msg, message.author, channel = message.channel,
+                proxy = proxy)
 
         delay = DELETE_DELAY if prefs & Prefs.delay else 0.0
         await message.delete(delay = delay)
@@ -514,9 +533,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             try:
                 await self.get_channel(logchan).send(
                         # jump_url doesn't work in messages from webhook.send()
+                        # (and .channel can be PartialMessageable)
+                        # (that was annoying)
                         channel.get_partial_message(msg.id).jump_url,
                         embed = embed)
-            except:
+            except discord.errors.Forbidden:
                 pass
 
         return msg
@@ -583,7 +604,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_message(self, message):
-        # no threads or other channel types yet
         if message.channel.type not in ALLOWED_CHANNELS:
             return
         authid = message.author.id
