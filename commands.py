@@ -404,6 +404,9 @@ class GestaltCommands:
         if not content:
             raise RuntimeError('We need a message here!')
         channel = message.channel
+        (thread, channel) = ((channel, channel.parent)
+                if type(channel) == discord.Thread
+                else (discord.utils.MISSING, channel))
         if message.reference:
             proxied = self.fetchone(
                     'select msgid, authid from history where msgid = ?',
@@ -411,13 +414,14 @@ class GestaltCommands:
         else:
             proxied = self.fetchone(
                     'select msgid, authid from history '
-                    'where (chanid, authid) = (?, ?)'
+                    'where (chanid, threadid, authid) = (?, ?, ?)'
                     'order by msgid desc limit 1',
-                    (channel.id, message.author.id))
+                    (channel.id, thread.id if thread else 0,
+                        message.author.id))
         if not proxied or proxied['authid'] != message.author.id:
             return await self.mark_success(message, False)
         try:
-            proxied = await channel.fetch_message(proxied['msgid'])
+            proxied = await (thread or channel).fetch_message(proxied['msgid'])
         except discord.errors.NotFound:
             return await self.mark_success(message, False)
 
@@ -428,9 +432,10 @@ class GestaltCommands:
         hook = discord.Webhook.partial(hook[1], hook[2], session = self.session)
 
         try:
-            await hook.edit_message(proxied.id, content = content)
+            await hook.edit_message(proxied.id, content = content,
+                thread = thread)
         except discord.errors.NotFound:
-            self.execute('delete from webhooks where chanid = ?', (channel.id,))
+            await self.confirm_webhook_deletion(hook)
             return await self.mark_success(message, False)
 
         if self.has_perm(message, manage_messages = True):
@@ -447,7 +452,7 @@ class GestaltCommands:
                     value = proxied.content,
                     inline = False)
             embed.set_author(
-                    name = '[Edited] #%s: %s' % (channel.name,
+                    name = '[Edited] #%s: %s' % ((thread or channel).name,
                         proxied.author.display_name),
                     icon_url = proxied.author.display_avatar)
             embed.set_thumbnail(url = proxied.author.display_avatar)
@@ -840,6 +845,6 @@ class GestaltCommands:
         elif arg == 'explain':
             if self.has_perm(message, send_messages = True):
                 reply = await message.channel.send(EXPLAIN)
-                self.mkhistory(reply, message.author, include_channel = False)
+                self.mkhistory(reply, message.author)
                 return
 

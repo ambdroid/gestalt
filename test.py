@@ -96,11 +96,18 @@ class Message(Object):
         self.guild = None
         super().__init__(**kwargs)
     @property
+    def channel_mentions(self):
+        if self.content:
+            return [Channel.channels[int(mention)]
+                    for mention in re.findall('(?<=\<#)[0-9]+(?=\>)',
+                        self.content)]
+        return []
+    @property
     def clean_content(self):
         return self.content # only used in reply embeds
     @property
     def jump_url(self):
-        return 'http://%i' % self.id
+        return 'http://%i/%i/%i' % (self.guild.id, self.channel.id, self.id)
     @property
     def mentions(self):
         # mentions can also be in the embed but that's irrelevant here
@@ -156,6 +163,9 @@ class PartialMessage:
     def __init__(self, *, channel, id):
         (self.channel, self.id, self.guild) = (channel, id, channel.guild)
         self._truemsg = discord.utils.get(channel._messages, id = id)
+    @property
+    def jump_url(self):
+        return self._truemsg.jump_url
     async def delete(self):
         await self._truemsg.delete()
     async def fetch(self):
@@ -173,15 +183,20 @@ class Webhook(Object):
         Webhook.hooks[self.id] = self
     def partial(id, token, session):
         return Webhook.hooks[id]
-    async def edit_message(self, message_id, content):
-        msg = await self._channel.fetch_message(message_id)
-        if self._deleted or msg.webhook_id != self.id:
+    async def edit_message(self, message_id, content, thread = None):
+        msg = await (thread or self._channel).fetch_message(message_id)
+        if self._deleted or msg.webhook_id != self.id or (thread and
+                thread.parent != self._channel):
             raise NotFound()
         newmsg = Message(**msg.__dict__)
         newmsg.content = content
         msg.channel._messages[msg.channel._messages.index(msg)] = newmsg
         return newmsg
-    async def send(self, username, avatar_url, **kwargs):
+    async def fetch(self):
+        if self._deleted:
+            raise NotFound()
+        return self
+    async def send(self, username, avatar_url, thread = None, **kwargs):
         if self._deleted:
             raise NotFound()
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
@@ -190,7 +205,9 @@ class Webhook(Object):
         msg.author = Object(id = self.id, bot = True,
                 name = name, display_name = name,
                 display_avatar = avatar_url)
-        await self._channel._add(msg)
+        if thread and thread.parent != self._channel:
+            raise NotFound()
+        await (thread or self._channel)._add(msg)
         return msg
 
 class Channel(Object):
@@ -199,7 +216,6 @@ class Channel(Object):
         self._messages = []
         self.name = ''
         self.guild = None
-        self.type = discord.ChannelType.text
         super().__init__(**kwargs)
         Channel.channels[self.id] = self
     def __getitem__(self, key):
@@ -207,6 +223,12 @@ class Channel(Object):
     @property
     def members(self):
         return self.guild.members
+    @property
+    def mention(self):
+        return '<#%i>' % self.id
+    @property
+    def type(self):
+        return discord.ChannelType.text
     async def _add(self, msg):
         msg.channel = self
         if self.guild:
@@ -218,7 +240,10 @@ class Channel(Object):
     async def create_webhook(self, name):
         return Webhook(self, name)
     async def fetch_message(self, msgid):
-        return discord.utils.get(self._messages, id = msgid)
+        msg = discord.utils.get(self._messages, id = msgid)
+        if not msg:
+            raise NotFound()
+        return msg
     def get_partial_message(self, msgid):
         return PartialMessage(channel = self, id = msgid)
     def permissions_for(self, user):
@@ -228,6 +253,19 @@ class Channel(Object):
         msg = Message(author = bot, content = content, embed = embed)
         await self._add(msg)
         return msg
+
+class Thread(Channel):
+    threads = {}
+    def __init__(self, channel, **kwargs):
+        self.parent = channel
+        super().__init__(**kwargs)
+        self.guild = self.parent.guild
+        Thread.threads[self.id] = self
+    @property
+    def type(self):
+        return discord.ChannelType.public_thread
+    async def create_webhook(self, name):
+        raise NotImplementedError()
 
 class Role(Object):
     roles = {}
@@ -327,7 +365,7 @@ class TestBot(gestalt.Gestalt):
         except KeyError:
             raise NotFound()
     def get_channel(self, id):
-        return Channel.channels[id]
+        return Channel.channels.get(id, Thread.threads.get(id))
 
 # incoming messages have Attachments, outgoing messages have Files
 # but we'll pretend that they're the same for simplicity
@@ -399,6 +437,11 @@ class GestaltTest(unittest.TestCase):
 
     def assertNotReacted(self, msg):
         self.assertEqual(len(msg.reactions), 0)
+
+    def assertEditedContent(self, message, content):
+        self.assertEqual(
+                run(message.channel.fetch_message(message.id)).content,
+                content)
 
 
     # tests run in alphabetical order, so they are numbered to ensure order
@@ -740,12 +783,24 @@ class GestaltTest(unittest.TestCase):
                 'select 1 from webhooks where hookid = ?',
                 (hookid,))
         Webhook.hooks[hookid]._deleted = True
-        newhook = send(alpha, g['main'], 'e:asdhgdfjg').webhook_id
+        msg = send(alpha, g['main'], 'e:asdhgdfjg')
+        newhook = msg.webhook_id
         self.assertIsNotNone(newhook)
+        self.assertNotEqual(hookid, newhook)
         self.assertRowNotExists(
                 'select 1 from webhooks where hookid = ?',
                 (hookid,))
         self.assertRowExists(
+                'select 1 from webhooks where hookid = ?',
+                (newhook,))
+
+        send(alpha, g['main'], 'gs;e nice edit')
+        self.assertEditedContent(msg, 'nice edit')
+        Webhook.hooks[newhook]._deleted = True
+        self.assertReacted(send(alpha, g['main'], 'gs;e evil edit!'),
+                gestalt.REACT_DELETE)
+        self.assertEditedContent(msg, 'nice edit')
+        self.assertRowNotExists(
                 'select 1 from webhooks where hookid = ?',
                 (newhook,))
 
@@ -1017,11 +1072,6 @@ class GestaltTest(unittest.TestCase):
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
 
     def test_17_edit(self):
-        def assert_edited_content(message, content):
-            self.assertEqual(
-                    run(message.channel.fetch_message(message.id)).content,
-                    content)
-
         chan = g._add_channel('edit')
         first = send(alpha, chan, 'e: fisrt')
         self.assertIsNotNone(first.webhook_id)
@@ -1031,15 +1081,15 @@ class GestaltTest(unittest.TestCase):
 
         msg = send(beta, chan, 'gs;edit second')
         self.assertReacted(msg, gestalt.REACT_DELETE)
-        assert_edited_content(second, 'secnod')
+        self.assertEditedContent(second, 'secnod')
         msg = send(beta, chan, 'gs;edit first', Object(message_id = first.id))
         self.assertReacted(msg, gestalt.REACT_DELETE)
-        assert_edited_content(first, 'fisrt')
+        self.assertEditedContent(first, 'fisrt')
 
         send(alpha, chan, 'gs;edit second')
-        assert_edited_content(second, 'second')
+        self.assertEditedContent(second, 'second')
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
-        assert_edited_content(first, 'first')
+        self.assertEditedContent(first, 'first')
 
         self.assertReacted(send(beta, chan,
             'gs;p %s tags e: text' % self.get_proxid(beta, g.default_role)))
@@ -1049,7 +1099,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(send(beta, chan, 'e: dont edit me').webhook_id)
         send(alpha, chan, 'gs;help this message should be ignored')
         send(alpha, chan, 'gs;edit edit me');
-        assert_edited_content(first, 'edit me');
+        self.assertEditedContent(first, 'edit me');
 
         # make sure that gs;edit on a non-webhook message doesn't cause problems
         # delete "or proxied.webhook_id != hook[1]" to see this be a problem
@@ -1060,11 +1110,11 @@ class GestaltTest(unittest.TestCase):
         second = chan[-1]
         self.assertEqual(second.author.id, bot.id)
         third = send(alpha, chan, 'gs;edit lol', Object(message_id = second.id))
-        assert_edited_content(third, 'gs;edit lol')
+        self.assertEditedContent(third, 'gs;edit lol')
         self.assertReacted(third, gestalt.REACT_DELETE)
         self.assertIsNotNone(send(alpha, chan, 'e: another').webhook_id)
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
-        assert_edited_content(first, 'first')
+        self.assertEditedContent(first, 'first')
 
     def test_18_become(self):
         chan = g['main']
@@ -1320,6 +1370,100 @@ class GestaltTest(unittest.TestCase):
         instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta')
 
         self.assertNotReacted(send(beta, c, 'gs;pk close test-alpha'))
+        self.assertReacted(send(beta, c, 'gs;swap close test-alpha'))
+
+    def test_24_logs(self):
+        g1 = Guild(name = 'logged guild')
+        c = g1._add_channel('main')
+        log = g1._add_channel('log')
+        run(g1._add_member(bot))
+        run(g1._add_member(alpha))
+
+        self.assertReacted(send(alpha, c, 'gs;c new everyone'))
+        self.assertReacted(send(alpha, c, 'gs;p "logged guild" tags g:text'))
+        self.assertReacted(send(alpha, c, 'gs;log channel %s ' % log.mention))
+
+        # just check that the log messages exist for now
+        self.assertEqual(len(log._messages), 0)
+        msg = send(alpha, c, 'g:proxied message')
+        self.assertIsNotNone(msg.webhook_id)
+        self.assertEqual(len(log._messages), 1)
+        send(alpha, c, 'gs;edit edited message')
+        self.assertEqual(len(log._messages), 2)
+        send(alpha, c, 'g:this is truly a panopticon',
+            Object(cached_message = msg))
+        self.assertEqual(len(log._messages), 3)
+
+        self.assertReacted(send(alpha, c, 'gs;log disable'))
+        self.assertIsNotNone(send(alpha, c, 'g:secret message!').webhook_id)
+        self.assertEqual(len(log._messages), 3)
+        send(alpha, c, 'gs;edit spooky message')
+        self.assertEqual(len(log._messages), 3)
+
+    def test_25_threads(self):
+        g1 = Guild(name = 'thready guild')
+        c = g1._add_channel('main')
+        run(g1._add_member(bot))
+        run(g1._add_member(alpha))
+        run(g1._add_member(beta))
+        th = Thread(c, name = 'the best thread')
+
+        self.assertReacted(send(alpha, c, 'gs;swap open %s' % beta.mention))
+        self.assertReacted(send(beta, c, 'gs;swap open %s' % alpha.mention))
+        self.assertReacted(send(alpha, c, 'gs;p test-beta tags beta:text'))
+        self.assertReacted(send(beta, c, 'gs;p test-alpha tags alpha:text'))
+
+        msg = send(alpha, th, "beta:that's one small step for a swap")
+        self.assertIsNotNone(msg.webhook_id)
+        newer = send(alpha, c, 'beta:newer message')
+        send(alpha, th, 'gs;help')
+        cmd = th[-1]
+        send(alpha, c, 'gs;help')
+        send(beta, th, 'alpha:unrelated message')
+        send(alpha, th, 'gs;edit one giant leap for proxykind')
+        self.assertEditedContent(msg, 'one giant leap for proxykind')
+
+        msg = send(alpha, th, 'beta:newerer message')
+        send(alpha, c, 'gs;edit older message')
+        self.assertEditedContent(newer, 'older message')
+        send(alpha, th, 'gs;edit ancient message',
+            Object(message_id = msg.id))
+        self.assertEditedContent(msg, 'ancient message')
+
+        msg = send(alpha, th, 'beta: delete me')
+        run(msg._react(gestalt.REACT_DELETE, alpha))
+        self.assertTrue(msg._deleted)
+        self.assertFalse(cmd._deleted)
+        run(cmd._react(gestalt.REACT_DELETE, alpha))
+        self.assertTrue(cmd._deleted)
+
+        c2 = g1._add_channel('general')
+        th2 = Thread(c2, name = 'epic thread')
+        self.assertReacted(send(alpha, th2, 'gs;edit no messages yet'),
+                gestalt.REACT_DELETE)
+        msg = send(beta, th2,
+                'alpha:what if the first proxied message is in a thread')
+        self.assertIsNotNone(msg.webhook_id)
+        msg = send(alpha, c2, 'beta:everything still works right')
+        self.assertIsNotNone(msg.webhook_id)
+        self.assertRowExists(
+                'select 1 from webhooks where (chanid, hookid) = (?, ?)',
+                (c2.id, msg.webhook_id))
+        self.assertRowNotExists(
+                'select 1 from webhooks where chanid = ?',
+                (th2.id,))
+
+        log = g1._add_channel('log')
+        self.assertReacted(send(alpha, th, 'gs;log channel %s ' % log.mention))
+        self.assertEqual(len(log._messages), 0)
+        self.assertIsNotNone((msg := send(alpha, th, 'beta:logg')).webhook_id)
+        self.assertEqual(len(log._messages), 1)
+        self.assertEqual(log[0].content, 'http://%i/%i/%i' % (g1.id, th.id,
+            msg.id))
+        send(alpha, th, 'gs;edit log')
+        self.assertEqual(len(log._messages), 2)
+        self.assertEqual(log[1].content, 'http://%i/%i/%i' % (g1.id, th.id,
+            msg.id))
 
 
 def main():
@@ -1348,6 +1492,7 @@ def main():
 
 # monkey patch. this probably violates the Geneva Conventions
 discord.Webhook.partial = Webhook.partial
+discord.Thread = Thread
 # don't spam the channel with error messages
 gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
 gestalt.DEFAULT_PREFS |= gestalt.Prefs.replace
