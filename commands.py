@@ -226,7 +226,7 @@ class GestaltCommands:
     async def cmd_proxy_tags(self, message, proxid, tags):
         (prefix, postfix) = parse_tags(tags)
         if prefix is not None and self.get_tags_conflict(message.author.id,
-            message.guild.id, (prefix, postfix)) not in (proxid, None):
+            message.guild.id, (prefix, postfix)) not in ([proxid], []):
             raise RuntimeError(ERROR_TAGS)
 
         self.execute(

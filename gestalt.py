@@ -270,7 +270,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     def get_tags_conflict(self, userid, guildid, pair):
         (prefix, postfix) = pair
-        if (row := self.fetchone(
+        return [proxy['proxid'] for proxy in self.fetchall(
             'select proxid from proxies where ('
                 '('
                     'userid == :userid'
@@ -309,8 +309,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 ')'
             ')',
             {'userid': userid, 'guildid': guildid, 'prefix': prefix,
-                'postfix': postfix})):
-                return row['proxid']
+                'postfix': postfix})]
 
 
     def on_member_role_add(self, member, role):
