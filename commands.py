@@ -1,6 +1,5 @@
 import json
 import asyncio
-from sqlite3 import IntegrityError
 
 import aiohttp
 import discord
@@ -226,14 +225,13 @@ class GestaltCommands:
 
     async def cmd_proxy_tags(self, message, proxid, tags):
         (prefix, postfix) = parse_tags(tags)
-
-        try:
-            self.execute(
-                    'update proxies set prefix = ?, postfix = ? '
-                    'where proxid = ?',
-                    (prefix, postfix, proxid))
-        except IntegrityError:
+        if prefix is not None and self.get_tags_conflict(message.author.id,
+            message.guild.id, (prefix, postfix)) not in (proxid, None):
             raise RuntimeError(ERROR_TAGS)
+
+        self.execute(
+                'update proxies set prefix = ?, postfix = ? where proxid = ?',
+                (prefix, postfix, proxid))
 
         await self.mark_success(message, True)
 
@@ -764,10 +762,7 @@ class GestaltCommands:
                 if member.bot:
                     raise RuntimeError(ERROR_CURSED)
 
-                try:
-                    return await self.cmd_swap_open(message, member, tags)
-                except IntegrityError:
-                    raise RuntimeError(ERROR_TAGS)
+                return await self.cmd_swap_open(message, member, tags)
 
             elif arg in ['close', 'off']:
                 name = reader.read_quote()
