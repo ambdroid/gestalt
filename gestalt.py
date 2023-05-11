@@ -70,59 +70,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'state integer,'            # see enum ProxyState
                 'unique(userid, maskid))')
         self.execute(
-                # this is a no-op to kick in the update trigger
-                'create trigger if not exists proxy_tags_conflict_insert '
-                'after insert on proxies when new.prefix not NULL begin '
-                    'update proxies set prefix = new.prefix '
-                    'where proxid = new.proxid'
-                '; end')
-        self.execute(
-                'create trigger if not exists proxy_tags_conflict_update '
-                'after update of prefix, postfix on proxies when exists('
-                    'select 1 from proxies where ('
-                        '('
-                            'userid == new.userid'
-                        ') and ('
-                            'prefix not NULL'
-                        ') and ('
-                            'proxid != new.proxid'
-                        ') and ('
-                            # if prefix is to be global, check everything
-                            # if not, check only the same guild
-                            '('
-                                'new.guildid == 0'
-                            ') or ('
-                                '('
-                                    'new.guildid != 0'
-                                ') and ('
-                                    'guildid in (0, new.guildid)'
-                                ')'
-                            ')'
-                        ') and ('
-                            '('
-                                '('
-                                    'substr(new.prefix, 1, length(prefix))'
-                                    '== prefix'
-                                ') and ('
-                                    'substr(new.postfix||"_",-1,'
-                                    '-length(postfix)) == postfix'
-                                ')'
-                            ') or ('
-                                '('
-                                    'substr(prefix, 1, length(new.prefix))'
-                                    '== new.prefix'
-                                ') and ('
-                                    'substr(postfix||"_",-1,'
-                                    '-length(new.postfix)) == new.postfix'
-                                ')'
-                            ')'
-                        ')'
-                    ')'
-                # this exception will be passed to the user
-                ') begin select (raise(abort,'
-                    '"You shouldn\'t see this error message."'
-                ')); end')
-        self.execute(
                 'create table if not exists masks('
                 'maskid text collate nocase,'
                 'guildid integer,'
@@ -265,6 +212,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def mkproxy(self, userid, proxtype, cmdname = '', guildid = 0,
             prefix = None, postfix = None, otherid = None, maskid = None,
             flags = ProxyFlags(0), become = 1.0, state = ProxyState.active):
+        if prefix is not None and self.get_tags_conflict(userid, guildid,
+                (prefix, postfix)):
+            raise RuntimeError(ERROR_TAGS)
         self.execute(
                 'insert into proxies values '
                 '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -316,6 +266,51 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             else:
                 self.execute('update proxies set become = 1 where proxid = ?',
                         (proxy['proxid'],))
+
+
+    def get_tags_conflict(self, userid, guildid, pair):
+        (prefix, postfix) = pair
+        if (row := self.fetchone(
+            'select proxid from proxies where ('
+                '('
+                    'userid == :userid'
+                ') and ('
+                    'prefix not NULL'
+                ') and ('
+                    # if prefix is to be global, check everything
+                    # if not, check only the same guild
+                    '('
+                        ':guildid == 0'
+                    ') or ('
+                        '('
+                            ':guildid != 0'
+                        ') and ('
+                            'guildid in (0, :guildid)'
+                        ')'
+                    ')'
+                ') and ('
+                    '('
+                        '('
+                            'substr(:prefix, 1, length(prefix))'
+                            '== prefix'
+                        ') and ('
+                            'substr(:postfix||"_",-1,'
+                            '-length(postfix)) == postfix'
+                        ')'
+                    ') or ('
+                        '('
+                            'substr(prefix, 1, length(:prefix))'
+                            '== :prefix'
+                        ') and ('
+                            'substr(postfix||"_",-1,'
+                            '-length(:postfix)) == :postfix'
+                        ')'
+                    ')'
+                ')'
+            ')',
+            {'userid': userid, 'guildid': guildid, 'prefix': prefix,
+                'postfix': postfix})):
+                return row['proxid']
 
 
     def on_member_role_add(self, member, role):
