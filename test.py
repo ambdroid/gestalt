@@ -47,7 +47,7 @@ class User(Object):
     async def send(self, content = None, embed = None, file = None):
         if self.dm_channel == None:
             self.dm_channel = Channel(type = discord.ChannelType.private,
-                    members = [self, bot])
+                    members = [self, instance.user])
         await self.dm_channel.send(
                 content = content, embed = embed, file = file)
 
@@ -149,7 +149,7 @@ class Message(Object):
                     emoji = discord.PartialEmoji(name = emoji),
                     event_type = None))
     async def add_reaction(self, emoji):
-        await self._react(emoji, bot)
+        await self._react(emoji, instance.user)
     async def remove_reaction(self, emoji, member):
         del self.reactions[[x.emoji for x in self.reactions].index(emoji)]
     async def _bulk_delete(self):
@@ -250,7 +250,7 @@ class Channel(Object):
         # TODO need channel-level permissions
         return self.guild.get_member(user.id).guild_permissions
     async def send(self, content = None, embed = None, file = None):
-        msg = Message(author = bot, content = content, embed = embed)
+        msg = Message(author = instance.user, content = content, embed = embed)
         await self._add(msg)
         return msg
 
@@ -348,6 +348,7 @@ class Guild(Object):
 
 class TestBot(gestalt.Gestalt):
     def __init__(self):
+        self._user = User(name = 'Gestalt', bot = True)
         super().__init__(dbfile = ':memory:')
         self.session = ClientSession()
         self.pk_ratelimit = discord.gateway.GatewayRatelimiter(count = 1000,
@@ -356,7 +357,7 @@ class TestBot(gestalt.Gestalt):
         pass # suppress 'closing database' message
     @property
     def user(self):
-        return bot
+        return self._user
     def get_user(self, id):
         return User.users.get(id)
     async def fetch_user(self, id):
@@ -808,7 +809,7 @@ class GestaltTest(unittest.TestCase):
     def test_08_global_conflicts(self):
         g2 = Guild()
         g2._add_channel('main')
-        run(g2._add_member(bot))
+        run(g2._add_member(instance.user))
         run(g2._add_member(alpha))
 
         rolefirst = g._add_role('conflict')
@@ -1108,7 +1109,7 @@ class GestaltTest(unittest.TestCase):
         first = send(alpha, chan, 'e: fisrt')
         send(alpha, chan, 'gs;help')
         second = chan[-1]
-        self.assertEqual(second.author.id, bot.id)
+        self.assertEqual(second.author.id, instance.user.id)
         third = send(alpha, chan, 'gs;edit lol', Object(message_id = second.id))
         self.assertEditedContent(third, 'gs;edit lol')
         self.assertReacted(third, gestalt.REACT_DELETE)
@@ -1147,14 +1148,14 @@ class GestaltTest(unittest.TestCase):
     def test_20_collective_delete(self):
         g1 = Guild()
         c1 = g1._add_channel('main')
-        run(g1._add_member(bot))
+        run(g1._add_member(instance.user))
         run(g1._add_member(alpha, perms = discord.Permissions(
             manage_roles = True)))
         run(g1._add_member(beta, perms = discord.Permissions(
             manage_roles = False)))
         g2 = Guild()
         c2 = g2._add_channel('main')
-        run(g2._add_member(bot))
+        run(g2._add_member(instance.user))
         run(g2._add_member(beta, perms = discord.Permissions(
             manage_roles = True)))
 
@@ -1172,7 +1173,7 @@ class GestaltTest(unittest.TestCase):
     def test_21_attachments(self):
         g1 = Guild()
         c = g1._add_channel('main')
-        run(g1._add_member(bot))
+        run(g1._add_member(instance.user))
         run(g1._add_member(alpha, perms = discord.Permissions(
             manage_roles = True)))
 
@@ -1216,7 +1217,7 @@ class GestaltTest(unittest.TestCase):
     def test_22_names(self):
         g1 = Guild(name = 'guildy guild')
         c = g1._add_channel('main')
-        run(g1._add_member(bot))
+        run(g1._add_member(instance.user))
         run(g1._add_member(alpha, perms = discord.Permissions(
             manage_roles = True)))
         run(g1._add_member(beta))
@@ -1281,7 +1282,7 @@ class GestaltTest(unittest.TestCase):
     def test_23_pk_swap(self):
         g1 = Guild(name = 'guildy guild')
         c = g1._add_channel('main')
-        run(g1._add_member(bot))
+        run(g1._add_member(instance.user))
         run(g1._add_member(alpha))
         run(g1._add_member(beta))
         run(g1._add_member(gamma))
@@ -1376,7 +1377,7 @@ class GestaltTest(unittest.TestCase):
         g1 = Guild(name = 'logged guild')
         c = g1._add_channel('main')
         log = g1._add_channel('log')
-        run(g1._add_member(bot))
+        run(g1._add_member(instance.user))
         run(g1._add_member(alpha))
 
         self.assertReacted(send(alpha, c, 'gs;c new everyone'))
@@ -1403,7 +1404,7 @@ class GestaltTest(unittest.TestCase):
     def test_25_threads(self):
         g1 = Guild(name = 'thready guild')
         c = g1._add_channel('main')
-        run(g1._add_member(bot))
+        run(g1._add_member(instance.user))
         run(g1._add_member(alpha))
         run(g1._add_member(beta))
         th = Thread(c, name = 'the best thread')
@@ -1467,17 +1468,16 @@ class GestaltTest(unittest.TestCase):
 
 
 def main():
-    global bot, alpha, beta, gamma, g, instance
+    global alpha, beta, gamma, g, instance
 
     instance = TestBot()
 
-    bot = User(name = 'Gestalt', bot = True)
     alpha = User(name = 'test-alpha')
     beta = User(name = 'test-beta')
     gamma = User(name = 'test-gamma')
     g = Guild()
     g._add_channel('main')
-    run(g._add_member(bot))
+    run(g._add_member(instance.user))
     run(g._add_member(alpha))
     run(g._add_member(beta, perms = discord.Permissions(
         # these don't actually matter other than beta not having manage_roles
