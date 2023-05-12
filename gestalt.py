@@ -276,12 +276,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # if prefix is to be global, check everything
             # if not, check only the same guild
             and (guildid == 0 or (guildid and proxy['guildid'] in (0, guildid)))
-            and ((prefix[:len(proxy['prefix'])] == proxy['prefix']
-                and postfix[::-1][:len(proxy['postfix'])]
-                == proxy['postfix'][::-1])
-                or (proxy['prefix'][:len(prefix)] == prefix
-                    and proxy['postfix'][::-1][:len(postfix)]
-                    == postfix[::-1]))]
+            and ((prefix.startswith(proxy['prefix'])
+                and postfix.endswith(proxy['postfix']))
+                or (proxy['prefix'].startswith(prefix)
+                    and proxy['postfix'].endswith(postfix)))]
 
 
     def on_member_role_add(self, member, role):
