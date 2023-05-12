@@ -271,45 +271,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def get_tags_conflict(self, userid, guildid, pair):
         (prefix, postfix) = pair
         return [proxy['proxid'] for proxy in self.fetchall(
-            'select proxid from proxies where ('
-                '('
-                    'userid == :userid'
-                ') and ('
-                    'prefix not NULL'
-                ') and ('
-                    # if prefix is to be global, check everything
-                    # if not, check only the same guild
-                    '('
-                        ':guildid == 0'
-                    ') or ('
-                        '('
-                            ':guildid != 0'
-                        ') and ('
-                            'guildid in (0, :guildid)'
-                        ')'
-                    ')'
-                ') and ('
-                    '('
-                        '('
-                            'substr(:prefix, 1, length(prefix))'
-                            '== prefix'
-                        ') and ('
-                            'substr(:postfix||"_",-1,'
-                            '-length(postfix)) == postfix'
-                        ')'
-                    ') or ('
-                        '('
-                            'substr(prefix, 1, length(:prefix))'
-                            '== :prefix'
-                        ') and ('
-                            'substr(postfix||"_",-1,'
-                            '-length(:postfix)) == :postfix'
-                        ')'
-                    ')'
-                ')'
-            ')',
-            {'userid': userid, 'guildid': guildid, 'prefix': prefix,
-                'postfix': postfix})]
+            'select * from proxies where userid = ?', (userid,))
+            if proxy['prefix'] is not None
+            # if prefix is to be global, check everything
+            # if not, check only the same guild
+            and (guildid == 0 or (guildid and proxy['guildid'] in (0, guildid)))
+            and ((prefix[:len(proxy['prefix'])] == proxy['prefix']
+                and postfix[::-1][:len(proxy['postfix'])]
+                == proxy['postfix'][::-1])
+                or (proxy['prefix'][:len(prefix)] == prefix
+                    and proxy['postfix'][::-1][:len(postfix)]
+                    == postfix[::-1]))]
 
 
     def on_member_role_add(self, member, role):
