@@ -450,6 +450,16 @@ class GestaltTest(unittest.TestCase):
         self.assertNotReacted(msg)
         return msg
 
+    def assertProxied(self, *args, **kwargs):
+        msg = send(*args, **kwargs)
+        self.assertIsNotNone(msg.webhook_id)
+        return msg
+
+    def assertNotProxied(self, *args, **kwargs):
+        msg = send(*args, **kwargs)
+        self.assertIsNone(msg.webhook_id)
+        return msg
+
     def assertEditedContent(self, message, content):
         self.assertEqual(
                 run(message.channel.fetch_message(message.id)).content,
@@ -476,15 +486,15 @@ class GestaltTest(unittest.TestCase):
             gestalt.ProxyState.inactive)
 
         # alpha tests swap; it should fail
-        self.assertIsNone(send(alpha, chan, 'sw no swap').webhook_id)
+        self.assertNotProxied(alpha, chan, 'sw no swap')
         # beta opens swap
         self.assertCommand(
                 beta, chan, 'gs;swap open %s sw text' % alpha.mention)
         self.assertIsNotNone(self.get_proxid(alpha ,beta))
         self.assertIsNotNone(self.get_proxid(beta, alpha))
         # alpha and beta test the swap; it should work now
-        self.assertIsNotNone(send(alpha, chan, 'sw swap').webhook_id)
-        self.assertIsNotNone(send(beta, chan, 'sw swap').webhook_id)
+        self.assertProxied(alpha, chan, 'sw swap')
+        self.assertProxied(beta, chan, 'sw swap')
 
         # try to redundantly open another swap; it should fail
         self.assertNotCommand(alpha, chan, 'gs;swap open %s' % beta.mention)
@@ -532,14 +542,14 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(gamma, chan, 'gs;swap close %s' % gammaid)
         self.assertIsNone(self.get_proxid(alpha, gamma))
         self.assertIsNone(self.get_proxid(gamma, alpha))
-        self.assertIsNone(send(beta, chan, 'sw no swap').webhook_id)
-        self.assertIsNone(send(gamma, chan, 'sww no swap').webhook_id)
+        self.assertNotProxied(beta, chan, 'sw no swap')
+        self.assertNotProxied(gamma, chan, 'sww no swap')
 
         # test self-swaps
         self.assertCommand(alpha, chan, 'gs;swap open %s' % alpha.mention)
         self.assertIsNotNone(self.get_proxid(alpha, alpha))
         self.assertCommand(alpha, chan, 'gs;p test-alpha tags me:text')
-        self.assertIsNotNone(send(alpha, chan, 'me:self-swap').webhook_id)
+        self.assertProxied(alpha, chan, 'me:self-swap')
         self.assertEqual(chan[-1].author.name, 'test-alpha')
         self.assertNotCommand(alpha, chan, 'gs;swap open %s' % alpha.mention)
         self.assertEqual(instance.fetchone(
@@ -569,7 +579,7 @@ class GestaltTest(unittest.TestCase):
         # set the tags
         self.assertCommand(alpha, g['main'], 'gs;p %s tags e:text' % proxid)
         # test the proxy
-        self.assertIsNotNone(send(alpha, g['main'], 'e:test').webhook_id)
+        self.assertProxied(alpha, g['main'], 'e:test')
         # this proxy will be used in later tests
 
 
@@ -583,7 +593,7 @@ class GestaltTest(unittest.TestCase):
 
         # set tags and test it
         self.assertCommand(alpha, g['main'], 'gs;p %s tags d:text' % proxid)
-        self.assertIsNotNone(send(alpha, g['main'], 'd:test').webhook_id)
+        self.assertProxied(alpha, g['main'], 'd:test')
 
         # delete the collective normally
         collid = self.get_collid(role)
@@ -632,41 +642,41 @@ class GestaltTest(unittest.TestCase):
         chan = g['main']
         proxid = self.get_proxid(alpha, g.default_role)
 
-        self.assertIsNone(send(alpha, chan, 'no tags, no auto').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'E:Tags').webhook_id)
+        self.assertNotProxied(alpha, chan, 'no tags, no auto')
+        self.assertProxied(alpha, chan, 'E:Tags')
         self.assertEqual(chan[-1].content, 'Tags')
         self.assertCommand(alpha, chan, 'gs;p %s tags "= text"' % proxid)
-        self.assertIsNotNone(send(alpha, chan, '= tags, no auto').webhook_id)
+        self.assertProxied(alpha, chan, '= tags, no auto')
         self.assertEqual(chan[-1].content, 'tags, no auto')
         self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
-        self.assertIsNotNone(send(alpha, chan, '= tags, auto').webhook_id)
+        self.assertProxied(alpha, chan, '= tags, auto')
         self.assertEqual(chan[-1].content, 'tags, auto')
-        self.assertIsNotNone(send(alpha, chan, 'no tags, auto').webhook_id)
+        self.assertProxied(alpha, chan, 'no tags, auto')
         self.assertEqual(chan[-1].content, 'no tags, auto')
         # test autoproxy both as on/off and as toggle
         self.assertCommand(alpha, chan, 'gs;p %s auto' % proxid)
         self.assertCommand(alpha, chan, 'gs;p %s tags #text#' % proxid)
-        self.assertIsNotNone(send(alpha, chan, '#tags, no auto#').webhook_id)
+        self.assertProxied(alpha, chan, '#tags, no auto#')
         self.assertEqual(chan[-1].content, 'tags, no auto')
         self.assertCommand(alpha, chan, 'gs;p %s tags text]' % proxid)
-        self.assertIsNotNone(send(alpha, chan, 'postfix tag]').webhook_id)
+        self.assertProxied(alpha, chan, 'postfix tag]')
 
         # test keepproxy
         self.assertCommand(alpha, chan, 'gs;p %s tags [text]' % proxid)
         self.assertCommand(alpha, chan, 'gs;p %s keepproxy on' % proxid)
-        self.assertIsNotNone(send(alpha, chan, '[message]').webhook_id)
+        self.assertProxied(alpha, chan, '[message]')
         self.assertEqual(chan[-1].content, '[message]')
         self.assertCommand(alpha, chan, 'gs;p %s keepproxy' % proxid)
-        self.assertIsNotNone(send(alpha, chan, '[message]').webhook_id)
+        self.assertProxied(alpha, chan, '[message]')
         self.assertEqual(chan[-1].content, 'message')
         self.assertCommand(alpha, chan, 'gs;p %s tags e:text' % proxid)
 
         # test setting auto on override to unset other autos
         overid = self.get_proxid(alpha, None)
         self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
-        self.assertIsNotNone(send(alpha, chan, 'auto on').webhook_id)
+        self.assertProxied(alpha, chan, 'auto on')
         self.assertCommand(alpha, chan, 'gs;p %s auto on' % overid)
-        self.assertIsNone(send(alpha, chan, 'auto off').webhook_id)
+        self.assertNotProxied(alpha, chan, 'auto off')
         assertFlags(overid, 0)
 
         # test guild/global autoproxy shenanigans
@@ -707,9 +717,9 @@ class GestaltTest(unittest.TestCase):
         proxid = self.get_proxid(alpha, newrole)
         self.assertIsNotNone(proxid)
         self.assertCommand(alpha, chan, 'gs;p %s auto' % proxid)
-        self.assertIsNotNone(send(alpha, chan, 'no tags, auto').webhook_id)
+        self.assertProxied(alpha, chan, 'no tags, auto')
         self.assertCommand(alpha, chan, 'gs;p %s auto off' % proxid)
-        self.assertIsNone(send(alpha, chan, 'no tags, no auto').webhook_id)
+        self.assertNotProxied(alpha, chan, 'no tags, no auto')
 
         # test tag precedence over auto
         self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
@@ -746,14 +756,12 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, chan,
                 'gs;swap open %s swap:text' % beta.mention)
         self.assertCommand(beta, chan, 'gs;swap open %s' % alpha.mention)
-        msg = send(alpha, chan, 'swap:delete me')
-        self.assertIsNotNone(msg.webhook_id)
+        msg = self.assertProxied(alpha, chan, 'swap:delete me')
         run(msg._react(gestalt.REACT_DELETE, gamma))
         self.assertFalse(msg._deleted)
         run(msg._react(gestalt.REACT_DELETE, alpha))
         self.assertTrue(msg._deleted)
-        msg = send(alpha, chan, 'swap:delete me')
-        self.assertIsNotNone(msg.webhook_id)
+        msg = self.assertProxied(alpha, chan, 'swap:delete me')
         run(msg._react(gestalt.REACT_DELETE, beta))
         self.assertTrue(msg._deleted)
         self.assertCommand(alpha, chan,
@@ -768,9 +776,8 @@ class GestaltTest(unittest.TestCase):
         self.assertFalse(msg2._deleted)
 
         # and finally normal messages
-        msg = send(beta, chan, "we're just normal messages")
+        msg = self.assertNotProxied(beta, chan, "we're just normal messages")
         buf = send(beta, beta.dm_channel, "we're just innocent messages")
-        self.assertIsNone(msg.webhook_id)
         run(msg._react(gestalt.REACT_QUERY, beta))
         run(msg._react(gestalt.REACT_DELETE, beta))
         self.assertFalse(msg._deleted)
@@ -827,8 +834,8 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(proxswap)
 
         # swap should be usable in g but not g2 because beta isn't in g2
-        self.assertIsNotNone(send(alpha, g['main'], ':test').webhook_id)
-        self.assertIsNone(send(alpha, g2['main'], ':test').webhook_id)
+        self.assertProxied(alpha, g['main'], ':test')
+        self.assertNotProxied(alpha, g2['main'], ':test')
 
         # create collectives on the two roles
         self.assertCommand(
@@ -846,14 +853,14 @@ class GestaltTest(unittest.TestCase):
         # this should work because the collectives are in different guilds
         self.assertCommand(
                 alpha, g2['main'], 'gs;p %s tags same:text' % proxsecond)
-        self.assertIsNotNone(send(alpha, g['main'], 'same: no auto').webhook_id)
+        self.assertProxied(alpha, g['main'], 'same: no auto')
         # alpha should be able to set both to auto; different guilds
         self.assertCommand(
                 alpha, g['main'], 'gs;p %s auto on' % proxfirst)
         self.assertCommand(
                 alpha, g2['main'], 'gs;p %s auto on' % proxsecond)
-        self.assertIsNotNone(send(alpha, g['main'], 'auto on').webhook_id)
-        self.assertIsNotNone(send(alpha, g2['main'], 'auto on').webhook_id)
+        self.assertProxied(alpha, g['main'], 'auto on')
+        self.assertProxied(alpha, g2['main'], 'auto on')
 
         # test global tags conflict; this should fail
         self.assertNotCommand(
@@ -865,7 +872,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(
                 alpha, g['main'], 'gs;p %s tags swap:text' % proxfirst)
         # now turning on auto on the swap should deactivate the other autos
-        self.assertIsNotNone(send(alpha, g['main'], 'auto on').webhook_id)
+        self.assertProxied(alpha, g['main'], 'auto on')
         self.assertNotEqual(
                 send(alpha, g['main'], 'collective has auto').author.name.index(
                     rolefirst.name), -1)
@@ -941,17 +948,17 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(proxid)
 
         chan = g['main']
-        self.assertIsNotNone(send(alpha, chan, 'e: proxy').webhook_id)
+        self.assertProxied(alpha, chan, 'e: proxy')
         self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
-        self.assertIsNotNone(send(alpha, chan, 'proxy').webhook_id)
+        self.assertProxied(alpha, chan, 'proxy')
         # set the override tags. this should activate it
         self.assertCommand(alpha, chan, 'gs;p %s tags x:text' % overid)
-        self.assertIsNone(send(alpha, chan, 'x: not proxies').webhook_id)
+        self.assertNotProxied(alpha, chan, 'x: not proxies')
 
         # turn autoproxy off
         self.assertCommand(alpha, chan, 'gs;p %s auto' % proxid)
-        self.assertIsNone(send(alpha, chan, 'not proxied').webhook_id)
-        self.assertIsNone(send(alpha, chan, 'x: not proxied').webhook_id)
+        self.assertNotProxied(alpha, chan, 'not proxied')
+        self.assertNotProxied(alpha, chan, 'x: not proxied')
 
     # by far the most ominous test
     def test_10_replacements(self):
@@ -1009,29 +1016,29 @@ class GestaltTest(unittest.TestCase):
     def test_13_latch(self):
         chan = g['main']
         self.assertCommand(alpha, chan, 'gs;prefs latch')
-        self.assertIsNone(send(alpha, chan, 'no proxy, no auto').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'e: proxy, no auto').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'e: proxy, auto').webhook_id)
-        self.assertIsNone(send(alpha, chan, 'x: override').webhook_id)
-        self.assertIsNone(send(alpha, chan, 'no proxy, no auto').webhook_id)
+        self.assertNotProxied(alpha, chan, 'no proxy, no auto')
+        self.assertProxied(alpha, chan, 'e: proxy, no auto')
+        self.assertProxied(alpha, chan, 'no proxy, auto')
+        self.assertProxied(alpha, chan, 'e: proxy, auto')
+        self.assertNotProxied(alpha, chan, 'x: override')
+        self.assertNotProxied(alpha, chan, 'no proxy, no auto')
 
         # test \escape and \\unlatch
         proxid = self.get_proxid(alpha, g.default_role)
-        self.assertIsNotNone(send(alpha, chan, 'e: proxy, no auto').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
-        self.assertIsNone(send(alpha, chan, '\escape').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
-        self.assertIsNone(send(alpha, chan, '\\\\unlatch').webhook_id)
-        self.assertIsNone(send(alpha, chan, 'no proxy, no auto').webhook_id)
+        self.assertProxied(alpha, chan, 'e: proxy, no auto')
+        self.assertProxied(alpha, chan, 'no proxy, auto')
+        self.assertNotProxied(alpha, chan, '\escape')
+        self.assertProxied(alpha, chan, 'no proxy, auto')
+        self.assertNotProxied(alpha, chan, '\\\\unlatch')
+        self.assertNotProxied(alpha, chan, 'no proxy, no auto')
         self.assertCommand(alpha, chan, 'gs;prefs latch off')
 
         self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
-        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
-        self.assertIsNone(send(alpha, chan, '\escape').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
-        self.assertIsNone(send(alpha, chan, '\\\\unlatch').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'no proxy, auto').webhook_id)
+        self.assertProxied(alpha, chan, 'no proxy, auto')
+        self.assertNotProxied(alpha, chan, '\escape')
+        self.assertProxied(alpha, chan, 'no proxy, auto')
+        self.assertNotProxied(alpha, chan, '\\\\unlatch')
+        self.assertProxied(alpha, chan, 'no proxy, auto')
         self.assertCommand(alpha, chan, 'gs;p %s auto off' % proxid)
 
     # test member joining when the guild has an @everyone collective
@@ -1049,29 +1056,25 @@ class GestaltTest(unittest.TestCase):
 
     def test_16_replies(self):
         chan = g['main']
-        msg = send(alpha, chan, 'e: no reply')
-        self.assertIsNotNone(msg.webhook_id)
+        msg = self.assertProxied(alpha, chan, 'e: no reply')
         self.assertEqual(len(msg.embeds), 0)
-        reply = send(alpha, chan, 'e: reply', Object(cached_message = msg))
-        self.assertIsNotNone(reply.webhook_id)
+        reply = self.assertProxied(alpha, chan, 'e: reply',
+                Object(cached_message = msg))
         self.assertEqual(len(reply.embeds), 1)
         self.assertEqual(reply.embeds[0].description,
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
         # again, but this time the message isn't in cache
-        reply = send(alpha, chan, 'e: reply', Object(cached_message = None,
-            message_id = msg.id))
-        self.assertIsNotNone(reply.webhook_id)
+        reply = self.assertProxied(alpha, chan, 'e: reply',
+                Object(cached_message = None, message_id = msg.id))
         self.assertEqual(len(reply.embeds), 1)
         self.assertEqual(reply.embeds[0].description,
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
 
     def test_17_edit(self):
         chan = g._add_channel('edit')
-        first = send(alpha, chan, 'e: fisrt')
-        self.assertIsNotNone(first.webhook_id)
+        first = self.assertProxied(alpha, chan, 'e: fisrt')
         self.assertNotCommand(alpha, chan, 'gs;e')
-        second = send(alpha, chan, 'e: secnod')
-        self.assertIsNotNone(second.webhook_id)
+        second = self.assertProxied(alpha, chan, 'e: secnod')
 
         msg = send(beta, chan, 'gs;edit second')
         self.assertReacted(msg, gestalt.REACT_DELETE)
@@ -1090,7 +1093,7 @@ class GestaltTest(unittest.TestCase):
         first = send(alpha, chan, 'e: edti me')
         run(send(alpha, chan, 'e: delete me').delete())
         run(send(alpha, chan, 'e: delete me too')._bulk_delete())
-        self.assertIsNotNone(send(beta, chan, 'e: dont edit me').webhook_id)
+        self.assertProxied(beta, chan, 'e: dont edit me')
         send(alpha, chan, 'gs;help this message should be ignored')
         send(alpha, chan, 'gs;edit edit me');
         self.assertEditedContent(first, 'edit me');
@@ -1106,7 +1109,7 @@ class GestaltTest(unittest.TestCase):
         third = send(alpha, chan, 'gs;edit lol', Object(message_id = second.id))
         self.assertEditedContent(third, 'gs;edit lol')
         self.assertReacted(third, gestalt.REACT_DELETE)
-        self.assertIsNotNone(send(alpha, chan, 'e: another').webhook_id)
+        self.assertProxied(alpha, chan, 'e: another')
         send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
         self.assertEditedContent(first, 'first')
 
@@ -1120,8 +1123,8 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(beta, chan, 'gs;become %s' % proxid)
 
         self.assertCommand(alpha, chan, 'gs;become %s' % proxid)
-        self.assertIsNone(send(alpha, chan, 'not proxied').webhook_id)
-        self.assertIsNotNone(send(alpha, chan, 'proxied').webhook_id)
+        self.assertNotProxied(alpha, chan, 'not proxied')
+        self.assertProxied(alpha, chan, 'proxied')
 
     def test_19_swap_close(self):
         chan = g['main']
@@ -1174,37 +1177,32 @@ class GestaltTest(unittest.TestCase):
         send(alpha, c, 'gs;p %s tags [text'
                 % self.get_proxid(alpha, g1.default_role))
         # normal message
-        self.assertIsNotNone((msg := send(alpha, c, '[test')).webhook_id)
+        msg = self.assertProxied(alpha, c, '[test')
         self.assertEqual(len(msg.files), 0)
         # one file, no content
-        self.assertIsNotNone((msg := send(alpha, c, '[',
-            files = [File(12)])).webhook_id)
+        msg = self.assertProxied(alpha, c, '[', files = [File(12)])
         self.assertEqual(msg.content, '')
         self.assertEqual(len(msg.files), 1)
         # two files, no content
-        self.assertIsNotNone((msg := send(alpha, c, '[',
-            files = [File(12), File(9)])).webhook_id)
+        msg = self.assertProxied(alpha, c, '[', files = [File(12), File(9)])
         self.assertEqual(len(msg.files), 2)
         # two files, with content
-        self.assertIsNotNone((msg := send(alpha, c, '[files!',
-            files = [File(12), File(9)])).webhook_id)
+        msg = self.assertProxied(alpha, c, '[files!', files = [File(12),
+            File(9)])
         self.assertEqual(msg.content, 'files!')
         self.assertEqual(len(msg.files), 2)
         # no files or content
-        self.assertIsNone(send(alpha, c, '[', files = []).webhook_id)
+        self.assertNotProxied(alpha, c, '[', files = [])
         # big file, no content
-        self.assertIsNone(send(alpha, c, '[',
-            files = [File(999999999)]).webhook_id)
+        self.assertNotProxied(alpha, c, '[', files = [File(999999999)])
         half = gestalt.MAX_FILE_SIZE[0]/2
         # files at the limit, no content
-        self.assertIsNotNone(send(alpha, c, '[',
-            files = [File(half), File(half)]).webhook_id)
+        self.assertProxied(alpha, c, '[', files = [File(half), File(half)])
         # files too big, no content
-        self.assertIsNone(send(alpha, c, '[',
-            files = [File(half), File(half+1)]).webhook_id)
+        self.assertNotProxied(alpha, c, '[', files = [File(half), File(half+1)])
         # files too big, with content
-        self.assertIsNotNone((msg := send(alpha, c, '[files!',
-            files = [File(half), File(half+1)])).webhook_id)
+        msg = self.assertProxied(alpha, c, '[files!', files = [File(half),
+            File(half+1)])
         self.assertEqual(msg.files, [])
 
     def test_22_names(self):
@@ -1223,8 +1221,8 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;p guild auto on')
         self.assertEqual(send(alpha, c, 'yay!').author.name, 'guildy guild')
         self.assertCommand(alpha, c, 'gs;become guild')
-        self.assertIsNone(send(alpha, c, 'not proxied').webhook_id)
-        self.assertIsNotNone(send(alpha, c, 'proxied').webhook_id)
+        self.assertNotProxied(alpha, c, 'not proxied')
+        self.assertProxied(alpha, c, 'proxied')
         self.assertCommand(alpha, c, 'gs;p guild auto off')
 
         send(alpha, c, 'gs;swap open %s' % beta.mention)
@@ -1236,7 +1234,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(beta, c, 'gs;p guild tags g:text')
         self.assertNotCommand(beta, c, 'gs;p guild auto on')
         self.assertNotCommand(beta, c, 'gs;become guild')
-        self.assertIsNone(send(alpha, c, 'not proxied').webhook_id)
+        self.assertNotProxied(alpha, c, 'not proxied')
 
         self.assertCommand(alpha, c, 'gs;c "guild" name guild!')
         self.assertEqual(send(alpha, c, '[proxied').author.name, 'guild!')
@@ -1311,7 +1309,7 @@ class GestaltTest(unittest.TestCase):
 
         # test using it!
         self.assertCommand(beta, c, 'gs;p member! tags [text]')
-        self.assertIsNone(send(beta, c, '[test]').webhook_id)
+        self.assertNotProxied(beta, c, '[test]')
         old = run(pkhook.send('member!', '', content = 'old message'))
         new = run(pkhook.send('member!', '', content = 'new message'))
         nope = run(pkhook.send('someone else', '', content = 'irrelevant'))
@@ -1328,7 +1326,7 @@ class GestaltTest(unittest.TestCase):
             Object(cached_message = None, message_id = new.id))
         self.assertNotCommand(beta, c, 'gs;pk sync',
             Object(cached_message = None, message_id = old.id))
-        self.assertIsNotNone(send(beta, c, '[test]').webhook_id)
+        self.assertProxied(beta, c, '[test]')
         self.assertEqual(c[-1].author.name, 'member!')
         # test a message with no pk entry
         instance.session._add('/messages/' + str(c[-1].id), 404)
@@ -1379,8 +1377,7 @@ class GestaltTest(unittest.TestCase):
 
         # just check that the log messages exist for now
         self.assertEqual(len(log._messages), 0)
-        msg = send(alpha, c, 'g:proxied message')
-        self.assertIsNotNone(msg.webhook_id)
+        msg = self.assertProxied(alpha, c, 'g:proxied message')
         self.assertEqual(len(log._messages), 1)
         send(alpha, c, 'gs;edit edited message')
         self.assertEqual(len(log._messages), 2)
@@ -1389,7 +1386,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(log._messages), 3)
 
         self.assertCommand(alpha, c, 'gs;log disable')
-        self.assertIsNotNone(send(alpha, c, 'g:secret message!').webhook_id)
+        self.assertProxied(alpha, c, 'g:secret message!')
         self.assertEqual(len(log._messages), 3)
         send(alpha, c, 'gs;edit spooky message')
         self.assertEqual(len(log._messages), 3)
@@ -1407,8 +1404,8 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;p test-beta tags beta:text')
         self.assertCommand(beta, c, 'gs;p test-alpha tags alpha:text')
 
-        msg = send(alpha, th, "beta:that's one small step for a swap")
-        self.assertIsNotNone(msg.webhook_id)
+        msg = self.assertProxied(alpha, th,
+                "beta:that's one small step for a swap")
         newer = send(alpha, c, 'beta:newer message')
         send(alpha, th, 'gs;help')
         cmd = th[-1]
@@ -1435,11 +1432,9 @@ class GestaltTest(unittest.TestCase):
         th2 = Thread(c2, name = 'epic thread')
         self.assertReacted(send(alpha, th2, 'gs;edit no messages yet'),
                 gestalt.REACT_DELETE)
-        msg = send(beta, th2,
+        msg = self.assertProxied(beta, th2,
                 'alpha:what if the first proxied message is in a thread')
-        self.assertIsNotNone(msg.webhook_id)
-        msg = send(alpha, c2, 'beta:everything still works right')
-        self.assertIsNotNone(msg.webhook_id)
+        msg = self.assertProxied(alpha, c2, 'beta:everything still works right')
         self.assertRowExists(
                 'select 1 from webhooks where (chanid, hookid) = (?, ?)',
                 (c2.id, msg.webhook_id))
@@ -1450,7 +1445,7 @@ class GestaltTest(unittest.TestCase):
         log = g1._add_channel('log')
         self.assertCommand(alpha, th, 'gs;log channel %s ' % log.mention)
         self.assertEqual(len(log._messages), 0)
-        self.assertIsNotNone((msg := send(alpha, th, 'beta:logg')).webhook_id)
+        msg = self.assertProxied(alpha, th, 'beta:logg')
         self.assertEqual(len(log._messages), 1)
         self.assertEqual(log[0].content, 'http://%i/%i/%i' % (g1.id, th.id,
             msg.id))
