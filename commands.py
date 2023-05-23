@@ -350,37 +350,26 @@ class GestaltCommands:
 
     def make_or_activate_swap(self, auth, other, tags):
         (prefix, postfix) = parse_tags(tags) if tags else (None, None)
-        # to support future features, look at proxies from target, not author
-        swap = self.fetchone(
+        if self.fetchone(
                 'select state from proxies '
                 'where (userid, otherid, type) = (?, ?, ?)',
+                (auth.id, other.id, ProxyType.swap)):
+            return False
+        # look at proxies from target, not author
+        swap = self.fetchone(
+                'select proxid, state from proxies '
+                'where (userid, otherid, type) = (?, ?, ?)',
                 (other.id, auth.id, ProxyType.swap))
-        if not swap:
-            if auth.id == other.id:
-                # no need to ask yourself for confirmation, just do it
-                self.mkproxy(auth.id, ProxyType.swap, cmdname = auth.name,
-                        prefix = prefix, postfix = postfix, otherid = auth.id)
-                return True
-            # create swap. author's is inactive, target's is hidden
-            self.mkproxy(auth.id, ProxyType.swap, cmdname = other.name,
-                    prefix = prefix, postfix = postfix, otherid = other.id,
-                    state = ProxyState.inactive)
-            self.mkproxy(other.id, ProxyType.swap, cmdname = auth.name,
-                    otherid = auth.id, state = ProxyState.hidden)
-            return True
-        elif swap[0] == ProxyState.inactive:
+        self.mkproxy(auth.id, ProxyType.swap, cmdname = other.name,
+                prefix = prefix, postfix = postfix, otherid = other.id,
+                state = (ProxyState.active if auth.id == other.id or swap
+                    else ProxyState.inactive))
+        if swap:
             # target is initiator. author can activate swap
-            self.execute(
-                    'update proxies set prefix = ?, postfix = ?, state = ?'
-                    'where (userid, otherid) = (?, ?)',
-                    (prefix, postfix, ProxyState.active, auth.id, other.id))
-            self.execute(
-                    'update proxies set state = ? '
-                    'where (userid, otherid) = (?, ?)',
-                    (ProxyState.active, other.id, auth.id))
-            return True
+            self.execute('update proxies set state = ? where proxid = ?',
+                    (ProxyState.active, swap['proxid']))
 
-        return False
+        return True
 
 
     async def cmd_swap_open(self, message, member, tags):

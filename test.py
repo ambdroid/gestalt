@@ -475,7 +475,7 @@ class GestaltTest(unittest.TestCase):
                 alpha, chan, 'gs;swap open %s sw text' % beta.mention)
         alphaid = self.get_proxid(alpha, beta)
         self.assertIsNotNone(alphaid)
-        self.assertIsNotNone(self.get_proxid(beta, alpha))
+        self.assertIsNone(self.get_proxid(beta, alpha))
         self.assertEqual(instance.fetchone(
             'select state from proxies where proxid = ?', (alphaid,))[0],
             gestalt.ProxyState.inactive)
@@ -1261,14 +1261,20 @@ class GestaltTest(unittest.TestCase):
         # however, B may not realize this, and feel unable to revoke consent.
         # Furthermore, if A controls the guild, they can isolate a2 & a3
         # to a channel hidden to B, giving them no idea of what's happening.
-        send(alpha, c, 'gs;swap open %s' % beta.mention)
-        self.assertIsNotNone(self.get_proxid(beta, alpha))
-        self.assertIsNotNone(instance.get_user_proxy(c[-1], 'test-beta'))
+        # also swaps used to make a hidden proxy for the other user so this is
+        # a bit anachronistic now but there'll probably be more uses for hidden
+        # proxies in the future so yeah
+        # send(alpha, c, 'gs;swap open %s' % beta.mention)
+        proxid = instance.mkproxy(beta.id, gestalt.ProxyType.swap,
+                cmdname = 'test-alpha', state = gestalt.ProxyState.hidden)
+        # self.assertIsNotNone(self.get_proxid(beta, alpha))
+        # self.assertIsNotNone(instance.get_user_proxy(c[-1], 'test-beta'))
         self.assertNotCommand(beta, c, 'gs;p test-alpha auto on')
-        self.assertNotCommand(beta, c, 'gs;swap close test-alpha')
+        # self.assertNotCommand(send(beta, c, 'gs;swap close test-alpha'))
         with self.assertRaises(RuntimeError):
             instance.get_user_proxy(c[-1], 'test-alpha')
-        self.assertCommand(alpha, c, 'gs;swap close test-beta')
+        # self.assertCommand(alpha, c, 'gs;swap close test-beta')
+        instance.execute('delete from proxies where proxid = ?', (proxid,))
 
     def test_23_pk_swap(self):
         g1 = Guild(name = 'guildy guild')
