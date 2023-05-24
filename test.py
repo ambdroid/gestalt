@@ -1502,7 +1502,7 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertProxied(alpha, c, 'c:reply',
             Object(cached_message = None, message_id = target.id))
         self.assertIsNone(msg.embeds[0].color)
-        self.assertCommand(alpha, c, 'gs;c role color rose')
+        self.assertCommand(alpha, c, 'gs;c role colour rose')
         msg = self.assertProxied(alpha, c, 'c:reply',
             Object(cached_message = None, message_id = target.id))
         self.assertEqual(str(msg.embeds[0].color).upper(),
@@ -1522,7 +1522,7 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertProxied(alpha, c, 'beta:reply',
             Object(cached_message = None, message_id = target.id))
         self.assertIsNone(msg.embeds[0].color)
-        self.assertCommand(beta, c, 'gs;account color #888888')
+        self.assertCommand(beta, c, 'gs;account colour #888888')
         msg = self.assertProxied(alpha, c, 'beta:reply',
             Object(cached_message = None, message_id = target.id))
         self.assertEqual(str(msg.embeds[0].color), '#888888')
