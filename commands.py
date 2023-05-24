@@ -304,12 +304,12 @@ class GestaltCommands:
 
 
     async def cmd_collective_update(self, message, collid, name, value):
-        if name not in ['nick', 'name', 'avatar', 'color']:
+        if name not in ['nick', 'name', 'avatar', 'color', 'colour']:
             return
         self.execute(
                 'update masks set %s = ? '
                 'where maskid = ?'
-                % ('nick' if name == 'name' else name),
+                % {'name': 'nick', 'colour': 'color'}.get(name, name),
                 (value, collid))
         if self.cur.rowcount == 1:
             await self.mark_success(message, True)
@@ -700,7 +700,7 @@ class GestaltCommands:
                     raise RuntimeError(
                             'That collective belongs to another guild.')
 
-                if action in ['nick', 'name', 'avatar', 'color']:
+                if action in ['nick', 'name', 'avatar', 'color', 'colour']:
                     arg = reader.read_remainder()
 
                     role = guild.get_role(row['roleid'])
@@ -714,14 +714,14 @@ class GestaltCommands:
                                 'You don\'t have access to that collective!')
 
                     # allow empty avatar URL but not name
-                    if action == 'name' and not arg:
+                    if action in ['name', 'nick'] and not arg:
                         raise RuntimeError('Please provide a new name.')
                     if action == 'avatar':
                         if message.attachments and not arg:
                             arg = message.attachments[0].url
                         elif arg and not re.match('http(s?)://.*', arg):
                             raise RuntimeError('Invalid avatar URL!')
-                    if action == 'color':
+                    if action in ['color', 'colour']:
                         if arg == '-clear':
                             arg = None
                         else:
@@ -744,7 +744,7 @@ class GestaltCommands:
                     return await self.cmd_collective_delete(message, row)
 
         elif arg in ['account', 'a']:
-            arg = reader.read_word()
+            arg = reader.read_word().lower()
             if arg == 'config':
                 # user must exist due to on_message
                 user = self.fetchone(
