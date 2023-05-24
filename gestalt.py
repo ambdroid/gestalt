@@ -48,7 +48,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'create table if not exists users('
                 'userid integer primary key,'
                 'username text,'
-                'prefs integer)')
+                'prefs integer,'
+                'tag text,' # reserved
+                'color text)')
         self.execute(
                 'create table if not exists webhooks('
                 'chanid integer primary key,'
@@ -76,6 +78,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'roleid integer,'
                 'nick text,'
                 'avatar text,'
+                'color text,'
                 'type int,'     # also uses enum ProxyType
                 'updated int,'  # snowflake; for future automatic pk syncing
                 'unique(maskid, guildid),'
@@ -335,18 +338,23 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
-        mask = self.fetchone('select nick, avatar from masks where maskid = ?',
+        mask = self.fetchone('select * from masks where maskid = ?',
                 (proxy['maskid'],))
-        return {'username': mask['nick'], 'avatar_url': mask['avatar'],
+        return {'username': mask['nick'],
+                'avatar_url': mask['avatar'],
+                'color': mask['color'],
                 'content': content}
 
 
     def get_proxy_swap(self, message, proxy, prefs, content):
         member = message.guild.get_member(proxy['otherid'])
         if member:
+            color = self.fetchone('select color from users where userid = ?',
+                    (member.id,))['color']
             return {'username': member.display_name,
                     'avatar_url': member.display_avatar.replace(
                         format = 'webp'),
+                    'color': color,
                     'content': content}
 
 
@@ -354,11 +362,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if not message.guild.get_member(proxy['otherid']):
             return
         mask = self.fetchone(
-                'select nick, avatar from masks '
-                'where (guildid, maskid) = (?, ?)',
+                'select * from masks where (guildid, maskid) = (?, ?)',
                 (message.guild.id, 'pk-' + proxy['maskid']))
         if mask:
-            return {'username': mask['nick'], 'avatar_url': mask['avatar'],
+            return {'username': mask['nick'],
+                    'avatar_url': mask['avatar'],
+                    'color': mask['color'],
                     'content': content}
         raise RuntimeError('That proxy has not been synced yet.')
 
@@ -409,28 +418,6 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if msgfiles == [] and content == '':
             return
 
-        embed = None
-        if message.reference:
-            try:
-                reference = (message.reference.cached_message or
-                        await message.channel.fetch_message(
-                            message.reference.message_id))
-            except discord.errors.NotFound:
-                reference = None
-            if reference:
-                embed = discord.Embed(description = (
-                    '**[Reply to:](%s)** %s' % (
-                        reference.jump_url,
-                        # TODO handle markdown
-                        reference.clean_content[:100] + (
-                            REPLY_CUTOFF if len(reference.clean_content) > 100
-                            else ''))
-                    if reference.content else
-                    '*[(click to see attachment)](%s)*' % reference.jump_url))
-                embed.set_author(
-                        name = reference.author.display_name + REPLY_SYMBOL,
-                        icon_url = reference.author.display_avatar)
-
         args = (message, proxy, prefs, content)
         proxtype = proxy['type']
         if proxtype == ProxyType.collective:
@@ -452,6 +439,31 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     (proxy['become'] + 1/BECOME_MAX, proxy['proxid']))
             if random.random() > proxy['become']:
                 return
+
+        embed = None
+        if message.reference:
+            try:
+                reference = (message.reference.cached_message or
+                        await message.channel.fetch_message(
+                            message.reference.message_id))
+            except discord.errors.NotFound:
+                reference = None
+            if reference:
+                embed = discord.Embed(description = (
+                    '**[Reply to:](%s)** %s' % (
+                        reference.jump_url,
+                        # TODO handle markdown
+                        reference.clean_content[:100] + (
+                            REPLY_CUTOFF if len(reference.clean_content) > 100
+                            else ''))
+                    if reference.content else
+                    '*[(click to see attachment)](%s)*' % reference.jump_url))
+                if present['color']:
+                    embed.color = discord.Color.from_str(present['color'])
+                embed.set_author(
+                        name = reference.author.display_name + REPLY_SYMBOL,
+                        icon_url = reference.author.display_avatar)
+        del present['color']
 
         try:
             hook = await self.get_webhook(message)
@@ -508,7 +520,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def init_user(self, user):
-        self.execute('insert into users values (?, ?, ?)',
+        self.execute('insert into users values (?, ?, ?, "", NULL)',
                 (user.id, str(user), DEFAULT_PREFS))
         self.mkproxy(user.id, ProxyType.override)
 
