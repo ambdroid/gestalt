@@ -79,7 +79,7 @@ HELPMSGS = {
         '- swap\n'
         '- pluralkit\n'
         '- collective\n'
-        '- prefs\n'
+        '- account\n'
         '- utility\n'
         '- server',
 
@@ -141,13 +141,18 @@ HELPMSGS = {
         '`{p}collective (collective id) name (name)`: rename Collective\n'
         '`{p}collective (collective id) avatar (link/attacjment)`: set '
         'Collective avatar.\n'
+        '`{p}collective (collective id) color (color)`: set Collective color.\n'
         '`{p}collective new (@role/everyone)`: create a new Collective. '
         'Requires `Manage Roles` permission.\n'
         '`{p}collective (collective id) delete`: requires `Manage Roles`.',
 
-        'prefs':
-        '**Preferences**:\n'
-        '- `replace`: convert singular pronouns to plural. (default: **off**)\n'
+        'account':
+        '**Account**: (shortcut: `{p}a`)\n'
+        '`{p}account config`: list your current settings.\n'
+        '`{p}account config [name] [on/off/blank]`: toggle settings.\n'
+        '`{p}account config defaults`: reset your settings.\n'
+        '- `replace`: convert singular pronouns to plural in collectives. '
+        '(default: **off**)\n'
         '- `errors`: if off, Gestalt will silently fail on command errors. '
         '(default: **on**)\n'
         '- `delay`: if on, Gestalt will wait a fraction of a second before '
@@ -155,9 +160,8 @@ HELPMSGS = {
         '(default: **off**)\n'
         '- `latch`: if on, using a proxy instantly enables autoproxy for it. '
         '(default: **off**)\n'
-        '`{p}prefs`: list your current preferences.\n'
-        '`{p}prefs [name] [on/off/blank]`: toggle.\n'
-        '`{p}prefs defaults`: reset your preferences.',
+        '\n'
+        '`{p}account color (color)`: change your color in swaps.',
 
         'server':
         '**Server Commands**:\n'
@@ -193,6 +197,45 @@ EXPLAIN = (
         'Due to Discord limitations, these messages will show up with the '
         '`[BOT]` tag - however, they are not bots. Unless they are.'
         )
+
+# Oh, You Know
+NAMED_COLORS = {
+        'june':     '#0715CD',
+        'john':     '#0715CD',
+        'rose':     '#B536DA',
+        'dave':     '#E00707',
+        'jade':     '#4AC925',
+        'jane':     '#00D5F2',
+        'jake':     '#1F9400',
+        'roxy':     '#FF6FF2',
+        'dirk':     '#F2A400',
+        'aradia':   '#A10000',
+        'tavros':   '#A15000',
+        'sollux':   '#A1A100',
+        'karkat':   '#626262',
+        'nepeta':   '#416600',
+        'kanaya':   '#008141',
+        'terezi':   '#008282',
+        'vriska':   '#005682',
+        'equius':   '#000056',
+        'gamzee':   '#2B0057',
+        'eridan':   '#6A006A',
+        'feferi':   '#77003C',
+        'calliope': '#929292',
+        'caliborn': '#323232',
+        'breath':   '#0086EB',
+        'blood':    '#3D1909',
+        'space':    '#000000',
+        'time':     '#B70D0E',
+        'light':    '#F98100',
+        'void':     '#033476',
+        'mind':     '#50B250',
+        'heart':    '#6E0E2E',
+        'life':     '#CCC3B4',
+        'doom':     '#20401F',
+        'hope':     '#FFE094',
+        'rage':     '#391E71',
+        }
 
 ERROR_DM = 'You need to be in a server to do that!'
 ERROR_TAGS = 'Those tags conflict with another proxy.'

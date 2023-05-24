@@ -967,14 +967,14 @@ class GestaltTest(unittest.TestCase):
         after = (
                 'We are Ourselves. We were and are. We\'re. We\'re. are We? '
                 'We Us Our Ours.')
-        self.assertCommand(alpha, chan, 'gs;prefs replace off')
+        self.assertCommand(alpha, chan, 'gs;account config replace off')
         msg = send(alpha, chan, 'e:' + before)
         self.assertEqual(msg.content, before)
-        self.assertCommand(alpha, chan, 'gs;prefs replace')
+        self.assertCommand(alpha, chan, 'gs;a config replace')
         msg = send(alpha, chan, 'e:' + before)
         self.assertEqual(msg.content, after)
-        self.assertCommand(alpha, chan, 'gs;prefs replace off')
-        self.assertCommand(alpha, chan, 'gs;prefs defaults')
+        self.assertCommand(alpha, chan, 'gs;a config replace off')
+        self.assertCommand(alpha, chan, 'gs;a config defaults')
         self.assertEqual(msg.content, after)
 
     def test_11_avatar_url(self):
@@ -1015,7 +1015,7 @@ class GestaltTest(unittest.TestCase):
 
     def test_13_latch(self):
         chan = g['main']
-        self.assertCommand(alpha, chan, 'gs;prefs latch')
+        self.assertCommand(alpha, chan, 'gs;a config latch')
         self.assertNotProxied(alpha, chan, 'no proxy, no auto')
         self.assertProxied(alpha, chan, 'e: proxy, no auto')
         self.assertProxied(alpha, chan, 'no proxy, auto')
@@ -1031,7 +1031,7 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, chan, 'no proxy, auto')
         self.assertNotProxied(alpha, chan, '\\\\unlatch')
         self.assertNotProxied(alpha, chan, 'no proxy, no auto')
-        self.assertCommand(alpha, chan, 'gs;prefs latch off')
+        self.assertCommand(alpha, chan, 'gs;a config latch off')
 
         self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
         self.assertProxied(alpha, chan, 'no proxy, auto')
@@ -1287,7 +1287,8 @@ class GestaltTest(unittest.TestCase):
 
         instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
         instance.session._add('/members/aaaaa',
-                '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!"}')
+                '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
+                '"color": "123456"}')
 
         self.assertCommand(alpha, c, 'gs;swap open %s' % beta.mention)
         # swap needs to be active
@@ -1322,7 +1323,7 @@ class GestaltTest(unittest.TestCase):
         instance.session._add('/messages/' + str(old.id),
                 '{"member": {"uuid": "a-a-a-a-a"}}')
         instance.session._add('/messages/' + str(new.id),
-                '{"member": {"uuid": "a-a-a-a-a"}}')
+                '{"member": {"uuid": "a-a-a-a-a", "color": "123456"}}')
         instance.session._add('/messages/' + str(nope.id),
                 '{"member": {"uuid": "z-z-z-z-z"}}')
         self.assertNotCommand(beta, c, 'gs;pk sync')
@@ -1332,12 +1333,30 @@ class GestaltTest(unittest.TestCase):
             Object(cached_message = None, message_id = new.id))
         self.assertNotCommand(beta, c, 'gs;pk sync',
             Object(cached_message = None, message_id = old.id))
-        self.assertProxied(beta, c, '[test]')
-        self.assertEqual(c[-1].author.name, 'member!')
+        msg = self.assertProxied(beta, c, '[test]',
+            Object(cached_message = None, message_id = new.id))
+        self.assertEqual(msg.author.name, 'member!')
+        self.assertEqual(str(msg.embeds[0].color), '#123456')
         # test a message with no pk entry
         instance.session._add('/messages/' + str(c[-1].id), 404)
         self.assertNotCommand(beta, c, 'gs;pk sync',
                 Object(cached_message = c[-1]))
+        # change the color
+        instance.session._add('/messages/' + str(new.id),
+                '{"member": {"uuid": "a-a-a-a-a", "color": "654321"}}')
+        self.assertCommand(beta, c, 'gs;pk sync',
+            Object(cached_message = None, message_id = new.id))
+        msg = self.assertProxied(beta, c, '[test]',
+            Object(cached_message = None, message_id = new.id))
+        self.assertEqual(str(msg.embeds[0].color), '#654321')
+        # delete the color
+        instance.session._add('/messages/' + str(new.id),
+                '{"member": {"uuid": "a-a-a-a-a", "color": null}}')
+        self.assertCommand(beta, c, 'gs;pk sync',
+            Object(cached_message = None, message_id = new.id))
+        msg = self.assertProxied(beta, c, '[test]',
+            Object(cached_message = None, message_id = new.id))
+        self.assertEqual(msg.embeds[0].color, None)
 
         # make sure other "mask" commands don't work
         self.assertNotCommand(beta, c, 'gs;c pk-a-a-a-a-a name nope')
@@ -1459,6 +1478,63 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(log._messages), 2)
         self.assertEqual(log[1].content, 'http://%i/%i/%i' % (g1.id, th.id,
             msg.id))
+
+        self.assertCommand(beta, c, 'gs;swap close test-alpha')
+
+    def test_26_colors(self):
+        g1 = Guild(name = 'colorful guild')
+        c = g1._add_channel('main')
+        run(g1._add_member(instance.user))
+        run(g1._add_member(alpha))
+        run(g1._add_member(beta))
+
+        # pk swap colors are already tested
+        role = g1._add_role('role')
+        self.assertCommand(alpha, c, 'gs;c new %s' % role.mention)
+        run(g1.get_member(alpha.id)._add_role(role))
+        self.assertCommand(alpha, c, 'gs;p role tags c:text')
+        self.assertCommand(alpha, c, 'gs;swap open %s beta:text'
+                % beta.mention)
+        self.assertCommand(beta, c, 'gs;swap open %s' % alpha.mention)
+
+        # collectives
+        target = self.assertProxied(alpha, c, 'c:message')
+        msg = self.assertProxied(alpha, c, 'c:reply',
+            Object(cached_message = None, message_id = target.id))
+        self.assertIsNone(msg.embeds[0].color)
+        self.assertCommand(alpha, c, 'gs;c role color rose')
+        msg = self.assertProxied(alpha, c, 'c:reply',
+            Object(cached_message = None, message_id = target.id))
+        self.assertEqual(str(msg.embeds[0].color).upper(),
+                gestalt.NAMED_COLORS['rose'])
+        self.assertNotCommand(beta, c, 'gs;c role color john')
+        msg = self.assertProxied(alpha, c, 'c:reply',
+            Object(cached_message = None, message_id = target.id))
+        self.assertEqual(str(msg.embeds[0].color).upper(),
+                gestalt.NAMED_COLORS['rose'])
+        self.assertCommand(alpha, c, 'gs;c role color -clear')
+        msg = self.assertProxied(alpha, c, 'c:reply',
+            Object(cached_message = None, message_id = target.id))
+        self.assertIsNone(msg.embeds[0].color)
+
+        # swaps
+        target = self.assertProxied(alpha, c, 'beta:message')
+        msg = self.assertProxied(alpha, c, 'beta:reply',
+            Object(cached_message = None, message_id = target.id))
+        self.assertIsNone(msg.embeds[0].color)
+        self.assertCommand(beta, c, 'gs;account color #888888')
+        msg = self.assertProxied(alpha, c, 'beta:reply',
+            Object(cached_message = None, message_id = target.id))
+        self.assertEqual(str(msg.embeds[0].color), '#888888')
+        self.assertCommand(beta, c, 'gs;account color -clear')
+        msg = self.assertProxied(alpha, c, 'beta:reply',
+            Object(cached_message = None, message_id = target.id))
+        self.assertIsNone(msg.embeds[0].color)
+
+        # also test that updating collectives is safe
+        self.assertNotCommand(alpha, c, 'gs;c role type 5')
+
+        self.assertCommand(beta, c, 'gs;swap close test-alpha')
 
 
 def main():

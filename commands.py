@@ -290,7 +290,7 @@ class GestaltCommands:
         # '@everyone' is awkward and more likely to cause collisions as cmdname
         name = role.guild.name if role == role.guild.default_role else role.name
         self.execute('insert or ignore into masks values'
-                '(?, ?, ?, ?, NULL, ?, NULL)',
+                '(?, ?, ?, ?, NULL, NULL, ?, NULL)',
                 (collid, role.guild.id, role.id, name, ProxyType.collective))
         # if there wasn't already a collective on that role
         if self.cur.rowcount == 1:
@@ -304,10 +304,12 @@ class GestaltCommands:
 
 
     async def cmd_collective_update(self, message, collid, name, value):
+        if name not in ['nick', 'name', 'avatar', 'color']:
+            return
         self.execute(
                 'update masks set %s = ? '
                 'where maskid = ?'
-                % ('nick' if name == 'name' else 'avatar'),
+                % ('nick' if name == 'name' else name),
                 (value, collid))
         if self.cur.rowcount == 1:
             await self.mark_success(message, True)
@@ -320,24 +322,24 @@ class GestaltCommands:
             await self.mark_success(message, True)
 
 
-    async def cmd_prefs_list(self, message, user):
-        # list current prefs in 'pref: [on/off]' format
+    async def cmd_config_list(self, message, user):
+        # list current settings in 'setting: [on/off]' format
         text = '\n'.join(['%s: **%s**' %
                 (pref.name, 'on' if user['prefs'] & pref else 'off')
                 for pref in Prefs])
         await self.send_embed(message, text)
 
 
-    async def cmd_prefs_default(self, message):
+    async def cmd_config_default(self, message):
         self.execute(
                 'update users set prefs = ? where userid = ?',
                 (DEFAULT_PREFS, message.author.id))
         await self.mark_success(message, True)
 
 
-    async def cmd_prefs_update(self, message, user, name, value):
+    async def cmd_config_update(self, message, user, name, value):
         bit = int(Prefs[name])
-        if value == None: # only 'prefs' + name given. invert the thing
+        if value == None: # only 'config' + name given. invert the thing
             prefs = user['prefs'] ^ bit
         else:
             prefs = (user['prefs'] & ~bit) | (bit * value)
@@ -345,6 +347,12 @@ class GestaltCommands:
                 'update users set prefs = ? where userid = ?',
                 (prefs, message.author.id))
 
+        await self.mark_success(message, True)
+
+
+    async def cmd_account_update(self, message, value):
+        self.execute('update users set color = ? where userid = ?',
+                (value, message.author.id))
         await self.mark_success(message, True)
 
 
@@ -560,24 +568,38 @@ class GestaltCommands:
         except KeyError:
             raise RuntimeError(ERROR_PKAPI)
 
-        exists = self.fetchone(
-                'select 1 from proxies where (type, maskid, state) = (?, ?, ?)',
+        mask = self.fetchone(
+                'select * from proxies where (type, maskid, state) = (?, ?, ?)',
                 (ProxyType.pkswap, pkuuid, ProxyState.active))
-        if not exists:
+        if not mask:
             raise RuntimeError('That member has no Gestalt proxies.')
 
         mask = self.fetchone(
-                'select updated from masks '
+                'select color, updated from masks '
                 'where (maskid, guildid) = (?, ?)',
                 ('pk-' + pkuuid, message.guild.id))
         if mask and mask['updated'] > ref.id:
             raise RuntimeError('Please use a more recent proxied message.')
 
         self.execute(
-                'insert or replace into masks values (?, ?, NULL, ?, ?, ?, ?)',
+                'insert or replace into masks values '
+                '(?, ?, NULL, ?, ?, ?, ?, ?)',
                 ('pk-' + pkuuid, message.guild.id, ref.author.display_name,
                     str(ref.author.display_avatar),
+                    mask['color'] if mask else None,
                     ProxyType.pkswap, ref.id))
+        try:
+            # if pk color is null, keep it None
+            if (color := proxied['member']['color']) is not None:
+                # color is hex string without '#'
+                color = str(discord.Color.from_str('#' + color))
+            if not mask or mask['color'] != color:
+                # colors aren't set per-server, so set it everywhere
+                # (even if the message is older, pk returns the current color)
+                self.execute('update masks set color = ? where maskid = ?',
+                        (color, 'pk-' + pkuuid))
+        except (KeyError, ValueError, TypeError):
+            pass
 
         await self.mark_success(message, True)
 
@@ -678,7 +700,7 @@ class GestaltCommands:
                     raise RuntimeError(
                             'That collective belongs to another guild.')
 
-                if action in ['name', 'avatar']:
+                if action in ['nick', 'name', 'avatar', 'color']:
                     arg = reader.read_remainder()
 
                     role = guild.get_role(row['roleid'])
@@ -699,6 +721,16 @@ class GestaltCommands:
                             arg = message.attachments[0].url
                         elif arg and not re.match('http(s?)://.*', arg):
                             raise RuntimeError('Invalid avatar URL!')
+                    if action == 'color':
+                        if arg == '-clear':
+                            arg = None
+                        else:
+                            arg = NAMED_COLORS.get(arg.lower(), arg)
+                            try:
+                                arg = str(discord.Color.from_str(arg))
+                            except ValueError:
+                                raise RuntimeError(
+                                        'Please enter a color (e.g. `#012345`)')
 
                     return await self.cmd_collective_update(message, collid,
                             action, arg)
@@ -711,29 +743,46 @@ class GestaltCommands:
 
                     return await self.cmd_collective_delete(message, row)
 
-        elif arg == 'prefs':
-            # user must exist due to on_message
-            user = self.fetchone(
-                    'select * from users where userid = ?',
-                    (authid,))
+        elif arg in ['account', 'a']:
             arg = reader.read_word()
-            if len(arg) == 0:
-                return await self.cmd_prefs_list(message, user)
+            if arg == 'config':
+                # user must exist due to on_message
+                user = self.fetchone(
+                        'select * from users where userid = ?',
+                        (authid,))
+                arg = reader.read_word()
+                if len(arg) == 0:
+                    return await self.cmd_config_list(message, user)
 
-            if arg in ['default', 'defaults']:
-                return await self.cmd_prefs_default(message)
+                if arg in ['default', 'defaults']:
+                    return await self.cmd_config_default(message)
 
-            if not arg in Prefs.__members__.keys():
-                raise RuntimeError('That preference does not exist.')
+                if not arg in Prefs.__members__.keys():
+                    raise RuntimeError('That setting does not exist.')
 
-            if reader.is_empty():
-                value = None
-            else:
-                value = reader.read_bool_int()
-                if value == None:
-                    raise RuntimeError('Please specify "on" or "off".')
+                if reader.is_empty():
+                    value = None
+                else:
+                    value = reader.read_bool_int()
+                    if value == None:
+                        raise RuntimeError('Please specify "on" or "off".')
 
-            return await self.cmd_prefs_update(message, user, arg, value)
+                return await self.cmd_config_update(message, user, arg, value)
+
+            elif arg in ['color', 'colour']:
+                arg = reader.read_word()
+                if arg == '-clear':
+                    arg = None
+                else:
+                    arg = NAMED_COLORS.get(arg.lower(), arg)
+                    try:
+                        arg = str(discord.Color.from_str(arg))
+                    except ValueError:
+                        raise RuntimeError(
+                                'Please enter a color (e.g. `#012345`)')
+
+                return await self.cmd_account_update(message, arg)
+
 
         elif arg in ['swap', 's']:
             arg = reader.read_word().lower()
