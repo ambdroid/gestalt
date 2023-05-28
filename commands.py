@@ -203,10 +203,10 @@ class GestaltCommands:
                 line = SYMBOL_RECEIPT + line
 
             if proxy['prefix'] is not None:
-                parens += (' `%s`'
-                        % (proxy['prefix'] + 'text' + proxy['postfix'])
-                        # hack because escaping ` doesn't work in code blocks
-                        .replace('`', '\N{REVERSED PRIME}'))
+                parens += ' `%s`' % (
+                        ('`%stext%s`' % (proxy['prefix'], proxy['postfix']))
+                        .replace('``', '`\N{ZWNBSP}`')
+                        .replace('``', '`\N{ZWNBSP}`'))
             if proxy['state'] == ProxyState.inactive:
                 parens += ' *(inactive)*'
             if proxy['flags'] & ProxyFlags.auto:
