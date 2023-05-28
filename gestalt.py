@@ -487,6 +487,18 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         delay = DELETE_DELAY if prefs & Prefs.delay else 0.0
         await message.delete(delay = delay)
 
+        # try to automatically fix external emojis
+        # custom emojis are of the form /<:[a-zA-Z90-9_~]+:[0-9]+>/
+        # when proxied they are usually replaced with the :name: part
+        # so all we have to do is count the angle brackets
+        # (don't compare content != content bc not sure what else might change)
+        if msg.content.count('<') != present['content'].count('<'):
+            try:
+                await hook.edit_message(msg.id, content = present['content'],
+                        thread = thread)
+            except:
+                pass
+
         logchan = self.fetchone('select logchan from guilds where guildid = ?',
                 (message.guild.id,))
         if logchan:
