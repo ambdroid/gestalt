@@ -719,7 +719,7 @@ class GestaltCommands:
                     if action == 'avatar':
                         if message.attachments and not arg:
                             arg = message.attachments[0].url
-                        elif arg and not re.match('http(s?)://.*', arg):
+                        elif arg and not LINK_REGEX.fullmatch(arg):
                             raise RuntimeError('Invalid avatar URL!')
                     if action in ['color', 'colour']:
                         if arg == '-clear':

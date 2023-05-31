@@ -980,12 +980,17 @@ class GestaltTest(unittest.TestCase):
     def test_11_avatar_url(self):
         chan = g['main']
         collid = self.get_collid(g.default_role)
-        self.assertCommand(alpha, chan, 'gs;c %s avatar http://a' % collid)
-        self.assertCommand(alpha, chan, 'gs;c %s avatar https://a' % collid)
-        self.assertNotCommand(alpha, chan, 'gs;c %s avatar http:/a' % collid)
-        self.assertNotCommand(alpha, chan, 'gs;c %s avatar https:/a' % collid)
-        self.assertNotCommand(alpha, chan, 'gs;c %s avatar _https://a' % collid)
+        self.assertCommand(alpha, chan, 'gs;c %s avatar http://avatar.gov'
+                % collid)
+        self.assertCommand(alpha, chan, 'gs;c %s avatar https://avatar.gov'
+                % collid)
+        self.assertNotCommand(alpha, chan, 'gs;c %s avatar http:/avatar.gov'
+                % collid)
+        self.assertNotCommand(alpha, chan, 'gs;c %s avatar _https://avatar.gov'
+                % collid)
         self.assertNotCommand(alpha, chan, 'gs;c %s avatar foobar' % collid)
+        self.assertCommand(alpha, chan, 'gs;c %s avatar <http://avatar.gov>'
+                % collid)
         self.assertCommand(alpha, chan, 'gs;c %s avatar' % collid)
         self.assertCommand(alpha, chan, 'gs;c %s avatar ""' % collid)
 
