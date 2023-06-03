@@ -83,6 +83,13 @@ class CommandReader:
             return guild.default_role
         return discord.utils.get(guild.roles, name = name)
 
+    def read_channel(self):
+        self.read_word() # discard
+        if self.msg.channel_mentions:
+            chan = self.msg.channel_mentions[0]
+            if chan.guild == self.msg.guild:
+                return chan
+
 
 class GestaltCommands:
     def get_user_proxy(self, message, name):
@@ -487,6 +494,15 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
+    async def cmd_channel_mode(self, message, channel, mode):
+        # blacklist = 0, log = 1
+        self.execute('insert or ignore into channels values (?, ?, 0, 1, ?)',
+                (channel.id, channel.guild.id, ChannelMode.default))
+        self.execute('update channels set mode = ? where chanid = ?',
+                (ChannelMode[mode], channel.id))
+        await self.mark_success(message, True)
+
+
     async def pk_api_get(self, url):
         await self.pk_ratelimit.block()
         try:
@@ -860,20 +876,33 @@ class GestaltCommands:
 
             arg = reader.read_word().lower()
             if arg == 'channel':
-                arg = reader.read_remainder()
-                if message.channel_mentions:
-                    channel = message.channel_mentions[0]
-                else:
-                    channel = discord.utils.get(
-                            self.get_guild(message.guild.id).channels,
-                            name = arg)
-                    if not channel:
-                        raise RuntimeError('Please provide a channel.')
+                channel = reader.read_channel()
+                if not channel:
+                    raise RuntimeError('Please mention a channel.')
 
                 return await self.cmd_log_channel(message, channel)
 
             if arg == 'disable':
                 return await self.cmd_log_disable(message)
+
+        elif arg == 'channel':
+            if not message.guild:
+                raise RuntimeError(ERROR_DM)
+            if not message.author.guild_permissions.manage_channels:
+                raise RuntimeError(
+                        'You need `Manage Channels` permissions to do that.')
+
+            channel = reader.read_channel()
+            if not channel:
+                raise RuntimeError('Please mention a channel.')
+
+            arg = reader.read_word()
+            if arg == 'mode':
+                mode = reader.read_word()
+                if mode not in ChannelMode.__members__.keys():
+                    raise RuntimeError('Invalid channel mode.')
+
+                return await self.cmd_channel_mode(message, channel, mode)
 
         elif arg == 'explain':
             if self.has_perm(message, send_messages = True):

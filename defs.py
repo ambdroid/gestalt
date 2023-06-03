@@ -50,6 +50,12 @@ ALLOWED_CHANNELS = (
 
 
 @enum.unique
+class ChannelMode(enum.IntEnum):
+    default     = 0
+    mandatory   = 1
+
+
+@enum.unique
 class Prefs(enum.IntFlag):
 #   auto        = 1 << 0
     replace     = 1 << 1
