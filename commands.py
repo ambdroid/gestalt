@@ -440,8 +440,7 @@ class GestaltCommands:
             await self.confirm_webhook_deletion(hook)
             return await self.mark_success(message, False)
 
-        if self.has_perm(message, manage_messages = True):
-            await message.delete()
+        await self.try_delete(message)
 
         logchan = self.fetchone('select logchan from guilds where guildid = ?',
                 (message.guild.id,))

@@ -164,23 +164,32 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.conn.commit()
 
 
-    async def mark_success(self, message, success):
+    async def try_delete(self, message):
+        if self.has_perm(message, manage_messages = True):
+            await message.delete()
+            return True
+
+
+    async def try_add_reaction(self, message, reaction):
         if self.has_perm(message, add_reactions = True,
                 read_message_history = True):
             try:
-                await message.add_reaction(
-                    REACT_CONFIRM if success else REACT_DELETE)
+                await message.add_reaction(reaction)
+                return True
             except discord.errors.NotFound:
                 pass
+
+
+    async def mark_success(self, message, success):
+        await self.try_add_reaction(message,
+                REACT_CONFIRM if success else REACT_DELETE)
 
 
     class InProgress:
         def __init__(self, client, message):
             (self.client, self.message) = (client, message)
         async def __aenter__(self):
-            if self.client.has_perm(self.message, add_reactions = True,
-                    read_message_history = True):
-                await self.message.add_reaction(REACT_WAIT)
+            await self.client.try_add_reaction(self.message, REACT_WAIT)
         async def __aexit__(self, *args):
             try:
                 await self.message.remove_reaction(REACT_WAIT, self.client.user)
@@ -199,9 +208,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 embed = discord.Embed(description = text))
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
-            if self.has_perm(msg, add_reactions = True,
-                    read_message_history = True):
-                await msg.add_reaction(REACT_DELETE)
+            await self.try_add_reaction(msg, REACT_DELETE)
             self.mkhistory(msg, replyto.author)
 
 
@@ -553,8 +560,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # command prefix is optional in DMs
         if (prefix := lower.startswith(COMMAND_PREFIX)) or not message.guild:
             if mandatory:
-                if self.has_perm(message, manage_messages = True):
-                    await message.delete()
+                await self.try_delete(message)
                 raise RuntimeError(
                         'You cannot use commands in a Mandatory mode channel.')
 
@@ -591,8 +597,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     or match['type'] == ProxyType.override or (
                         (match['type'], match['otherid'])
                         == (ProxyType.swap, authid))):
-                        if self.has_perm(message, manage_messages = True):
-                            await message.delete()
+                        await self.try_delete(message)
                         return
 
         if match and (match := dict(match))['state'] == ProxyState.active:
@@ -608,22 +613,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 if latch:
                     # this disables other autos
                     self.set_proxy_auto(match, True)
-            else:
-                if self.has_perm(message, manage_messages = True):
-                    msg = None
-                    try:
-                        msg = await self.do_proxy(message, match, prefs)
-                        if msg and latch:
-                            self.set_proxy_auto(match, True)
-                    finally:
-                        # if the proxy couldn't be used in this channel
-                        # (unsynced pkswap, swap with non-member)
-                        if not msg and mandatory:
-                            if self.has_perm(message, manage_messages = True):
-                                await message.delete()
-                else:
-                    await self.send_embed(message,
-                            'I need `Manage Messages` permission to proxy.')
+                return
+            if not self.has_perm(message, manage_messages = True):
+                raise RuntimeError(
+                        'I need `Manage Messages` permission to proxy.')
+            msg = None
+            try:
+                msg = await self.do_proxy(message, match, prefs)
+                if msg and latch:
+                    self.set_proxy_auto(match, True)
+            finally:
+                # if the proxy couldn't be used in this channel
+                # (unsynced pkswap, swap with non-member)
+                if not msg and mandatory:
+                    await self.try_delete(message)
 
 
     async def on_message(self, message):
@@ -706,8 +709,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         elif emoji == REACT_DELETE:
             # sender or swapee may delete proxied message
             if payload.user_id in (row['authid'], row['otherid']):
-                if self.has_perm(message, manage_messages = True):
-                    await message.delete()
+                if await self.try_delete(message):
                     self.execute(
                             'delete from history where msgid = ?',
                             (payload.message_id,))
