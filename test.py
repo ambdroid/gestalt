@@ -341,8 +341,10 @@ class Guild(Object):
         # NOTE: does on_member_update get called here? probably not but idk
         await instance.on_member_join(member)
         return member
+    def _remove_member(self, user):
+        del self._members[user.id]
     def get_member(self, user_id):
-        return self._members[user_id] if user_id in self._members else None
+        return self._members.get(user_id)
     def get_role(self, role_id):
         return self._roles[role_id]
 
@@ -394,11 +396,11 @@ class NotFound(discord.errors.NotFound):
     def __init__(self):
         pass
 
-def send(user, channel, content, reference = None, files = []):
+def send(user, channel, content, reference = None, files = [], orig = False):
     msg = Message(author = user, content = content, reference = reference,
             attachments = files)
     run(channel._add(msg))
-    return channel[-1] if msg._deleted else msg
+    return channel[-1] if msg._deleted and not orig else msg
 
 class GestaltTest(unittest.TestCase):
 
@@ -451,14 +453,23 @@ class GestaltTest(unittest.TestCase):
         return msg
 
     def assertProxied(self, *args, **kwargs):
-        msg = send(*args, **kwargs)
-        self.assertIsNotNone(msg.webhook_id)
-        return msg
+        msg = send(*args, **kwargs, orig = True)
+        self.assertTrue(msg._deleted)
+        self.assertGreater(msg.channel[-1].id, msg.id)
+        self.assertIsNotNone(msg.channel[-1].webhook_id)
+        return msg.channel[-1]
 
     def assertNotProxied(self, *args, **kwargs):
-        msg = send(*args, **kwargs)
+        msg = send(*args, **kwargs, orig = True)
+        self.assertEqual(msg, msg.channel[-1])
         self.assertIsNone(msg.webhook_id)
         return msg
+
+    def assertDeleted(self, *args, **kwargs):
+        # test that the message was deleted with none others sent
+        msg = send(*args, **kwargs, orig = True)
+        self.assertTrue(msg._deleted)
+        self.assertLess(msg.channel[-1].id, msg.id)
 
     def assertEditedContent(self, message, content):
         self.assertEqual(
@@ -1342,6 +1353,10 @@ class GestaltTest(unittest.TestCase):
             Object(cached_message = None, message_id = new.id))
         self.assertEqual(msg.author.name, 'member!')
         self.assertEqual(str(msg.embeds[0].color), '#123456')
+        # test other member not being present
+        g1._remove_member(alpha)
+        msg = self.assertNotProxied(beta, c, '[test]')
+        run(g1._add_member(alpha))
         # test a message with no pk entry
         instance.session._add('/messages/' + str(c[-1].id), 404)
         self.assertNotCommand(beta, c, 'gs;pk sync',
@@ -1541,6 +1556,83 @@ class GestaltTest(unittest.TestCase):
 
         self.assertCommand(beta, c, 'gs;swap close test-alpha')
 
+    def test_27_mandatory(self):
+        g1 = Guild(name = 'mandatory guild')
+        main = g1._add_channel('main')
+        cmds = g1._add_channel('cmds')
+        run(g1._add_member(instance.user))
+        run(g1._add_member(alpha))
+        run(g1._add_member(beta))
+
+        self.assertNotCommand(alpha, cmds, 'gs;channel %s mode irl' %
+            Guild()._add_channel('channel').mention)
+        # channel needs to be in the same guild
+        self.assertNotCommand(alpha, cmds, 'gs;channel %s mode mandatory' %
+            Guild()._add_channel('channel').mention)
+
+        self.assertCommand(alpha, cmds, 'gs;swap open %s alpha:text'
+                % alpha.mention)
+        self.assertProxied(alpha, main, 'alpha:self swap')
+        self.assertCommand(alpha, cmds, 'gs;channel %s mode mandatory'
+                % main.mention)
+        # self-swap should be deleted
+        self.assertDeleted(alpha, main, 'alpha:self swap')
+        self.assertCommand(alpha, cmds, 'gs;swap open %s beta:text'
+                % beta.mention)
+        # inactive swap should be deleted
+        self.assertDeleted(alpha, main, 'beta:test')
+        self.assertCommand(beta, cmds, 'gs;swap open %s alpha:text'
+                % alpha.mention)
+        # swap with present member should be fine
+        self.assertProxied(alpha, main, 'beta:test')
+        g1._remove_member(beta)
+        # swap with non-present member should be deleted
+        self.assertDeleted(alpha, main, 'beta:test')
+        run(g1._add_member(beta))
+
+        # message without a proxy should be deleted
+        self.assertDeleted(alpha, main, 'no proxy')
+
+        self.assertCommand(alpha, cmds, 'gs;p %s tags x:text'
+                % self.get_proxid(alpha, None))
+        # message with override should be deleted
+        self.assertDeleted(alpha, main, 'x:test')
+
+        self.assertCommand(alpha, cmds, 'gs;collective new everyone')
+        self.assertCommand(alpha, cmds, 'gs;p "mandatory guild" tags c:text')
+        # collective should be fine
+        self.assertProxied(alpha, main, 'c:test')
+
+        pkhook = Webhook(cmds, 'pk webhook')
+        instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
+        instance.session._add('/members/aaaaa',
+                '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
+                '"color": "123456"}')
+        pkmsg = run(pkhook.send('member!', '', content = 'new message'))
+        instance.session._add('/messages/' + str(pkmsg.id),
+                '{"member": {"uuid": "a-a-a-a-a"}}')
+        self.assertCommand(alpha, cmds, 'gs;pk swap test-beta aaaaa')
+        self.assertCommand(beta, cmds, 'gs;p member! tags memb:text')
+        # unsynced pkswap should be deleted
+        self.assertDeleted(beta, main, 'memb:not synced')
+        self.assertCommand(beta, cmds, 'gs;pk sync',
+            Object(cached_message = None, message_id = pkmsg.id))
+        # synced pkswap should be fine
+        self.assertProxied(beta, main, 'memb:synced')
+        g1._remove_member(alpha)
+        # swap with non-present member should be deleted
+        self.assertDeleted(beta, main, 'memb:not present')
+        run(g1._add_member(alpha))
+
+        # command should be deleted
+        self.assertDeleted(alpha, main, 'gs;swap close test-beta')
+
+        # change it back and everything should be fine
+        self.assertCommand(alpha, cmds, 'gs;channel %s mode default'
+                % main.mention)
+        self.assertCommand(alpha, main, 'gs;swap close test-beta')
+        self.assertCommand(alpha, main, 'gs;swap close test-alpha')
+
 
 def main():
     global alpha, beta, gamma, g, instance
@@ -1571,6 +1663,7 @@ discord.Thread = Thread
 # don't spam the channel with error messages
 gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
 gestalt.DEFAULT_PREFS |= gestalt.Prefs.replace
+gestalt.commands.DEFAULT_PREFS = gestalt.DEFAULT_PREFS
 
 gestalt.BECOME_MAX = 1
 

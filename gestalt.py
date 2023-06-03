@@ -31,6 +31,13 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'guildid integer primary key,'
                 'logchan integer)')
         self.execute(
+                'create table if not exists channels('
+                'chanid integer primary key,' # (or thread)
+                'guildid integer,'
+                'blacklist integer,'    # reserved
+                'log integer,'          # also reserved
+                'mode integer)')
+        self.execute(
                 'create table if not exists history('
                 'msgid integer primary key,'
                 'threadid integer,'
@@ -540,8 +547,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     async def on_user_message(self, message, user):
         authid = message.author.id
         lower = message.content.lower()
+        chan = self.fetchone('select * from channels where chanid = ?',
+                (message.channel.id,))
+        mandatory = chan and chan['mode'] == ChannelMode.mandatory
         # command prefix is optional in DMs
         if (prefix := lower.startswith(COMMAND_PREFIX)) or not message.guild:
+            if mandatory:
+                if self.has_perm(message, manage_messages = True):
+                    await message.delete()
+                raise RuntimeError(
+                        'You cannot use commands in a Mandatory mode channel.')
+
             # init user if hasn't been init'd yet
             # it's impossible for the row to matter before they use a command
             if not user:
@@ -569,6 +585,16 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     lambda proxy : proxy['flags'] & ProxyFlags.auto != 0,
                     proxies)
 
+        if mandatory:
+            # note: pkswaps with own account are intentionally allowed
+            if (not match or match['state'] != ProxyState.active
+                    or match['type'] == ProxyType.override or (
+                        (match['type'], match['otherid'])
+                        == (ProxyType.swap, authid))):
+                        if self.has_perm(message, manage_messages = True):
+                            await message.delete()
+                        return
+
         if match and (match := dict(match))['state'] == ProxyState.active:
             prefs = user['prefs']
             if lower.startswith('\\') and not tags:
@@ -584,8 +610,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     self.set_proxy_auto(match, True)
             else:
                 if self.has_perm(message, manage_messages = True):
-                    if await self.do_proxy(message, match, prefs) and latch:
-                        self.set_proxy_auto(match, True)
+                    msg = None
+                    try:
+                        msg = await self.do_proxy(message, match, prefs)
+                        if msg and latch:
+                            self.set_proxy_auto(match, True)
+                    finally:
+                        # if the proxy couldn't be used in this channel
+                        # (unsynced pkswap, swap with non-member)
+                        if not msg and mandatory:
+                            if self.has_perm(message, manage_messages = True):
+                                await message.delete()
                 else:
                     await self.send_embed(message,
                             'I need `Manage Messages` permission to proxy.')
