@@ -299,6 +299,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     and proxy['postfix'].endswith(postfix)))]
 
 
+    async def on_webhooks_update(self, channel):
+        if hook := await self.get_webhook(channel):
+            await self.confirm_webhook_deletion(hook)
+
+
     def on_member_role_add(self, member, role):
         mask = self.fetchone(
                 'select maskid, nick from masks where roleid = ?',
@@ -386,20 +391,18 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         raise RuntimeError('That proxy has not been synced yet.')
 
 
-    async def get_webhook(self, message):
-        channel = message.channel
+    async def get_webhook(self, channel, create = False):
         if type(channel) == discord.Thread:
             channel = channel.parent
-        row = self.fetchone('select * from webhooks where chanid = ?',
-                (channel.id,))
-        if row == None:
+        if row := self.fetchone('select * from webhooks where chanid = ?',
+                (channel.id,)):
+            return discord.Webhook.partial(row[1], row[2],
+                    session = self.session)
+        if create:
             hook = await channel.create_webhook(name = WEBHOOK_NAME)
             self.execute('insert into webhooks values (?, ?, ?)',
                     (channel.id, hook.id, hook.token))
-        else:
-            hook = discord.Webhook.partial(row[1], row[2],
-                    session = self.session)
-        return hook
+            return hook
 
 
     async def confirm_webhook_deletion(self, hook):
@@ -411,6 +414,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             return True
         else:
             print('False NotFound for webhook %i' % hook.id, flush = True)
+
+
+    async def execute_webhook(self, channel, **kwargs):
+        hook = await self.get_webhook(channel, create = True)
+        try:
+            return (await hook.send(wait = True, **kwargs), hook)
+        except discord.errors.NotFound:
+            if await self.confirm_webhook_deletion(hook):
+                # webhook is deleted
+                hook = await self.get_webhook(channel, create = True)
+                return (await hook.send(wait = True, **kwargs), hook)
 
 
     async def do_proxy(self, message, proxy, prefs):
@@ -479,19 +493,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                         icon_url = reference.author.display_avatar)
         del present['color']
 
+        thread = (channel if type(channel) == discord.Thread
+                else discord.utils.MISSING)
         try:
-            hook = await self.get_webhook(message)
-            thread = (channel if type(channel) == discord.Thread
-                    else discord.utils.MISSING)
-            try:
-                msg = await hook.send(wait = True, files = msgfiles,
-                        embed = embed, thread = thread, **present)
-            except discord.errors.NotFound:
-                if await self.confirm_webhook_deletion(hook):
-                    # webhook is deleted
-                    hook = await self.get_webhook(message)
-                    msg = await hook.send(wait = True, files = msgfiles,
-                            embed = embed, thread = thread, **present)
+            (msg, hook) = await self.execute_webhook(channel, thread = thread,
+                    files = msgfiles, embed = embed, **present)
         except discord.errors.Forbidden:
             raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
 
@@ -508,8 +514,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # (don't compare content != content bc not sure what else might change)
         if msg.content.count('<') != present['content'].count('<'):
             try:
-                await hook.edit_message(msg.id, content = present['content'],
-                        thread = thread)
+                msg = await hook.edit_message(msg.id,
+                        content = present['content'], thread = thread)
             except:
                 pass
 

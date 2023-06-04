@@ -427,11 +427,9 @@ class GestaltCommands:
         except discord.errors.NotFound:
             return await self.mark_success(message, False)
 
-        hook = self.fetchone('select * from webhooks where chanid = ?',
-                (channel.id,))
-        if not hook or proxied.webhook_id != hook[1]:
+        hook = await self.get_webhook(channel)
+        if not hook or proxied.webhook_id != hook.id:
             return await self.mark_success(message, False)
-        hook = discord.Webhook.partial(hook[1], hook[2], session = self.session)
 
         try:
             await hook.edit_message(proxied.id, content = content,
