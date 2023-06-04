@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from datetime import datetime
 from asyncio import run
 import unittest
 import re
@@ -88,10 +89,12 @@ class Member:
 class Message(Object):
     def __init__(self, embed = None, **kwargs):
         self._deleted = False
+        self._prev = None
         self.webhook_id = None
         self.attachments = []
         self.reactions = []
         self.reference = None
+        self.edited_at = None
         self.embeds = [embed] if embed else []
         self.guild = None
         super().__init__(**kwargs)
@@ -183,6 +186,9 @@ class Webhook(Object):
         Webhook.hooks[self.id] = self
     def partial(id, token, session):
         return Webhook.hooks[id]
+    async def delete(self):
+        self._deleted = True
+        await instance.on_webhooks_update(self._channel)
     async def edit_message(self, message_id, content, thread = None):
         msg = await (thread or self._channel).fetch_message(message_id)
         if self._deleted or msg.webhook_id != self.id or (thread and
@@ -190,6 +196,8 @@ class Webhook(Object):
             raise NotFound()
         newmsg = Message(**msg.__dict__)
         newmsg.content = content
+        newmsg.edited_at = datetime.now()
+        newmsg._prev = msg
         msg.channel._messages[msg.channel._messages.index(msg)] = newmsg
         return newmsg
     async def fetch(self):
@@ -197,7 +205,7 @@ class Webhook(Object):
             raise NotFound()
         return self
     async def send(self, username, avatar_url, thread = None, **kwargs):
-        if self._deleted:
+        if self._deleted or (thread and thread.parent != self._channel):
             raise NotFound()
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
         msg.webhook_id = self.id
@@ -205,8 +213,13 @@ class Webhook(Object):
         msg.author = Object(id = self.id, bot = True,
                 name = name, display_name = name,
                 display_avatar = avatar_url)
-        if thread and thread.parent != self._channel:
-            raise NotFound()
+        if msg.content:
+            # simulate external emoji mangling
+            # i don't understand why this happens
+            msg.content = re.sub(
+                    '<(:[a-zA-Z90-9_~]+:)[0-9]+>',
+                    lambda match : match.group(1),
+                    msg.content)
         await (thread or self._channel)._add(msg)
         return msg
 
@@ -799,20 +812,14 @@ class GestaltTest(unittest.TestCase):
         # test what happens when a webhook is deleted
         hookid = send(alpha, g['main'], 'e:reiuskudfvb').webhook_id
         self.assertIsNotNone(hookid)
-        self.assertRowExists(
-                'select 1 from webhooks where hookid = ?',
-                (hookid,))
+        self.assertEqual(run(instance.get_webhook(g['main'])).id, hookid)
+        # webhook was deleted offline. this should be rare
         Webhook.hooks[hookid]._deleted = True
         msg = send(alpha, g['main'], 'e:asdhgdfjg')
         newhook = msg.webhook_id
         self.assertIsNotNone(newhook)
         self.assertNotEqual(hookid, newhook)
-        self.assertRowNotExists(
-                'select 1 from webhooks where hookid = ?',
-                (hookid,))
-        self.assertRowExists(
-                'select 1 from webhooks where hookid = ?',
-                (newhook,))
+        self.assertEqual(run(instance.get_webhook(g['main'])).id, newhook)
 
         send(alpha, g['main'], 'gs;e nice edit')
         self.assertEditedContent(msg, 'nice edit')
@@ -820,9 +827,13 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(send(alpha, g['main'], 'gs;e evil edit!'),
                 gestalt.REACT_DELETE)
         self.assertEditedContent(msg, 'nice edit')
-        self.assertRowNotExists(
-                'select 1 from webhooks where hookid = ?',
-                (newhook,))
+        self.assertIsNone(run(instance.get_webhook(g['main'])))
+
+        # test on_webhooks_update()
+        hookid = send(alpha, g['main'], 'e:reiuskudfvb').webhook_id
+        self.assertIsNotNone(run(instance.get_webhook(g['main'])))
+        run(Webhook.hooks[hookid].delete())
+        self.assertIsNone(run(instance.get_webhook(g['main'])))
 
     # this function requires the existence of at least three ongoing wars
     def test_08_global_conflicts(self):
@@ -1118,6 +1129,7 @@ class GestaltTest(unittest.TestCase):
         # delete "or proxied.webhook_id != hook[1]" to see this be a problem
         # this is very important, because if this fails,
         # there could be a path to a per-channel denial of service
+        # ...except none of that is true anymore lmao
         first = send(alpha, chan, 'e: fisrt')
         send(alpha, chan, 'gs;help')
         second = chan[-1]
@@ -1480,9 +1492,8 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertProxied(beta, th2,
                 'alpha:what if the first proxied message is in a thread')
         msg = self.assertProxied(alpha, c2, 'beta:everything still works right')
-        self.assertRowExists(
-                'select 1 from webhooks where (chanid, hookid) = (?, ?)',
-                (c2.id, msg.webhook_id))
+        self.assertEqual(run(instance.get_webhook(c2)).id, msg.webhook_id)
+        # get_webhook() converts Thread to parent, so need to query directly
         self.assertRowNotExists(
                 'select 1 from webhooks where chanid = ?',
                 (th2.id,))
@@ -1632,6 +1643,20 @@ class GestaltTest(unittest.TestCase):
                 % main.mention)
         self.assertCommand(alpha, main, 'gs;swap close test-beta')
         self.assertCommand(alpha, main, 'gs;swap close test-alpha')
+
+    def test_28_emojis(self):
+        g1 = Guild(name = 'emoji guild')
+        c = g1._add_channel('main')
+        run(g1._add_member(instance.user))
+        run(g1._add_member(alpha))
+
+        self.assertCommand(alpha, c, 'gs;swap open %s a:text' % alpha.mention)
+        self.assertIsNone(self.assertProxied(alpha, c, 'a:no emojis').edited_at)
+        msg = self.assertProxied(alpha, c, 'a:<:emoji:1234>')
+        self.assertIsNotNone(msg.edited_at)
+        self.assertEqual(msg._prev.content, ':emoji:')
+        self.assertEqual(msg.content, '<:emoji:1234>')
+        self.assertCommand(alpha, c, 'gs;swap close test-alpha')
 
 
 def main():

@@ -10,12 +10,15 @@ from config import *
 # from discord markdown parser
 LINK_REGEX = re.compile(r'<?(https?:\/\/[^\s<]+[^<.,:;"\')\]\s])>?')
 
+
 INTENTS = discord.Intents(
         guilds = True,
         members = True,
         message_content = True,
         messages = True,
-        reactions = True)
+        reactions = True,
+        webhooks = True,
+        )
 
 
 PERMS = discord.permissions.Permissions(
