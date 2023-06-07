@@ -609,6 +609,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if match and (match := dict(match))['state'] == ProxyState.active:
             prefs = user['prefs']
             if lower.startswith('\\') and not tags:
+                if mandatory:
+                    return await self.try_delete(message)
                 if lower.startswith('\\\\') and prefs & Prefs.latch:
                     self.set_proxy_auto(match, False)
                 return
