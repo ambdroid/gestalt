@@ -1600,6 +1600,11 @@ class GestaltTest(unittest.TestCase):
         # swap with non-present member should be deleted
         self.assertDeleted(alpha, main, 'beta:test')
         run(g1._add_member(beta))
+        self.assertCommand(alpha, cmds, 'gs;p test-beta auto on')
+        # proxy escape should still be deleted
+        self.assertDeleted(alpha, main, r'\test')
+        self.assertDeleted(alpha, main, r'\\test')
+        self.assertCommand(alpha, cmds, 'gs;p test-beta auto off')
 
         # message without a proxy should be deleted
         self.assertDeleted(alpha, main, 'no proxy')
