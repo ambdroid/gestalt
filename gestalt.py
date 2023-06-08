@@ -557,6 +557,25 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.mkproxy(user.id, ProxyType.override)
 
 
+    def get_proxy_match(self, message):
+        # this is where the magic happens
+        # inactive proxies get matched but only to bypass the current autoproxy
+        lower = message.content.lower()
+        proxies = self.fetchall(
+                'select * from proxies where userid = ? and guildid in (0, ?)',
+                (message.author.id, message.guild.id))
+        if not (tags := bool(match := discord.utils.find(
+            lambda proxy : (proxy['prefix'] is not None
+                and lower.startswith(proxy['prefix'])
+                and lower.endswith(proxy['postfix'])),
+            proxies))):
+            match = discord.utils.find(
+                    lambda proxy : proxy['flags'] & ProxyFlags.auto != 0,
+                    proxies)
+        if match:
+            return dict(match) | {'matchTags':tags}
+
+
     async def on_user_message(self, message, user):
         authid = message.author.id
         lower = message.content.lower()
@@ -583,39 +602,26 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if not user:
             return # if user isn't init'd, they can't have any proxies
 
-        # this is where the magic happens
-        # inactive proxies get matched but only to bypass the current autoproxy
-        proxies = self.fetchall(
-                'select * from proxies where userid = ? and guildid in (0, ?)',
-                (authid, message.guild.id))
-        if not (tags := bool(match := discord.utils.find(
-            lambda proxy : (proxy['prefix'] is not None
-                and lower.startswith(proxy['prefix'])
-                and lower.endswith(proxy['postfix'])),
-            proxies))):
-            match = discord.utils.find(
-                    lambda proxy : proxy['flags'] & ProxyFlags.auto != 0,
-                    proxies)
+        match = self.get_proxy_match(message)
 
-        if mandatory:
-            # note: pkswaps with own account are intentionally allowed
-            if (not match or match['state'] != ProxyState.active
-                    or match['type'] == ProxyType.override or (
-                        (match['type'], match['otherid'])
-                        == (ProxyType.swap, authid))):
-                        await self.try_delete(message)
-                        return
+        # note: pkswaps with own account are intentionally allowed
+        if mandatory and (not match or match['state'] != ProxyState.active
+                or match['type'] == ProxyType.override or
+                (match['type'], match['otherid']) == (ProxyType.swap, authid)):
+            await self.try_delete(message)
+            return
 
-        if match and (match := dict(match))['state'] == ProxyState.active:
+        if not match or match['state'] != ProxyState.active:
+            return
+
+        try:
+            msg = None
             prefs = user['prefs']
-            if lower.startswith('\\') and not tags:
-                if mandatory:
-                    return await self.try_delete(message)
+            if lower.startswith('\\') and not match['matchTags']:
                 if lower.startswith('\\\\') and prefs & Prefs.latch:
                     self.set_proxy_auto(match, False)
                 return
 
-            match['matchTags'] = tags
             latch = prefs & Prefs.latch and not match['flags'] & ProxyFlags.auto
             if match['type'] == ProxyType.override:
                 if latch:
@@ -625,16 +631,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             if not self.has_perm(message, manage_messages = True):
                 raise RuntimeError(
                         'I need `Manage Messages` permission to proxy.')
-            msg = None
-            try:
-                msg = await self.do_proxy(message, match, prefs)
-                if msg and latch:
-                    self.set_proxy_auto(match, True)
-            finally:
-                # if the proxy couldn't be used in this channel
-                # (unsynced pkswap, swap with non-member)
-                if not msg and mandatory:
-                    await self.try_delete(message)
+            msg = await self.do_proxy(message, match, prefs)
+            if msg and latch:
+                self.set_proxy_auto(match, True)
+        finally:
+            # if the proxy couldn't be used in this channel
+            # (unsynced pkswap, swap with non-member)
+            if not msg and mandatory:
+                await self.try_delete(message)
 
 
     async def on_message(self, message):
