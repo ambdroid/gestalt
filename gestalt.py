@@ -427,6 +427,40 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 return (await hook.send(wait = True, **kwargs), hook)
 
 
+    async def make_log(self, message, orig, proxy = None, old = None):
+        logchan = self.fetchone('select logchan from guilds where guildid = ?',
+                (orig.guild.id,))
+        if not logchan:
+            return
+
+        embed = discord.Embed(description = message.content,
+                timestamp = discord.utils.snowflake_time(orig.id))
+        embed.set_author(name = '%s#%s: %s' %
+                ('[Edited] ' if old else '', orig.channel.name,
+                    message.author.display_name),
+                icon_url = message.author.display_avatar)
+        if old:
+            embed.add_field(name = 'Old message', value = old.content,
+                    inline = False)
+        embed.set_thumbnail(url = message.author.display_avatar)
+        footer = ('Sender: %s (%i) | Message ID: %i | Original Message ID: %i'
+                % (str(orig.author), orig.author.id, message.id, orig.id))
+        if proxy:
+            footer = (('Collective ID: %s | ' % proxy['maskid']
+                if proxy['type'] == ProxyType.collective else '')
+                + 'Proxy ID: %s | ' % proxy['proxid']) + footer
+        embed.set_footer(text = footer)
+        try:
+            await self.get_channel(logchan[0]).send(
+                    # jump_url doesn't work in messages from webhook.send()
+                    # (and .channel can be PartialMessageable)
+                    # (that was annoying)
+                    message.channel.get_partial_message(message.id).jump_url,
+                    embed = embed)
+        except:
+            pass
+
+
     async def do_proxy(self, message, proxy, prefs):
         authid = message.author.id
         channel = message.channel
@@ -496,12 +530,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         thread = (channel if type(channel) == discord.Thread
                 else discord.utils.MISSING)
         try:
-            (msg, hook) = await self.execute_webhook(channel, thread = thread,
+            (new, hook) = await self.execute_webhook(channel, thread = thread,
                     files = msgfiles, embed = embed, **present)
         except discord.errors.Forbidden:
             raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
 
-        self.mkhistory(msg, message.author, channel = message.channel,
+        self.mkhistory(new, message.author, channel = message.channel,
                 proxy = proxy)
 
         delay = DELETE_DELAY if prefs & Prefs.delay else 0.0
@@ -512,43 +546,16 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # when proxied they are usually replaced with the :name: part
         # so all we have to do is count the angle brackets
         # (don't compare content != content bc not sure what else might change)
-        if msg.content.count('<') != present['content'].count('<'):
+        if new.content.count('<') != present['content'].count('<'):
             try:
-                msg = await hook.edit_message(msg.id,
+                new = await hook.edit_message(new.id,
                         content = present['content'], thread = thread)
             except:
                 pass
 
-        logchan = self.fetchone('select logchan from guilds where guildid = ?',
-                (message.guild.id,))
-        if logchan:
-            logchan = logchan[0]
-            embed = discord.Embed(description = present['content'],
-                    timestamp = discord.utils.snowflake_time(message.id))
-            embed.set_author(name = '#%s: %s' %
-                    (channel.name, present['username']),
-                    icon_url = present['avatar_url'])
-            embed.set_thumbnail(url = present['avatar_url'])
-            embed.set_footer(text =
-                    ('Collective ID: %s | ' % proxy['maskid']
-                        if proxy['type'] == ProxyType.collective else '') +
-                    'Proxy ID: %s | '
-                    'Sender: %s (%i) | '
-                    'Message ID: %i | '
-                    'Original Message ID: %i'
-                    % (proxy['proxid'], str(message.author), authid, msg.id,
-                        message.id))
-            try:
-                await self.get_channel(logchan).send(
-                        # jump_url doesn't work in messages from webhook.send()
-                        # (and .channel can be PartialMessageable)
-                        # (that was annoying)
-                        channel.get_partial_message(msg.id).jump_url,
-                        embed = embed)
-            except discord.errors.Forbidden:
-                pass
+        await self.make_log(new, message, proxy)
 
-        return msg
+        return new
 
 
     def init_user(self, user):

@@ -432,7 +432,7 @@ class GestaltCommands:
             return await self.mark_success(message, False)
 
         try:
-            await hook.edit_message(proxied.id, content = content,
+            edited = await hook.edit_message(proxied.id, content = content,
                 thread = thread)
         except discord.errors.NotFound:
             await self.confirm_webhook_deletion(hook)
@@ -440,32 +440,7 @@ class GestaltCommands:
 
         await self.try_delete(message)
 
-        logchan = self.fetchone('select logchan from guilds where guildid = ?',
-                (message.guild.id,))
-        if logchan:
-            logchan = logchan[0]
-            embed = discord.Embed(description = content,
-                    timestamp = discord.utils.snowflake_time(message.id))
-            embed.add_field(
-                    name = 'Old message',
-                    value = proxied.content,
-                    inline = False)
-            embed.set_author(
-                    name = '[Edited] #%s: %s' % ((thread or channel).name,
-                        proxied.author.display_name),
-                    icon_url = proxied.author.display_avatar)
-            embed.set_thumbnail(url = proxied.author.display_avatar)
-            embed.set_footer(text =
-                    'Sender: %s (%i) | '
-                    'Message ID: %i | '
-                    'Original Message ID: %i'
-                    % (str(message.author), message.author.id, proxied.id,
-                        message.id))
-            try:
-                await self.get_channel(logchan).send(proxied.jump_url,
-                        embed = embed)
-            except:
-                pass
+        await self.make_log(edited, message, old = proxied)
 
 
     async def cmd_become(self, message, proxy):
