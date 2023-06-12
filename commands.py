@@ -230,15 +230,15 @@ class GestaltCommands:
         await self.send_embed(message, '\n'.join(lines))
 
 
-    async def cmd_proxy_tags(self, message, proxid, tags):
+    async def cmd_proxy_tags(self, message, proxy, tags):
         (prefix, postfix) = parse_tags(tags)
         if prefix is not None and self.get_tags_conflict(message.author.id,
-            message.guild.id, (prefix, postfix)) not in ([proxid], []):
+            proxy['guildid'], (prefix, postfix)) not in ([proxy['proxid']], []):
             raise RuntimeError(ERROR_TAGS)
 
         self.execute(
                 'update proxies set prefix = ?, postfix = ? where proxid = ?',
-                (prefix, postfix, proxid))
+                (prefix, postfix, proxy['proxid']))
 
         await self.mark_success(message, True)
 
@@ -622,7 +622,7 @@ class GestaltCommands:
 
             if arg == 'tags':
                 arg = reader.read_remainder()
-                return await self.cmd_proxy_tags(message, proxy['proxid'], arg)
+                return await self.cmd_proxy_tags(message, proxy, arg)
 
             elif arg == 'auto':
                 if reader.is_empty():
