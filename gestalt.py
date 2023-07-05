@@ -720,7 +720,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             try:
                 # this can fail depending on user's DM settings & prior messages
                 await reactor.send(
-                        'Message sent by %s (id %d)' % (author, row['authid']))
+                        'Message sent by %s (id %d)' % (
+                            discord.utils.escape_markdown(author),
+                            row['authid']))
                 await message.remove_reaction(emoji, reactor)
             except discord.errors.Forbidden:
                 pass

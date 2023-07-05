@@ -758,7 +758,8 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(deleteme, chan, 'gs;p deleteme tags e:text')
         msg = send(deleteme, chan, 'e:reaction test')
         run(msg._react(gestalt.REACT_QUERY, beta))
-        self.assertNotEqual(beta.dm_channel[-1].content.find(str(deleteme)), -1)
+        token = discord.utils.escape_markdown(str(deleteme))
+        self.assertNotEqual(beta.dm_channel[-1].content.find(token), -1)
 
         run(msg._react(gestalt.REACT_DELETE, beta))
         self.assertEqual(len(msg.reactions), 0)
@@ -774,7 +775,7 @@ class GestaltTest(unittest.TestCase):
             run(instance.fetch_user(deleteme.id))
         send(beta, beta.dm_channel, 'buffer')
         run(msg._react(gestalt.REACT_QUERY, beta))
-        self.assertNotEqual(beta.dm_channel[-1].content.find(str(deleteme)), -1)
+        self.assertNotEqual(beta.dm_channel[-1].content.find(str(token)), -1)
 
         # in swaps, sender or swapee may delete message
         self.assertCommand(alpha, chan,
