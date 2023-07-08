@@ -474,8 +474,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if message.attachments:
             totalsize = sum((x.size for x in message.attachments))
             if totalsize <= MAX_FILE_SIZE[message.guild.premium_tier]:
-                msgfiles = [await attach.to_file(spoiler = attach.is_spoiler())
-                        for attach in message.attachments]
+                # defer downloading attachments until after other checks
+                msgfiles = (await attach.to_file(spoiler = attach.is_spoiler())
+                        for attach in message.attachments)
         # avoid error when user proxies empty message with invalid attachments
         if msgfiles == [] and content == '':
             return
@@ -531,7 +532,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 else discord.utils.MISSING)
         try:
             (new, hook) = await self.execute_webhook(channel, thread = thread,
-                    files = msgfiles, embed = embed, **present)
+                    files = msgfiles and [i async for i in msgfiles],
+                    embed = embed, **present)
         except discord.errors.Forbidden:
             raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
 
