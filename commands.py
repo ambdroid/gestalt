@@ -270,9 +270,9 @@ class GestaltCommands:
                     'left join masks using (maskid) '
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
-        if not (valid := ap and ap['proxid']
-                and self.proxy_valid_in(ap, message.guild)):
-            self.set_ap_proxy(message.author, None)
+        if (valid := ap and ap['proxid']):
+            if not (valid := self.proxy_valid_in(ap, message.guild)):
+                self.set_autoproxy(message.author, None)
         proxy_string = valid and self.proxy_string(ap)
 
         lines = []
@@ -301,16 +301,14 @@ class GestaltCommands:
     async def cmd_autoproxy_set(self, message, arg):
         member = message.author
         if arg in ['off', 'latch']:
-            self.set_ap_proxy(member, None)
-            self.set_ap_latch(member, -1 * int(arg == 'latch'))
+            self.set_autoproxy(member, None, latch = -1 * int(arg == 'latch'))
         else:
             proxy = self.get_user_proxy(message, arg)
             if proxy['type'] == ProxyType.override:
                 raise RuntimeError('You can\'t autoproxy your override.')
             if not self.proxy_valid_in(proxy, message.guild):
                 raise RuntimeError('You can\'t use that proxy in this guild.')
-            self.set_ap_proxy(member, proxy['proxid'])
-            self.set_ap_latch(member, 0)
+            self.set_autoproxy(member, proxy['proxid'], latch = 0)
 
         await self.mark_success(message, True)
 
@@ -489,9 +487,7 @@ class GestaltCommands:
 
 
     async def cmd_become(self, message, proxy):
-        # self.execute('update proxies set become = 1.0 where userid = ?',
-        #         (message.author.id,))
-        self.set_ap_proxy(message.author, proxy['proxid'], become = 0.0)
+        self.set_autoproxy(message.author, proxy['proxid'], become = 0.0)
         await self.mark_success(message, True)
 
 
@@ -666,7 +662,8 @@ class GestaltCommands:
                 return await self.cmd_proxy_tags(message, proxy, arg)
 
             elif arg == 'auto':
-                raise RuntimeError('Please use `gs;autoproxy [member]`.')
+                # removed command
+                return await self.cmd_help(message, 'autoproxy')
 
             elif arg == 'rename':
                 newname = reader.read_remainder()
