@@ -65,7 +65,7 @@ class Prefs(enum.IntFlag):
 #   autoswap    = 1 << 2
     errors      = 1 << 3
     delay       = 1 << 4
-    latch       = 1 << 5
+#   latch       = 1 << 5
 
 
 @enum.unique
@@ -79,7 +79,7 @@ class ProxyType(enum.IntEnum):
 
 @enum.unique
 class ProxyFlags(enum.IntFlag):
-    auto        = 1 << 0
+#   auto        = 1 << 0
     keepproxy   = 1 << 1
 
 

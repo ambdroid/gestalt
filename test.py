@@ -382,6 +382,8 @@ class TestBot(gestalt.Gestalt):
             raise NotFound()
     def get_channel(self, id):
         return Channel.channels.get(id, Thread.threads.get(id))
+    def get_guild(self, id):
+        return Guild.guilds.get(id)
 
 # incoming messages have Attachments, outgoing messages have Files
 # but we'll pretend that they're the same for simplicity
@@ -657,11 +659,6 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(beta, g['main'], 'gs;p %s tags no:text' % alphaid)
 
     def test_05_tags_auto(self):
-        def assertFlags(proxid, flags):
-            self.assertEqual(instance.fetchone(
-                'select flags from proxies where proxid = ?',
-                (proxid,))[0], flags)
-
         # test every combo of auto, tags, and also the switches thereof
         chan = g['main']
         proxid = self.get_proxid(alpha, g.default_role)
@@ -672,13 +669,12 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, chan, 'gs;p %s tags "= text"' % proxid)
         self.assertProxied(alpha, chan, '= tags, no auto')
         self.assertEqual(chan[-1].content, 'tags, no auto')
-        self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
         self.assertProxied(alpha, chan, '= tags, auto')
         self.assertEqual(chan[-1].content, 'tags, auto')
         self.assertProxied(alpha, chan, 'no tags, auto')
         self.assertEqual(chan[-1].content, 'no tags, auto')
-        # test autoproxy both as on/off and as toggle
-        self.assertCommand(alpha, chan, 'gs;p %s auto' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap off')
         self.assertCommand(alpha, chan, 'gs;p %s tags #text#' % proxid)
         self.assertProxied(alpha, chan, '#tags, no auto#')
         self.assertEqual(chan[-1].content, 'tags, no auto')
@@ -695,39 +691,6 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(chan[-1].content, 'message')
         self.assertCommand(alpha, chan, 'gs;p %s tags e:text' % proxid)
 
-        # test setting auto on override to unset other autos
-        overid = self.get_proxid(alpha, None)
-        self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
-        self.assertProxied(alpha, chan, 'auto on')
-        self.assertCommand(alpha, chan, 'gs;p %s auto on' % overid)
-        self.assertNotProxied(alpha, chan, 'auto off')
-        assertFlags(overid, 0)
-
-        # test guild/global autoproxy shenanigans
-        # somewhat redundant with test_global_conflicts
-        self.assertCommand(alpha, chan, 'gs;swap open %s' % beta.mention)
-        self.assertCommand(beta, chan, 'gs;swap open %s' % alpha.mention)
-        self.assertCommand(alpha, chan, 'gs;swap open %s' % gamma.mention)
-        self.assertCommand(gamma, chan, 'gs;swap open %s' % alpha.mention)
-        run(g.get_member(alpha.id)._add_role(role := g._add_role('not global')))
-        self.assertCommand(alpha, chan, 'gs;c new "not global"')
-        self.assertCommand(alpha, chan, 'gs;p test-beta auto on')
-        assertFlags(self.get_proxid(alpha, beta), 1)
-        self.assertCommand(alpha, chan, 'gs;p test-gamma auto on')
-        assertFlags(self.get_proxid(alpha, gamma), 1)
-        assertFlags(self.get_proxid(alpha, beta), 0)
-        self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
-        assertFlags(proxid, 1)
-        assertFlags(self.get_proxid(alpha, gamma), 0)
-        self.assertCommand(alpha, chan, 'gs;p "not global" auto on')
-        assertFlags(self.get_proxid(alpha, role), 1)
-        assertFlags(proxid, 0)
-        self.assertCommand(alpha, chan, 'gs;p test-beta auto on')
-        assertFlags(self.get_proxid(alpha, beta), 1)
-        assertFlags(self.get_proxid(alpha, role), 0)
-        send(alpha, chan, 'gs;swap close test-beta')
-        send(alpha, chan, 'gs;swap close test-gamma')
-
         # invalid tags. these should fail
         self.assertNotCommand(alpha, chan, 'gs;p %s tags ' % proxid)
         self.assertNotCommand(alpha, chan, 'gs;p %s tags text ' % proxid)
@@ -740,13 +703,13 @@ class GestaltTest(unittest.TestCase):
         run(g.get_member(alpha.id)._add_role(newrole))
         proxid = self.get_proxid(alpha, newrole)
         self.assertIsNotNone(proxid)
-        self.assertCommand(alpha, chan, 'gs;p %s auto' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
         self.assertProxied(alpha, chan, 'no tags, auto')
-        self.assertCommand(alpha, chan, 'gs;p %s auto off' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap off')
         self.assertNotProxied(alpha, chan, 'no tags, no auto')
 
         # test tag precedence over auto
-        self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
         self.assertEqual(send(alpha, chan, 'auto').author.name, 'no tags')
         self.assertEqual(send(alpha, chan, 'e: tags').author.name, 'test')
 
@@ -759,7 +722,7 @@ class GestaltTest(unittest.TestCase):
         msg = send(deleteme, chan, 'e:reaction test')
         run(msg._react(gestalt.REACT_QUERY, beta))
         token = discord.utils.escape_markdown(str(deleteme))
-        self.assertNotEqual(beta.dm_channel[-1].content.find(token), -1)
+        self.assertIn(token, beta.dm_channel[-1].content)
 
         run(msg._react(gestalt.REACT_DELETE, beta))
         self.assertEqual(len(msg.reactions), 0)
@@ -775,7 +738,7 @@ class GestaltTest(unittest.TestCase):
             run(instance.fetch_user(deleteme.id))
         send(beta, beta.dm_channel, 'buffer')
         run(msg._react(gestalt.REACT_QUERY, beta))
-        self.assertNotEqual(beta.dm_channel[-1].content.find(str(token)), -1)
+        self.assertIn(token, beta.dm_channel[-1].content)
 
         # in swaps, sender or swapee may delete message
         self.assertCommand(alpha, chan,
@@ -837,6 +800,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(run(instance.get_webhook(g['main'])))
 
     # this function requires the existence of at least three ongoing wars
+    # it's also a bit outdated due to predating per-guild autoproxy settings
     def test_08_global_conflicts(self):
         g2 = Guild()
         g2._add_channel('main')
@@ -878,10 +842,8 @@ class GestaltTest(unittest.TestCase):
                 alpha, g2['main'], 'gs;p %s tags same:text' % proxsecond)
         self.assertProxied(alpha, g['main'], 'same: no auto')
         # alpha should be able to set both to auto; different guilds
-        self.assertCommand(
-                alpha, g['main'], 'gs;p %s auto on' % proxfirst)
-        self.assertCommand(
-                alpha, g2['main'], 'gs;p %s auto on' % proxsecond)
+        self.assertCommand(alpha, g['main'], 'gs;ap %s' % proxfirst)
+        self.assertCommand(alpha, g2['main'], 'gs;ap %s' % proxsecond)
         self.assertProxied(alpha, g['main'], 'auto on')
         self.assertProxied(alpha, g2['main'], 'auto on')
 
@@ -899,7 +861,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotEqual(
                 send(alpha, g['main'], 'collective has auto').author.name.index(
                     rolefirst.name), -1)
-        self.assertCommand(alpha, g['main'], 'gs;p %s auto on' % proxswap)
+        self.assertCommand(alpha, g['main'], 'gs;ap %s' % proxswap)
         self.assertNotEqual(
                 send(alpha, g['main'], 'swap has auto').author.name.index(
                     beta.name), -1)
@@ -972,14 +934,14 @@ class GestaltTest(unittest.TestCase):
 
         chan = g['main']
         self.assertProxied(alpha, chan, 'e: proxy')
-        self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
         self.assertProxied(alpha, chan, 'proxy')
         # set the override tags. this should activate it
         self.assertCommand(alpha, chan, 'gs;p %s tags x:text' % overid)
         self.assertNotProxied(alpha, chan, 'x: not proxies')
 
         # turn autoproxy off
-        self.assertCommand(alpha, chan, 'gs;p %s auto' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap off')
         self.assertNotProxied(alpha, chan, 'not proxied')
         self.assertNotProxied(alpha, chan, 'x: not proxied')
 
@@ -1043,7 +1005,7 @@ class GestaltTest(unittest.TestCase):
 
     def test_13_latch(self):
         chan = g['main']
-        self.assertCommand(alpha, chan, 'gs;a config latch')
+        self.assertCommand(alpha, chan, 'gs;ap latch')
         self.assertNotProxied(alpha, chan, 'no proxy, no auto')
         self.assertProxied(alpha, chan, 'e: proxy, no auto')
         self.assertProxied(alpha, chan, 'no proxy, auto')
@@ -1059,15 +1021,15 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, chan, 'no proxy, auto')
         self.assertNotProxied(alpha, chan, '\\\\unlatch')
         self.assertNotProxied(alpha, chan, 'no proxy, no auto')
-        self.assertCommand(alpha, chan, 'gs;a config latch off')
+        self.assertCommand(alpha, chan, 'gs;ap off')
 
-        self.assertCommand(alpha, chan, 'gs;p %s auto on' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
         self.assertProxied(alpha, chan, 'no proxy, auto')
         self.assertNotProxied(alpha, chan, '\escape')
         self.assertProxied(alpha, chan, 'no proxy, auto')
         self.assertNotProxied(alpha, chan, '\\\\unlatch')
         self.assertProxied(alpha, chan, 'no proxy, auto')
-        self.assertCommand(alpha, chan, 'gs;p %s auto off' % proxid)
+        self.assertCommand(alpha, chan, 'gs;ap off')
 
     # test member joining when the guild has an @everyone collective
     def test_14_member_join(self):
@@ -1079,7 +1041,7 @@ class GestaltTest(unittest.TestCase):
         proxid = self.get_proxid(alpha, g.default_role).upper()
         self.assertIsNotNone(proxid)
         collid = self.get_collid(g.default_role).upper()
-        self.assertCommand(alpha, g['main'], 'gs;p %s auto off' % proxid)
+        self.assertCommand(alpha, g['main'], 'gs;ap off')
         self.assertCommand(alpha, g['main'], 'gs;c %s name test' % collid)
 
     def test_16_replies(self):
@@ -1247,12 +1209,12 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(send(alpha, c, '[no proxid!').author.name,
                 'guildy guild')
         self.assertCommand(alpha, c, 'gs;p "guildy guild" rename "guild"')
-        self.assertCommand(alpha, c, 'gs;p guild auto on')
+        self.assertCommand(alpha, c, 'gs;ap guild')
         self.assertEqual(send(alpha, c, 'yay!').author.name, 'guildy guild')
         self.assertCommand(alpha, c, 'gs;become guild')
         self.assertNotProxied(alpha, c, 'not proxied')
         self.assertProxied(alpha, c, 'proxied')
-        self.assertCommand(alpha, c, 'gs;p guild auto off')
+        self.assertCommand(alpha, c, 'gs;ap off')
 
         send(alpha, c, 'gs;swap open %s' % beta.mention)
         send(beta, c, 'gs;swap open %s' % alpha.mention)
@@ -1601,11 +1563,11 @@ class GestaltTest(unittest.TestCase):
         # swap with non-present member should be deleted
         self.assertDeleted(alpha, main, 'beta:test')
         run(g1._add_member(beta))
-        self.assertCommand(alpha, cmds, 'gs;p test-beta auto on')
+        self.assertCommand(alpha, cmds, 'gs;ap test-beta')
         # proxy escape should still be deleted
         self.assertDeleted(alpha, main, r'\test')
         self.assertDeleted(alpha, main, r'\\test')
-        self.assertCommand(alpha, cmds, 'gs;p test-beta auto off')
+        self.assertCommand(alpha, cmds, 'gs;ap off')
 
         # message without a proxy should be deleted
         self.assertDeleted(alpha, main, 'no proxy')
@@ -1663,6 +1625,129 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(msg._prev.content, ':emoji:')
         self.assertEqual(msg.content, '<:emoji:1234>')
         self.assertCommand(alpha, c, 'gs;swap close test-alpha')
+
+    def test_29_autoproxy_new(self):
+        g1 = Guild(name = 'auto guild')
+        c1 = g1._add_channel('main')
+        run(g1._add_member(instance.user))
+        run(g1._add_member(alpha))
+        g2 = Guild(name = 'manual guild')
+        c2 = g2._add_channel('main')
+        run(g2._add_member(instance.user))
+        run(g2._add_member(alpha))
+
+        # check handling an ap'd swap when other member leaves guild
+        run(g1._add_member(beta))
+        self.assertCommand(alpha, c1, 'gs;swap open %s b:text' % beta.mention)
+        self.assertCommand(beta, c1, 'gs;swap open %s a:text' % alpha.mention)
+        self.assertCommand(alpha, c1, 'gs;autoproxy test-beta')
+        self.assertProxied(alpha, c1, 'beta')
+        g1._remove_member(beta)
+        self.assertNotProxied(alpha, c1, 'beta')
+
+        run(g1._add_member(beta))
+        token = discord.utils.escape_markdown(str(beta))
+        send(alpha, c1, 'gs;ap')
+        self.assertNotIn(token, c1[-1].embeds[0].description)
+        self.assertCommand(alpha, c1, 'gs;ap test-beta')
+        send(alpha, c1, 'gs;ap')
+        self.assertIn(token, c1[-1].embeds[0].description)
+        g1._remove_member(beta)
+        send(alpha, c1, 'gs;ap')
+        self.assertNotIn(token, c1[-1].embeds[0].description)
+        run(g1._add_member(beta))
+
+        # check ap's in different guilds not conflicting
+        self.assertCommand(alpha, c2, 'gs;c new everyone')
+        self.assertCommand(alpha, c1, 'gs;ap test-beta')
+        self.assertCommand(alpha, c2, 'gs;ap "manual guild"')
+        send(alpha, c1, 'gs;ap')
+        self.assertIn(token, c1[-1].embeds[0].description)
+        send(alpha, c2, 'gs;ap')
+        self.assertIn('manual guild', c2[-1].embeds[0].description)
+        self.assertEqual(self.assertProxied(alpha, c1, 'beta').author.name,
+                'test-beta')
+        self.assertEqual(self.assertProxied(alpha, c2, 'manual').author.name,
+                'manual guild')
+
+        # check that proxies are checked
+        self.assertNotCommand(alpha, c1, 'gs;ap "manual guild"')
+        self.assertNotCommand(alpha, c2, 'gs;ap test-beta')
+        self.assertCommand(alpha, c1, 'gs;swap close test-beta')
+        self.assertCommand(alpha, c1, 'gs;swap open %s b:text' % beta.mention)
+        self.assertNotCommand(alpha, c1, 'gs;ap test-beta')
+        self.assertCommand(beta, c1, 'gs;swap open %s a:text' % alpha.mention)
+        self.assertCommand(alpha, c1, 'gs;ap test-beta')
+        self.assertNotCommand(alpha, c1, 'gs;ap %s'
+                % (overid := self.get_proxid(alpha, None)))
+
+        # check that checks are checks
+        self.assertEqual(gestalt.REACT_CONFIRM, gestalt.REACT_CONFIRM)
+
+        # check all state transitions
+        run(g2._add_member(beta))
+        member = g2.get_member(alpha.id)
+        for prox in [None, self.get_proxid(alpha, g2.default_role)]:
+            for latch in [-1, 0]:
+                for become in [0.0, 1.0]:
+                    def test(cmd):
+                        instance.set_ap_proxy(member, prox, become = become)
+                        instance.set_ap_latch(member, latch)
+                        self.assertCommand(alpha, c2, cmd)
+                        send(alpha, c2, 'gs;ap')
+                        return c2[-1].embeds[0].description
+
+                    if not (prox or become == 1.0):
+                        with self.assertRaises(gestalt.sqlite.IntegrityError):
+                            test('')
+                        continue
+
+                    text = test('gs;ap test-beta')
+                    self.assertIn(token, text)
+                    self.assertNotIn('Become', text)
+                    self.assertNotIn(' latch', text)
+                    self.assertEqual(
+                            self.assertProxied(alpha, c2, 'beta').author.name,
+                            'test-beta')
+
+                    text = test('gs;ap latch')
+                    self.assertIn('However,', text)
+                    self.assertNotIn('Become', text)
+                    self.assertNotProxied(alpha, c2, 'not proxied')
+
+                    text = test('gs;ap off')
+                    self.assertIn('no autoproxy', text)
+                    self.assertNotProxied(alpha, c2, 'not proxied')
+
+                    text = test('gs;become test-beta')
+                    self.assertIn(token, text)
+                    self.assertIn('Become', text)
+                    if latch:
+                        self.assertIn(' latch', text)
+                    else:
+                        self.assertNotIn(' latch', text)
+                    self.assertNotProxied(alpha, c2, 'not proxied')
+                    self.assertProxied(alpha, c2, 'proxied')
+
+        # test actually using latch against the command output
+        self.assertCommand(alpha, c1, 'gs;p %s tags x:text' % overid)
+        self.assertCommand(alpha, c1, 'gs;ap latch')
+        self.assertNotProxied(alpha, c1, 'not proxied')
+        self.assertProxied(alpha, c1, 'b: beta')
+        self.assertProxied(alpha, c1, 'beta')
+        send(alpha, c1, 'gs;ap')
+        text = c1[-1].embeds[0].description
+        self.assertIn(token, text)
+        self.assertIn(' latch', text)
+        self.assertNotIn('Become', text)
+        self.assertNotProxied(alpha, c1, 'x:nope')
+        self.assertNotProxied(alpha, c1, 'nope')
+        send(alpha, c1, 'gs;ap')
+        text = c1[-1].embeds[0].description
+        self.assertIn('However,', text)
+        self.assertNotIn('Become', text)
+
+        self.assertCommand(alpha, c1, 'gs;swap close test-beta')
 
 
 def main():
