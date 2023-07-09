@@ -1680,6 +1680,20 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         self.assertNotCommand(alpha, c1, 'gs;ap %s'
                 % (overid := self.get_proxid(alpha, None)))
+        instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
+        instance.session._add('/members/aaaaa',
+                '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
+                '"color": "123456"}')
+        self.assertCommand(alpha, c1, 'gs;pk swap test-beta aaaaa')
+        self.assertCommand(beta, c1, 'gs;ap member!')
+        self.assertNotCommand(alpha, c1, 'gs;ap "test-beta\'s member!"')
+        g1._remove_member(alpha)
+        self.assertNotCommand(beta, c1, 'gs;ap member!')
+        run(g1._add_member(alpha))
+        self.assertCommand(alpha, c1, 'gs;ap %s'
+                % self.get_proxid(alpha, beta))
+        self.assertNotCommand(alpha, c1, 'gs;ap %s'
+                % self.get_proxid(beta, alpha))
 
         # check that checks are checks
         self.assertEqual(gestalt.REACT_CONFIRM, gestalt.REACT_CONFIRM)
@@ -1691,8 +1705,8 @@ class GestaltTest(unittest.TestCase):
             for latch in [-1, 0]:
                 for become in [0.0, 1.0]:
                     def test(cmd):
-                        instance.set_ap_proxy(member, prox, become = become)
-                        instance.set_ap_latch(member, latch)
+                        instance.set_autoproxy(member, prox, latch = latch,
+                                become = become)
                         self.assertCommand(alpha, c2, cmd)
                         send(alpha, c2, 'gs;ap')
                         return c2[-1].embeds[0].description
@@ -1742,6 +1756,14 @@ class GestaltTest(unittest.TestCase):
         self.assertNotIn('Become', text)
         self.assertNotProxied(alpha, c1, 'x:nope')
         self.assertNotProxied(alpha, c1, 'nope')
+        send(alpha, c1, 'gs;ap')
+        text = c1[-1].embeds[0].description
+        self.assertIn('However,', text)
+        self.assertNotIn('Become', text)
+        self.assertProxied(alpha, c1, 'b: beta')
+        self.assertNotProxied(alpha, c1, '\escape')
+        self.assertProxied(alpha, c1, 'beta')
+        self.assertNotProxied(alpha, c1, '\\\\unlatch')
         send(alpha, c1, 'gs;ap')
         text = c1[-1].embeds[0].description
         self.assertIn('However,', text)

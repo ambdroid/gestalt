@@ -269,19 +269,16 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 (member.id, member.guild.id))
 
 
-    def set_ap_proxy(self, member, proxid, become = 1.0):
+    def set_autoproxy(self, member, proxid, latch = None, become = 1.0):
         self.init_member(member)
         self.execute(
                 'update members set (proxid, become) = (?, ?) '
                 'where (userid, guildid) = (?, ?)',
                 (proxid, become, member.id, member.guild.id))
-
-
-    def set_ap_latch(self, member, latch):
-        self.init_member(member)
-        self.execute('update members set latch = ? '
-                'where (userid, guildid) = (?, ?)',
-                (latch, member.id, member.guild.id))
+        if latch is not None:
+            self.execute('update members set latch = ? '
+                    'where (userid, guildid) = (?, ?)',
+                    (latch, member.id, member.guild.id))
 
 
     def get_tags_conflict(self, userid, guildid, pair):
@@ -496,7 +493,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         # now that we know the proxy can be used here, do Become mode stuff
         if proxy['become'] is not None and proxy['become'] < 1.0:
-            self.set_ap_proxy(message.author, proxy['proxid'],
+            self.set_autoproxy(message.author, proxy['proxid'],
                     become = proxy['become'] + 1/BECOME_MAX)
             if random.random() > proxy['become']:
                 return
@@ -598,7 +595,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     lambda proxy : proxy['proxid'] == member['ap'],
                     proxies)
             if match and not self.proxy_valid_in(match, message.guild):
-                self.set_ap_proxy(message.author, None)
+                self.set_autoproxy(message.author, None)
                 return
         if match:
             return dict(match) | dict(member) | {'matchTags': tags}
@@ -647,20 +644,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             prefs = user['prefs']
             if lower.startswith('\\') and not match['matchTags']:
                 if lower.startswith('\\\\') and match['latch']:
-                    self.set_ap_proxy(message.author, None)
+                    self.set_autoproxy(message.author, None)
                 return
 
             latch = match['latch'] and match['proxid'] != match['ap']
             if match['type'] == ProxyType.override:
                 if latch:
-                    self.set_ap_proxy(message.author, None)
+                    self.set_autoproxy(message.author, None)
                 return
             if not self.has_perm(message, manage_messages = True):
                 raise RuntimeError(
                         'I need `Manage Messages` permission to proxy.')
             msg = await self.do_proxy(message, match, prefs)
             if msg and latch:
-                self.set_ap_proxy(message.author, match['proxid'])
+                self.set_autoproxy(message.author, match['proxid'])
         finally:
             # if the proxy couldn't be used in this channel
             # (unsynced pkswap, swap with non-member)
@@ -712,9 +709,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if channel.guild:
             # make sure this is one of ours
             row = self.fetchone(
-                'select authid, otherid,'
-                '(select username from users where userid = authid) username '
-                'from history where msgid = ?',
+                'select authid, otherid, username '
+                'from history left join users on userid = authid '
+                'where msgid = ?',
                 (payload.message_id,))
             if row == None:
                 return

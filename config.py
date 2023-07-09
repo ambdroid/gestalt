@@ -77,37 +77,26 @@ HELPMSGS = {
         '**Help Topics**: (view with `{p}help (topic)`)\n'
         '- proxy\n'
         '- swap\n'
-        '- pluralkit\n'
         '- collective\n'
+        '- autoproxy\n'
+        '- pluralkit\n'
         '- account\n'
         '- utility\n'
         '- server',
 
         'proxy':
         '**All proxies**: (shortcut `{p}p`)\n'
-        'You can use a proxy via either tags or enabling autoproxy. '
-        'While an applicable proxy has autoproxy enabled, all your messages '
-        'will be sent via that proxy, unless you use another proxy\'s tags.\n'
-        'Because proxies in Gestalt work differently than in other proxy bots, '
-        'their behavior may be confusing. For example, you may have one '
-        'Collective autoproxy enabled per server, but if you enable autoproxy '
-        'on a Swap, then the Collective autoproxies will be disabled because '
-        'Collectives are limited to a single server but Swaps are not.\n'
-        '\n'
-        'See also: `{p}prefs latch`.\n'
         '\n'
         '`{p}proxy`: list your proxies.\n'
         '`{p}proxy (id/name) tags [tags]`: set tags\n'
-        '`{p}proxy (id/name) auto (on/off/blank)`: set or toggle autoproxy\n'
         '`{p}proxy (id/name) rename (new name)`: rename proxy\n'
         '`{p}proxy (id/name) keepproxy (on/off/blank)`: set or toggle '
-        'keepproxy\n'
-        '`{p}become (id/name)`: enables autoproxy, and with every message, '
-        'the chance that your message will be proxied increases from 0%\n',
+        'keepproxy\n',
 
         'swap':
         '**Swaps**: (shortcut `{p}s`)\n'
         'To open a Swap, both users must use the `{p}open` command.\n'
+        '\n'
         '`{p}swap open (@user) [optional tags]`: open a Swap\n'
         '`{p}swap close (id/name)`: unilaterally closes the Swap\n',
 
@@ -146,6 +135,20 @@ HELPMSGS = {
         'Requires `Manage Roles` permission.\n'
         '`{p}collective (collective id) delete`: requires `Manage Roles`.',
 
+        'autoproxy':
+        '**Autoproxy**: (shortcut: `{p}ap`)\n'
+        'Autoproxy is an alternative to using a proxy\'s tags. An autoproxy is '
+        'specific to a server, and you can set different autoproxies in '
+        'different servers.\n'
+        '\n'
+        '`{p}autoproxy`: view your current autoproxy status in this server.\n'
+        '`{p}autoproxy (id/name)`: set autoproxy to a specific proxy.\n'
+        '`{p}autoproxy latch`: set autoproxy to the most recent manual proxy.\n'
+        '`{p}autoproxy off`: turn off autoproxy.\n'
+        '\n'
+        '`{p}become (id/name)`: sets autoproxy, and with every message, '
+        'the chance that your message will be proxied increases from 0%.\n',
+
         'account':
         '**Account**: (shortcut: `{p}a`)\n'
         '`{p}account config`: list your current settings.\n'
@@ -158,8 +161,6 @@ HELPMSGS = {
         '- `delay`: if on, Gestalt will wait a fraction of a second before '
         'deleting original messages. This may resolve some client issues. '
         '(default: **off**)\n'
-        '- `latch`: if on, using a proxy instantly enables autoproxy for it. '
-        '(default: **off**)\n'
         '\n'
         '`{p}account color (color)`: change your color in swaps.',
 
@@ -167,8 +168,12 @@ HELPMSGS = {
         '**Server Commands**:\n'
         '`{p}permcheck (server id)`: check that Gestalt has the permissions '
         'it needs in each channel\n'
-        '`{p}log channel #channel`: set log channel\n'
-        '`{p}log disable`: disable log channel\n',
+        '`{p}log channel (#channel)`: set log channel\n'
+        '`{p}log disable`: disable log channel\n'
+        '\n'
+        '`{p}channel (#channel) mode mandatory`: enforce proxying as someone '
+        'else in a channel.\n'
+        '`{p}channel (#channel) mode default`: turn off mandatory mode.',
 
         'utility':
         '**Utilities**:\n'
@@ -179,7 +184,6 @@ HELPMSGS = {
         ':x: : delete a message you sent. In the case of Swaps, either the '
         'swapper or swappee may delete the message.\n'
         ':question: : query who sent a message. '
-        '(If you don\'t receive the DM, DM this bot first.)\n'
         }
 
 # parody of PluralKit/PluralKit.Bot/Commands/Help.cs
