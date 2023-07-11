@@ -114,6 +114,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     'insert into deleted values (old.maskid);'
                 'end')
 
+        self.known_deleted_cache = set()
+
 
     def __del__(self):
         print('Closing database.')
@@ -170,11 +172,16 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     @tasks.loop(seconds = SYNC_TIMEOUT)
     async def sync_loop(self):
         self.conn.commit()
+        self.known_deleted_cache.clear()
 
 
-    async def try_delete(self, message):
+    async def try_delete(self, message, delay = None, cache = True):
         if self.has_perm(message, manage_messages = True):
-            await message.delete()
+            if cache:
+                # on_raw_message_delete fires even if we initiated the delete
+                # so cache the ID to skip a db no-op
+                self.known_deleted_cache.add(message.id)
+            await message.delete(delay = delay)
             return True
 
 
@@ -535,8 +542,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.mkhistory(new, message.author, channel = message.channel,
                 proxy = proxy)
 
-        delay = DELETE_DELAY if prefs & Prefs.delay else 0.0
-        await message.delete(delay = delay)
+        await self.try_delete(message, delay = DELETE_DELAY
+                if prefs & Prefs.delay else None)
 
         # try to automatically fix external emojis
         # custom emojis are of the form /<:[a-zA-Z90-9_~]+:[0-9]+>/
@@ -688,8 +695,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     # these are needed for gs;edit to work
     async def on_raw_message_delete(self, payload):
-        self.execute('delete from history where msgid = ?',
-                (payload.message_id,))
+        if (msgid := payload.message_id) in self.known_deleted_cache:
+            self.known_deleted_cache.remove(msgid)
+            return
+        self.execute('delete from history where msgid = ?', (msgid,))
 
 
     async def on_raw_bulk_message_delete(self, payload):
@@ -747,11 +756,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         elif emoji == REACT_DELETE:
             # sender or swapee may delete proxied message
             if payload.user_id in (row['authid'], row['otherid']):
-                if await self.try_delete(message):
-                    self.execute(
-                            'delete from history where msgid = ?',
-                            (payload.message_id,))
-                else:
+                if not await self.try_delete(message, cache = False):
                     await self.send_embed(message,
                             'I can\'t delete messages here.')
             else:

@@ -169,7 +169,7 @@ class PartialMessage:
     @property
     def jump_url(self):
         return self._truemsg.jump_url
-    async def delete(self):
+    async def delete(self, delay = None):
         await self._truemsg.delete()
     async def fetch(self):
         return self._truemsg
@@ -1066,6 +1066,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, chan, 'gs;e')
         second = self.assertProxied(alpha, chan, 'e: secnod')
 
+        # test edit attempt by non-author
         msg = send(beta, chan, 'gs;edit second')
         self.assertReacted(msg, gestalt.REACT_DELETE)
         self.assertEditedContent(second, 'secnod')
@@ -1073,19 +1074,24 @@ class GestaltTest(unittest.TestCase):
         self.assertReacted(msg, gestalt.REACT_DELETE)
         self.assertEditedContent(first, 'fisrt')
 
-        send(alpha, chan, 'gs;edit second')
+        # test successful edits
+        self.assertDeleted(alpha, chan, 'gs;edit second')
         self.assertEditedContent(second, 'second')
-        send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
+        self.assertDeleted(alpha, chan, 'gs;edit first',
+                Object(message_id = first.id))
         self.assertEditedContent(first, 'first')
 
+        # make sure that the correct most recent msgid is pulled from db
         self.assertCommand(beta, chan,
             'gs;p %s tags e: text' % self.get_proxid(beta, g.default_role))
         first = send(alpha, chan, 'e: edti me')
         run(send(alpha, chan, 'e: delete me').delete())
         run(send(alpha, chan, 'e: delete me too')._bulk_delete())
+        run(send(alpha, chan, 'e: manually delete me')._react(
+            gestalt.REACT_DELETE, alpha))
         self.assertProxied(beta, chan, 'e: dont edit me')
         send(alpha, chan, 'gs;help this message should be ignored')
-        send(alpha, chan, 'gs;edit edit me');
+        self.assertDeleted(alpha, chan, 'gs;edit edit me');
         self.assertEditedContent(first, 'edit me');
 
         # make sure that gs;edit on a non-webhook message doesn't cause problems
