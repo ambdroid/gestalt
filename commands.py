@@ -300,8 +300,8 @@ class GestaltCommands:
 
     async def cmd_autoproxy_set(self, message, arg):
         member = message.author
-        if arg in ['off', 'latch']:
-            self.set_autoproxy(member, None, latch = -1 * int(arg == 'latch'))
+        if arg in ['off', 'latch', 'l']:
+            self.set_autoproxy(member, None, latch = -1 * int(arg != 'off'))
         else:
             proxy = self.get_user_proxy(message, arg)
             if proxy['type'] == ProxyType.override:
