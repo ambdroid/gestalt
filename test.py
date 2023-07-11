@@ -1745,7 +1745,8 @@ class GestaltTest(unittest.TestCase):
 
         # test actually using latch against the command output
         self.assertCommand(alpha, c1, 'gs;p %s tags x:text' % overid)
-        self.assertCommand(alpha, c1, 'gs;ap latch')
+        self.assertCommand(alpha, c1, 'gs;ap off')
+        self.assertCommand(alpha, c1, 'gs;ap l')
         self.assertNotProxied(alpha, c1, 'not proxied')
         self.assertProxied(alpha, c1, 'b: beta')
         self.assertProxied(alpha, c1, 'beta')
