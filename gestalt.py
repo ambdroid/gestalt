@@ -114,7 +114,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     'insert into deleted values (old.maskid);'
                 'end')
 
-        self.known_deleted_cache = set()
+        self.ignore_delete_cache = set()
 
 
     def __del__(self):
@@ -172,15 +172,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     @tasks.loop(seconds = SYNC_TIMEOUT)
     async def sync_loop(self):
         self.conn.commit()
-        self.known_deleted_cache.clear()
+        self.ignore_delete_cache.clear()
 
 
-    async def try_delete(self, message, delay = None, cache = True):
+    async def try_delete(self, message, delay = None):
         if self.has_perm(message, manage_messages = True):
-            if cache:
-                # on_raw_message_delete fires even if we initiated the delete
-                # so cache the ID to skip a db no-op
-                self.known_deleted_cache.add(message.id)
             await message.delete(delay = delay)
             return True
 
@@ -673,8 +669,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_message(self, message):
-        if message.channel.type not in ALLOWED_CHANNELS:
+        if (message.channel.type not in ALLOWED_CHANNELS
+                or message.author.id == self.user.id):
             return
+        # we don't know without a query if any given webhook message is ours
+        # but we do know that any non-webhook message definitely isn't
+        # so if it is deleted, save a db call in on_raw_message_delete
+        # (this could be significant with other delete-heavy bots like PK)
+        if not message.webhook_id:
+            self.ignore_delete_cache.add(message.id)
         authid = message.author.id
         if (message.type in (discord.MessageType.default,
             discord.MessageType.reply)
@@ -695,8 +698,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     # these are needed for gs;edit to work
     async def on_raw_message_delete(self, payload):
-        if (msgid := payload.message_id) in self.known_deleted_cache:
-            self.known_deleted_cache.remove(msgid)
+        if (msgid := payload.message_id) in self.ignore_delete_cache:
+            self.ignore_delete_cache.remove(msgid)
             return
         self.execute('delete from history where msgid = ?', (msgid,))
 
@@ -756,7 +759,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         elif emoji == REACT_DELETE:
             # sender or swapee may delete proxied message
             if payload.user_id in (row['authid'], row['otherid']):
-                if not await self.try_delete(message, cache = False):
+                if not await self.try_delete(message):
                     await self.send_embed(message,
                             'I can\'t delete messages here.')
             else:
