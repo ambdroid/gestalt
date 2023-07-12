@@ -63,11 +63,11 @@ class Member:
         copy = Member(self.user, self.guild, self.guild_permissions)
         copy.roles = self.roles[:]
         return copy
-    async def _add_role(self, role):
+    def _add_role(self, role):
         before = self._copy()
         self.roles.append(role)
         role.members.append(self)
-        await instance.on_member_update(before, self)
+        run(instance.on_member_update(before, self))
     async def _del_role(self, role):
         before = self._copy()
         self.roles.remove(role)
@@ -138,21 +138,22 @@ class Message(Object):
                 discord.raw_models.RawMessageDeleteEvent(data = {
                     'channel_id': self.channel.id,
                     'id': self.id}))
-    async def _react(self, emoji, user):
+    def _react(self, emoji, user, _async = False):
         react = discord.Reaction(message = self, emoji = emoji,
                 data = {'count': 1, 'me': None})
         if react not in self.reactions:
             # FIXME when more than one user adds the same reaction
             self.reactions.append(react)
-        await instance.on_raw_reaction_add(
+        coro = instance.on_raw_reaction_add(
                 discord.raw_models.RawReactionActionEvent(data = {
                     'message_id': self.id,
                     'user_id': user.id,
                     'channel_id': self.channel.id},
                     emoji = discord.PartialEmoji(name = emoji),
                     event_type = None))
+        return coro if _async else run(coro)
     async def add_reaction(self, emoji):
-        await self._react(emoji, instance.user)
+        await self._react(emoji, instance.user, _async = True)
     async def remove_reaction(self, emoji, member):
         del self.reactions[[x.emoji for x in self.reactions].index(emoji)]
     async def _bulk_delete(self):
@@ -346,13 +347,13 @@ class Guild(Object):
             await instance.on_member_update(before, member)
         del self._roles[role.id]
         await instance.on_guild_role_delete(role)
-    async def _add_member(self, user, perms = discord.Permissions.all()):
+    def _add_member(self, user, perms = discord.Permissions.all()):
         if user.id in self._members:
             raise RuntimeError('re-adding a member to a guild')
         member = self._members[user.id] = Member(user, self, perms)
         member.roles.append(self.default_role)
         # NOTE: does on_member_update get called here? probably not but idk
-        await instance.on_member_join(member)
+        run(instance.on_member_join(member))
         return member
     def _remove_member(self, user):
         del self._members[user.id]
@@ -589,7 +590,7 @@ class GestaltTest(unittest.TestCase):
         msg = g['main'][-1]
         self.assertEqual(len(msg.embeds), 1)
         self.assertReacted(msg, gestalt.REACT_DELETE)
-        run(msg._react(gestalt.REACT_DELETE, alpha))
+        msg._react(gestalt.REACT_DELETE, alpha)
         self.assertTrue(msg._deleted)
 
     def test_03_add_delete_collective(self):
@@ -612,7 +613,7 @@ class GestaltTest(unittest.TestCase):
         # now try again with a new role
         role = g._add_role('delete me')
         # add the role to alpha, then create collective
-        run(g.get_member(alpha.id)._add_role(role))
+        g.get_member(alpha.id)._add_role(role)
         self.assertCommand(alpha, g['main'], 'gs;c new %s' % role.mention)
         proxid = self.get_proxid(alpha, role)
         self.assertIsNotNone(proxid)
@@ -700,7 +701,7 @@ class GestaltTest(unittest.TestCase):
         # also test proxies added on role add
         newrole = g._add_role('no tags')
         self.assertCommand(alpha, chan, 'gs;c new %s' % newrole.mention)
-        run(g.get_member(alpha.id)._add_role(newrole))
+        g.get_member(alpha.id)._add_role(newrole)
         proxid = self.get_proxid(alpha, newrole)
         self.assertIsNotNone(proxid)
         self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
@@ -714,21 +715,21 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(send(alpha, chan, 'e: tags').author.name, 'test')
 
     def test_06_query_delete(self):
-        run(g._add_member(deleteme := User(name = 'deleteme')))
+        g._add_member(deleteme := User(name = 'deleteme'))
         chan = g['main']
         self.assertCommand(deleteme, chan, 'gs;swap open %s'
             % deleteme.mention)
         self.assertCommand(deleteme, chan, 'gs;p deleteme tags e:text')
         msg = send(deleteme, chan, 'e:reaction test')
-        run(msg._react(gestalt.REACT_QUERY, beta))
+        msg._react(gestalt.REACT_QUERY, beta)
         token = discord.utils.escape_markdown(str(deleteme))
         self.assertIn(token, beta.dm_channel[-1].content)
 
-        run(msg._react(gestalt.REACT_DELETE, beta))
+        msg._react(gestalt.REACT_DELETE, beta)
         self.assertEqual(len(msg.reactions), 0)
         self.assertFalse(msg._deleted)
 
-        run(msg._react(gestalt.REACT_DELETE, deleteme))
+        msg._react(gestalt.REACT_DELETE, deleteme)
         self.assertTrue(msg._deleted)
 
         msg = send(deleteme, chan, 'e:bye!')
@@ -737,7 +738,7 @@ class GestaltTest(unittest.TestCase):
         with self.assertRaises(NotFound):
             run(instance.fetch_user(deleteme.id))
         send(beta, beta.dm_channel, 'buffer')
-        run(msg._react(gestalt.REACT_QUERY, beta))
+        msg._react(gestalt.REACT_QUERY, beta)
         self.assertIn(token, beta.dm_channel[-1].content)
 
         # in swaps, sender or swapee may delete message
@@ -745,12 +746,12 @@ class GestaltTest(unittest.TestCase):
                 'gs;swap open %s swap:text' % beta.mention)
         self.assertCommand(beta, chan, 'gs;swap open %s' % alpha.mention)
         msg = self.assertProxied(alpha, chan, 'swap:delete me')
-        run(msg._react(gestalt.REACT_DELETE, gamma))
+        msg._react(gestalt.REACT_DELETE, gamma)
         self.assertFalse(msg._deleted)
-        run(msg._react(gestalt.REACT_DELETE, alpha))
+        msg._react(gestalt.REACT_DELETE, alpha)
         self.assertTrue(msg._deleted)
         msg = self.assertProxied(alpha, chan, 'swap:delete me')
-        run(msg._react(gestalt.REACT_DELETE, beta))
+        msg._react(gestalt.REACT_DELETE, beta)
         self.assertTrue(msg._deleted)
         self.assertCommand(alpha, chan,
                 'gs;swap close %s' % self.get_proxid(alpha, beta))
@@ -758,16 +759,16 @@ class GestaltTest(unittest.TestCase):
         # test DMs
         msg1 = beta.dm_channel[-1]
         msg2 = send(beta, beta.dm_channel, 'test')
-        run(msg1._react(gestalt.REACT_DELETE, beta))
+        msg1._react(gestalt.REACT_DELETE, beta)
         self.assertTrue(msg1._deleted)
-        run(msg2._react(gestalt.REACT_DELETE, beta))
+        msg2._react(gestalt.REACT_DELETE, beta)
         self.assertFalse(msg2._deleted)
 
         # and finally normal messages
         msg = self.assertNotProxied(beta, chan, "we're just normal messages")
         buf = send(beta, beta.dm_channel, "we're just innocent messages")
-        run(msg._react(gestalt.REACT_QUERY, beta))
-        run(msg._react(gestalt.REACT_DELETE, beta))
+        msg._react(gestalt.REACT_QUERY, beta)
+        msg._react(gestalt.REACT_DELETE, beta)
         self.assertFalse(msg._deleted)
         self.assertEqual(len(msg.reactions), 2)
         self.assertEqual(beta.dm_channel[-1], buf)
@@ -804,13 +805,13 @@ class GestaltTest(unittest.TestCase):
     def test_08_global_conflicts(self):
         g2 = Guild()
         g2._add_channel('main')
-        run(g2._add_member(instance.user))
-        run(g2._add_member(alpha))
+        g2._add_member(instance.user)
+        g2._add_member(alpha)
 
         rolefirst = g._add_role('conflict')
         rolesecond = g2._add_role('conflict')
-        run(g.get_member(alpha.id)._add_role(rolefirst))
-        run(g.get_member(alpha.id)._add_role(rolesecond))
+        g.get_member(alpha.id)._add_role(rolefirst)
+        g.get_member(alpha.id)._add_role(rolesecond)
 
         # open a swap. swaps are global so alpha will use it to test conflicts
         self.assertCommand(
@@ -1034,7 +1035,7 @@ class GestaltTest(unittest.TestCase):
     # test member joining when the guild has an @everyone collective
     def test_14_member_join(self):
         user = User(name = 'test-joining')
-        run(g._add_member(user))
+        g._add_member(user)
         self.assertIsNotNone(self.get_proxid(user, g.default_role))
 
     def test_15_case(self):
@@ -1087,8 +1088,8 @@ class GestaltTest(unittest.TestCase):
         first = send(alpha, chan, 'e: edti me')
         run(send(alpha, chan, 'e: delete me').delete())
         run(send(alpha, chan, 'e: delete me too')._bulk_delete())
-        run(send(alpha, chan, 'e: manually delete me')._react(
-            gestalt.REACT_DELETE, alpha))
+        send(alpha, chan, 'e: manually delete me')._react(
+            gestalt.REACT_DELETE, alpha)
         self.assertProxied(beta, chan, 'e: dont edit me')
         send(alpha, chan, 'gs;help this message should be ignored')
         self.assertDeleted(alpha, chan, 'gs;edit edit me');
@@ -1141,16 +1142,13 @@ class GestaltTest(unittest.TestCase):
     def test_20_collective_delete(self):
         g1 = Guild()
         c1 = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha, perms = discord.Permissions(
-            manage_roles = True)))
-        run(g1._add_member(beta, perms = discord.Permissions(
-            manage_roles = False)))
+        g1._add_member(instance.user)
+        g1._add_member(alpha, perms = discord.Permissions(manage_roles = True))
+        g1._add_member(beta, perms = discord.Permissions(manage_roles = False))
         g2 = Guild()
         c2 = g2._add_channel('main')
-        run(g2._add_member(instance.user))
-        run(g2._add_member(beta, perms = discord.Permissions(
-            manage_roles = True)))
+        g2._add_member(instance.user)
+        g2._add_member(beta, perms = discord.Permissions(manage_roles = True))
 
         send(beta, c1, 'gs;c new everyone')
         self.assertIsNone(self.get_collid(g1.default_role))
@@ -1166,9 +1164,8 @@ class GestaltTest(unittest.TestCase):
     def test_21_attachments(self):
         g1 = Guild()
         c = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha, perms = discord.Permissions(
-            manage_roles = True)))
+        g1._add_member(instance.user)
+        g1._add_member(alpha, perms = discord.Permissions(manage_roles = True))
 
         send(alpha, c, 'gs;c new everyone')
         send(alpha, c, 'gs;p %s tags [text'
@@ -1205,10 +1202,10 @@ class GestaltTest(unittest.TestCase):
     def test_22_names(self):
         g1 = Guild(name = 'guildy guild')
         c = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha, perms = discord.Permissions(
-            manage_roles = True)))
-        run(g1._add_member(beta))
+        g1._add_member(instance.user)
+        g1._add_member(alpha, perms = discord.Permissions(
+            manage_roles = True))
+        g1._add_member(beta)
 
         send(alpha, c, 'gs;c new everyone')
         self.assertCommand(alpha, c, 'gs;p "guildy guild" tags [text')
@@ -1276,10 +1273,10 @@ class GestaltTest(unittest.TestCase):
     def test_23_pk_swap(self):
         g1 = Guild(name = 'guildy guild')
         c = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha))
-        run(g1._add_member(beta))
-        run(g1._add_member(gamma))
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
+        g1._add_member(beta)
+        g1._add_member(gamma)
         pkhook = Webhook(c, 'pk webhook')
 
         instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
@@ -1337,7 +1334,7 @@ class GestaltTest(unittest.TestCase):
         # test other member not being present
         g1._remove_member(alpha)
         msg = self.assertNotProxied(beta, c, '[test]')
-        run(g1._add_member(alpha))
+        g1._add_member(alpha)
         # test a message with no pk entry
         instance.session._add('/messages/' + str(c[-1].id), 404)
         self.assertNotCommand(beta, c, 'gs;pk sync',
@@ -1394,8 +1391,8 @@ class GestaltTest(unittest.TestCase):
         g1 = Guild(name = 'logged guild')
         c = g1._add_channel('main')
         log = g1._add_channel('log')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha))
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
 
         self.assertCommand(alpha, c, 'gs;c new everyone')
         self.assertCommand(alpha, c, 'gs;p "logged guild" tags g:text')
@@ -1420,9 +1417,9 @@ class GestaltTest(unittest.TestCase):
     def test_25_threads(self):
         g1 = Guild(name = 'thready guild')
         c = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha))
-        run(g1._add_member(beta))
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
+        g1._add_member(beta)
         th = Thread(c, name = 'the best thread')
 
         self.assertCommand(alpha, c, 'gs;swap open %s' % beta.mention)
@@ -1448,10 +1445,10 @@ class GestaltTest(unittest.TestCase):
         self.assertEditedContent(msg, 'ancient message')
 
         msg = send(alpha, th, 'beta: delete me')
-        run(msg._react(gestalt.REACT_DELETE, alpha))
+        msg._react(gestalt.REACT_DELETE, alpha)
         self.assertTrue(msg._deleted)
         self.assertFalse(cmd._deleted)
-        run(cmd._react(gestalt.REACT_DELETE, alpha))
+        cmd._react(gestalt.REACT_DELETE, alpha)
         self.assertTrue(cmd._deleted)
 
         c2 = g1._add_channel('general')
@@ -1484,14 +1481,14 @@ class GestaltTest(unittest.TestCase):
     def test_26_colors(self):
         g1 = Guild(name = 'colorful guild')
         c = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha))
-        run(g1._add_member(beta))
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
+        g1._add_member(beta)
 
         # pk swap colors are already tested
         role = g1._add_role('role')
         self.assertCommand(alpha, c, 'gs;c new %s' % role.mention)
-        run(g1.get_member(alpha.id)._add_role(role))
+        g1.get_member(alpha.id)._add_role(role)
         self.assertCommand(alpha, c, 'gs;p role tags c:text')
         self.assertCommand(alpha, c, 'gs;swap open %s beta:text'
                 % beta.mention)
@@ -1540,9 +1537,9 @@ class GestaltTest(unittest.TestCase):
         g1 = Guild(name = 'mandatory guild')
         main = g1._add_channel('main')
         cmds = g1._add_channel('cmds')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha))
-        run(g1._add_member(beta))
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
+        g1._add_member(beta)
 
         self.assertNotCommand(alpha, cmds, 'gs;channel %s mode irl' %
             Guild()._add_channel('channel').mention)
@@ -1568,7 +1565,7 @@ class GestaltTest(unittest.TestCase):
         g1._remove_member(beta)
         # swap with non-present member should be deleted
         self.assertDeleted(alpha, main, 'beta:test')
-        run(g1._add_member(beta))
+        g1._add_member(beta)
         self.assertCommand(alpha, cmds, 'gs;ap test-beta')
         # proxy escape should still be deleted
         self.assertDeleted(alpha, main, r'\test')
@@ -1607,7 +1604,7 @@ class GestaltTest(unittest.TestCase):
         g1._remove_member(alpha)
         # swap with non-present member should be deleted
         self.assertDeleted(beta, main, 'memb:not present')
-        run(g1._add_member(alpha))
+        g1._add_member(alpha)
 
         # command should be deleted
         self.assertDeleted(alpha, main, 'gs;swap close test-beta')
@@ -1621,8 +1618,8 @@ class GestaltTest(unittest.TestCase):
     def test_28_emojis(self):
         g1 = Guild(name = 'emoji guild')
         c = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha))
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
 
         self.assertCommand(alpha, c, 'gs;swap open %s a:text' % alpha.mention)
         self.assertIsNone(self.assertProxied(alpha, c, 'a:no emojis').edited_at)
@@ -1635,15 +1632,15 @@ class GestaltTest(unittest.TestCase):
     def test_29_autoproxy_new(self):
         g1 = Guild(name = 'auto guild')
         c1 = g1._add_channel('main')
-        run(g1._add_member(instance.user))
-        run(g1._add_member(alpha))
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
         g2 = Guild(name = 'manual guild')
         c2 = g2._add_channel('main')
-        run(g2._add_member(instance.user))
-        run(g2._add_member(alpha))
+        g2._add_member(instance.user)
+        g2._add_member(alpha)
 
         # check handling an ap'd swap when other member leaves guild
-        run(g1._add_member(beta))
+        g1._add_member(beta)
         self.assertCommand(alpha, c1, 'gs;swap open %s b:text' % beta.mention)
         self.assertCommand(beta, c1, 'gs;swap open %s a:text' % alpha.mention)
         self.assertCommand(alpha, c1, 'gs;autoproxy test-beta')
@@ -1651,7 +1648,7 @@ class GestaltTest(unittest.TestCase):
         g1._remove_member(beta)
         self.assertNotProxied(alpha, c1, 'beta')
 
-        run(g1._add_member(beta))
+        g1._add_member(beta)
         token = discord.utils.escape_markdown(str(beta))
         send(alpha, c1, 'gs;ap')
         self.assertNotIn(token, c1[-1].embeds[0].description)
@@ -1661,7 +1658,7 @@ class GestaltTest(unittest.TestCase):
         g1._remove_member(beta)
         send(alpha, c1, 'gs;ap')
         self.assertNotIn(token, c1[-1].embeds[0].description)
-        run(g1._add_member(beta))
+        g1._add_member(beta)
 
         # check ap's in different guilds not conflicting
         self.assertCommand(alpha, c2, 'gs;c new everyone')
@@ -1695,7 +1692,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, c1, 'gs;ap "test-beta\'s member!"')
         g1._remove_member(alpha)
         self.assertNotCommand(beta, c1, 'gs;ap member!')
-        run(g1._add_member(alpha))
+        g1._add_member(alpha)
         self.assertCommand(alpha, c1, 'gs;ap %s'
                 % self.get_proxid(alpha, beta))
         self.assertNotCommand(alpha, c1, 'gs;ap %s'
@@ -1705,7 +1702,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(gestalt.REACT_CONFIRM, gestalt.REACT_CONFIRM)
 
         # check all state transitions
-        run(g2._add_member(beta))
+        g2._add_member(beta)
         member = g2.get_member(alpha.id)
         for prox in [None, self.get_proxid(alpha, g2.default_role)]:
             for latch in [-1, 0]:
@@ -1789,14 +1786,14 @@ def main():
     gamma = User(name = 'test-gamma')
     g = Guild()
     g._add_channel('main')
-    run(g._add_member(instance.user))
-    run(g._add_member(alpha))
-    run(g._add_member(beta, perms = discord.Permissions(
+    g._add_member(instance.user)
+    g._add_member(alpha)
+    g._add_member(beta, perms = discord.Permissions(
         # these don't actually matter other than beta not having manage_roles
         add_reactions = True,
         read_messages = True,
-        send_messages = True)))
-    run(g._add_member(gamma))
+        send_messages = True))
+    g._add_member(gamma)
 
     if unittest.main(exit = False).result.wasSuccessful():
         print('But it isn\'t *really* OK, is it?')
