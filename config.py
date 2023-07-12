@@ -87,7 +87,7 @@ HELPMSGS = {
         'proxy':
         '**All proxies**: (shortcut `{p}p`)\n'
         '\n'
-        '`{p}proxy`: list your proxies.\n'
+        '`{p}proxy list`: list your proxies.\n'
         '`{p}proxy (id/name) tags [tags]`: set tags\n'
         '`{p}proxy (id/name) rename (new name)`: rename proxy\n'
         '`{p}proxy (id/name) keepproxy (on/off/blank)`: set or toggle '
@@ -122,11 +122,11 @@ HELPMSGS = {
         'collective':
         '**Collectives**: (shortcut `{p}c`)\n'
         'The name and avatar of a Collective may be changed by anyone in the '
-        'Colective.\n'
+        'Collective.\n'
         'You may use your associated proxy ID or name in place of a collective '
         'ID in commands.\n'
         '\n'
-        '`{p}collective`: list server Collectives.\n'
+        '`{p}collective list`: list server Collectives.\n'
         '`{p}collective (collective id) name (name)`: rename Collective\n'
         '`{p}collective (collective id) avatar (link/attacjment)`: set '
         'Collective avatar.\n'

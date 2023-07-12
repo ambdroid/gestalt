@@ -651,7 +651,7 @@ class GestaltCommands:
         elif arg in ['proxy', 'p']:
             name = reader.read_quote()
 
-            if name == '':
+            if name in ['', 'list']:
                 return await self.cmd_proxy_list(message)
 
             arg = reader.read_word().lower()
@@ -690,7 +690,7 @@ class GestaltCommands:
             guild = message.guild
             arg = reader.read_quote()
 
-            if arg == '':
+            if arg in ['', 'list']:
                 return await self.cmd_collective_list(message)
 
             elif arg.lower() in ['new', 'create']:
