@@ -33,6 +33,9 @@ class User(Object):
         self.dm_channel = None
         self.discriminator = '0001'
         super().__init__(**kwargs)
+        if not self.bot:
+            self.dm_channel = Channel(type = discord.ChannelType.private,
+                    members = [self, instance.user])
         User.users[self.id] = self
     @property
     def mention(self):
@@ -46,9 +49,6 @@ class User(Object):
     def __str__(self):
         return self.name + '#' + self.discriminator
     async def send(self, content = None, embed = None, file = None):
-        if self.dm_channel == None:
-            self.dm_channel = Channel(type = discord.ChannelType.private,
-                    members = [self, instance.user])
         await self.dm_channel.send(
                 content = content, embed = embed, file = file)
 
@@ -1772,6 +1772,44 @@ class GestaltTest(unittest.TestCase):
         text = c1[-1].embeds[0].description
         self.assertIn('However,', text)
         self.assertNotIn('Become', text)
+
+        self.assertCommand(alpha, c1, 'gs;swap close test-beta')
+
+    def test_30_proxy_list(self):
+        g1 = Guild(name = 'gestalt guild')
+        c1 = g1._add_channel('main')
+        g1._add_member(instance.user)
+        g1._add_member(alpha)
+        g1._add_member(beta)
+        g2 = Guild(name = 'boring guild')
+        c2 = g2._add_channel('main')
+        g2._add_member(instance.user)
+        g2._add_member(alpha)
+
+        self.assertCommand(alpha, c1, 'gs;c new everyone')
+        self.assertCommand(alpha, c1, 'gs;swap open %s' % beta.mention)
+        token = discord.utils.escape_markdown(str(beta))
+        for cmd in ['gs;proxy list', 'gs;proxy list --all']:
+            send(alpha, c1, 'gs;proxy list')
+            text = c1[-1].embeds[0].description
+            self.assertIn('gestalt guild', text)
+            self.assertIn(token, text)
+
+        send(alpha, c2, 'gs;proxy list')
+        text = c2[-1].embeds[0].description
+        self.assertNotIn('gestalt guild', text)
+        self.assertNotIn(token, text)
+        send(alpha, c2, 'gs;proxy list --all')
+        text = c2[-1].embeds[0].description
+        self.assertIn('gestalt guild', text)
+        self.assertIn(token, text)
+
+        send(alpha, alpha.dm_channel, 'gs;proxy list')
+        msg = alpha.dm_channel[-1]
+        self.assertEqual(msg.author, instance.user)
+        text = msg.embeds[0].description
+        self.assertIn('gestalt guild', text)
+        self.assertIn(token, text)
 
         self.assertCommand(alpha, c1, 'gs;swap close test-beta')
 

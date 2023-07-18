@@ -564,13 +564,22 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.mkproxy(user.id, ProxyType.override)
 
 
-    def proxy_valid_in(self, proxy, guild):
-        if proxy['state'] != ProxyState.active:
+    def proxy_visible_in(self, proxy, guild):
+        if proxy['state'] == ProxyState.hidden:
             return False
-        if proxy['type'] in (ProxyType.swap, ProxyType.pkswap):
+        if proxy['type'] in (ProxyType.swap, ProxyType.pkswap,
+                ProxyType.pkreceipt):
             return bool(guild.get_member(proxy['otherid']))
         elif proxy['type'] == ProxyType.collective:
             return proxy['guildid'] == guild.id
+        return True # override
+
+
+    def proxy_usable_in(self, proxy, guild):
+        if not self.proxy_visible_in(proxy, guild):
+            return False
+        if proxy['state'] != ProxyState.active:
+            return False
         elif proxy['type'] == ProxyType.pkreceipt:
             return False
         return True
@@ -597,7 +606,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             match = discord.utils.find(
                     lambda proxy : proxy['proxid'] == member['ap'],
                     proxies)
-            if match and not self.proxy_valid_in(match, message.guild):
+            if match and not self.proxy_usable_in(match, message.guild):
                 self.set_autoproxy(message.author, None)
                 return
         if match:

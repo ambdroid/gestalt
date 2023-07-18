@@ -198,7 +198,7 @@ class GestaltCommands:
         return line
 
 
-    async def cmd_proxy_list(self, message):
+    async def cmd_proxy_list(self, message, all_):
         rows = sorted(self.fetchall(
                 'select proxies.*, masks.roleid, masks.nick from '
                     'proxies left join masks using (maskid) '
@@ -215,17 +215,15 @@ class GestaltCommands:
         omit = False
         # must be at least one: the override
         for proxy in rows:
-            if proxy['state'] == ProxyState.hidden:
-                continue
-            # don't show non-global proxies in other servers
-            if message.guild and proxy['guildid'] not in [0, message.guild.id]:
+            if message.guild and not (all_
+                    or self.proxy_visible_in(proxy, message.guild)):
                 omit = True
-                continue
-            if line := self.proxy_string(proxy):
+            elif line := self.proxy_string(proxy):
                 lines.append(line)
 
         if omit:
             lines.append('Proxies in other servers have been omitted.')
+            lines.append('To view all proxies, use `proxy list --all`.')
         await self.send_embed(message, '\n'.join(lines))
 
 
@@ -271,7 +269,7 @@ class GestaltCommands:
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
         if (valid := ap and ap['proxid']):
-            if not (valid := self.proxy_valid_in(ap, message.guild)):
+            if not (valid := self.proxy_usable_in(ap, message.guild)):
                 self.set_autoproxy(message.author, None)
         proxy_string = valid and self.proxy_string(ap)
 
@@ -306,7 +304,7 @@ class GestaltCommands:
             proxy = self.get_user_proxy(message, arg)
             if proxy['type'] == ProxyType.override:
                 raise RuntimeError('You can\'t autoproxy your override.')
-            if not self.proxy_valid_in(proxy, message.guild):
+            if not self.proxy_usable_in(proxy, message.guild):
                 raise RuntimeError('You can\'t use that proxy in this guild.')
             self.set_autoproxy(member, proxy['proxid'], latch = 0)
 
@@ -652,7 +650,8 @@ class GestaltCommands:
             name = reader.read_quote()
 
             if name in ['', 'list']:
-                return await self.cmd_proxy_list(message)
+                return await self.cmd_proxy_list(message,
+                        reader.read_remainder() == '--all')
 
             arg = reader.read_word().lower()
             proxy = self.get_user_proxy(message, name)
