@@ -1789,7 +1789,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c1, 'gs;c new everyone')
         self.assertCommand(alpha, c1, 'gs;swap open %s' % beta.mention)
         token = discord.utils.escape_markdown(str(beta))
-        for cmd in ['gs;proxy list', 'gs;proxy list --all']:
+        for cmd in ['gs;proxy list', 'gs;proxy list -all']:
             send(alpha, c1, 'gs;proxy list')
             text = c1[-1].embeds[0].description
             self.assertIn('gestalt guild', text)
@@ -1799,7 +1799,7 @@ class GestaltTest(unittest.TestCase):
         text = c2[-1].embeds[0].description
         self.assertNotIn('gestalt guild', text)
         self.assertNotIn(token, text)
-        send(alpha, c2, 'gs;proxy list --all')
+        send(alpha, c2, 'gs;proxy list -all')
         text = c2[-1].embeds[0].description
         self.assertIn('gestalt guild', text)
         self.assertIn(token, text)
