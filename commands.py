@@ -223,7 +223,7 @@ class GestaltCommands:
 
         if omit:
             lines.append('Proxies in other servers have been omitted.')
-            lines.append('To view all proxies, use `proxy list --all`.')
+            lines.append('To view all proxies, use `proxy list -all`.')
         await self.send_embed(message, '\n'.join(lines))
 
 
@@ -651,7 +651,7 @@ class GestaltCommands:
 
             if name in ['', 'list']:
                 return await self.cmd_proxy_list(message,
-                        reader.read_remainder() == '--all')
+                        reader.read_remainder() == '-all')
 
             arg = reader.read_word().lower()
             proxy = self.get_user_proxy(message, name)
