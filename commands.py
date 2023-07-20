@@ -68,11 +68,10 @@ class CommandReader:
     # discord.ext includes a MemberConverter
     # but that's only available whem using discord.ext Command
     def read_member(self):
-        # even if the member is in a mention, consume the text of the mention
-        name = self.read_quote()
         if self.msg.mentions:
+            # consume the text of the mention
+            _ = self.read_word()
             return self.msg.mentions[0]
-        return self.msg.guild.get_member_named(name)
 
     def read_role(self):
         name = self.read_quote()
@@ -817,8 +816,7 @@ class GestaltCommands:
                 if not message.guild:
                     raise RuntimeError(ERROR_DM)
 
-                member = reader.read_member()
-                if member == None:
+                if (member := reader.read_member()) is None:
                     raise RuntimeError('User not found.')
                 tags = reader.read_remainder() or None
 
