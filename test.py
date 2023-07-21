@@ -190,7 +190,8 @@ class Webhook(Object):
     async def delete(self):
         self._deleted = True
         await instance.on_webhooks_update(self._channel)
-    async def edit_message(self, message_id, content, thread = None):
+    async def edit_message(self, message_id, content, allowed_mentions,
+            thread = None):
         msg = await (thread or self._channel).fetch_message(message_id)
         if self._deleted or msg.webhook_id != self.id or (thread and
                 thread.parent != self._channel):
@@ -1833,6 +1834,38 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;p \'"unclosed string\' rename "quote')
         self.assertNotCommand(alpha, c, 'gs;p "quote rename "override')
         self.assertCommand(alpha, c, 'gs;p "quote rename override')
+
+    def test_32_message_perms(self):
+        g = Guild(name = 'literally 1984')
+        c = g._add_channel('main')
+        g._add_member(alpha, perms = discord.Permissions(embed_links = False,
+            mention_everyone = False))
+        g._add_member(instance.user)
+
+        self.assertCommand(alpha, c, 'gs;swap open %s a:text' % alpha.mention)
+
+        self.assertEqual(self.assertProxied(alpha, c,
+            'a: hi https://discord.com').content,
+            'hi <https://discord.com>')
+        self.assertEqual(self.assertProxied(alpha, c,
+            'a: hi <https://discord.com>').content,
+            'hi <https://discord.com>')
+        # make sure you can't use emojis to cheat
+        msg = self.assertProxied(alpha, c,
+                'a: hi https://discord.com <:emoji:1234>')
+        self.assertIsNotNone(msg.edited_at)
+        self.assertEqual(msg.content, 'hi <https://discord.com> <:emoji:1234>')
+        # now try edits
+        self.assertDeleted(alpha, c, 'gs;e hi https://discord.com')
+        self.assertEditedContent(msg, 'hi <https://discord.com>')
+
+        g._remove_member(alpha)
+        g._add_member(alpha)
+        self.assertEqual(self.assertProxied(alpha, c,
+            'a: hi https://discord.com').content,
+            'hi https://discord.com')
+
+        self.assertCommand(alpha, c, 'gs;swap close test-alpha')
 
 
 def main():
