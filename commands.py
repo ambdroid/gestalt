@@ -46,25 +46,21 @@ class CommandReader:
         self.cmd = split[1]
         return split[0]
 
-    def read_quote(self):
-        if self.is_empty():
-            return ''
-        if regex := QUOTE_REGEXES.get(self.cmd[0]):
+    def try_read_quote(self):
+        if not self.is_empty() and (regex := QUOTE_REGEXES.get(self.cmd[0])):
             if match := regex.fullmatch(self.cmd):
                 self.cmd = match.group(2).strip()
                 return match.group(1)
-        return self.read_word()
+
+    def read_quote(self):
+        return self.try_read_quote() or self.read_word()
 
     def read_bool_int(self):
-        word = self.read_word().lower()
-        if word in CommandReader.BOOL_KEYWORDS:
-            return CommandReader.BOOL_KEYWORDS[word]
+        return self.BOOL_KEYWORDS.get(self.read_word().lower())
 
     def read_remainder(self):
-        if self.is_empty():
-            return ''
-        if self.cmd[0] in QUOTE_REGEXES:
-            return self.read_quote()
+        if quote := self.try_read_quote():
+            return quote
         (ret, self.cmd) = (self.cmd, '')
         return ret
 
@@ -86,7 +82,7 @@ class CommandReader:
         return discord.utils.get(guild.roles, name = name)
 
     def read_channel(self):
-        self.read_word() # discard
+        _ = self.read_word() # discard
         if self.msg.channel_mentions:
             chan = self.msg.channel_mentions[0]
             if chan.guild == self.msg.guild:
