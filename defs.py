@@ -11,6 +11,98 @@ from config import *
 LINK_REGEX = re.compile(r'<?(https?:\/\/[^\s<]+[^<.,:;"\')\]\s])>?')
 
 
+QUOTE_REGEXES = [
+        (['\''], ['\'']),
+        (['"'], ['"']),
+        (
+            [
+                '\N{LEFT DOUBLE QUOTATION MARK}',
+                '\N{RIGHT DOUBLE QUOTATION MARK}',
+                '\N{DOUBLE HIGH-REVERSED-9 QUOTATION MARK}',
+                '\N{DOUBLE LOW-9 QUOTATION MARK}',
+            ],
+            [
+                '\N{LEFT DOUBLE QUOTATION MARK}',
+                '\N{RIGHT DOUBLE QUOTATION MARK}',
+                '\N{DOUBLE HIGH-REVERSED-9 QUOTATION MARK}',
+            ]
+        ),
+        (
+            [
+                '\N{LEFT SINGLE QUOTATION MARK}',
+                '\N{RIGHT SINGLE QUOTATION MARK}',
+                '\N{SINGLE HIGH-REVERSED-9 QUOTATION MARK}',
+                '\N{SINGLE LOW-9 QUOTATION MARK}',
+            ],
+            [
+                '\N{LEFT SINGLE QUOTATION MARK}',
+                '\N{RIGHT SINGLE QUOTATION MARK}',
+                '\N{SINGLE HIGH-REVERSED-9 QUOTATION MARK}',
+            ]
+        ),
+        (
+            [
+                '\N{LEFT-POINTING DOUBLE ANGLE QUOTATION MARK}',
+                '\N{LEFT DOUBLE ANGLE BRACKET}',
+            ],
+            [
+                '\N{RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK}',
+                '\N{RIGHT DOUBLE ANGLE BRACKET}',
+            ]
+        ),
+        (
+            [
+                '\N{RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK}',
+                '\N{RIGHT DOUBLE ANGLE BRACKET}',
+            ],
+            [
+                '\N{LEFT-POINTING DOUBLE ANGLE QUOTATION MARK}',
+                '\N{LEFT DOUBLE ANGLE BRACKET}',
+            ]
+        ),
+        (
+            [
+                '\N{SINGLE LEFT-POINTING ANGLE QUOTATION MARK}',
+                '\N{LEFT ANGLE BRACKET}',
+            ],
+            [
+                '\N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK}',
+                '\N{RIGHT ANGLE BRACKET}',
+            ]
+        ),
+        (
+            [
+                '\N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK}',
+                '\N{RIGHT ANGLE BRACKET}',
+            ],
+            [
+                '\N{SINGLE LEFT-POINTING ANGLE QUOTATION MARK}',
+                '\N{LEFT ANGLE BRACKET}',
+            ]
+        ),
+        (
+            [
+                '\N{SINGLE LEFT-POINTING ANGLE QUOTATION MARK}',
+                '\N{LEFT ANGLE BRACKET}',
+            ],
+            [
+                '\N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK}',
+                '\N{RIGHT ANGLE BRACKET}',
+            ]
+        ),
+        (
+            [
+                '\N{LEFT CORNER BRACKET}',
+                '\N{LEFT WHITE CORNER BRACKET}',
+            ],
+            [
+                '\N{RIGHT CORNER BRACKET}',
+                '\N{RIGHT WHITE CORNER BRACKET}',
+            ]
+        )
+    ]
+
+
 INTENTS = discord.Intents(
         guilds = True,
         members = True,
@@ -90,6 +182,17 @@ class ProxyState(enum.IntEnum):
     active      = 2
 
 
+# convert into dict of single opening char : regex matching all ending chars
+QUOTE_REGEXES = reduce(dict.__or__, map(
+    lambda tup : {
+        opening: re.compile('%s([^%s]*)%s(.*)' % (
+            opening,
+            ''.join(tup[1]),
+            ('%s' if len(tup[1]) == 1 else '[%s]') % ''.join(tup[1]),
+            )
+            ) for opening in tup[0]
+        },
+    QUOTE_REGEXES))
 DEFAULT_PREFS = reduce(lambda a, b : a | Prefs[b], DEFAULT_PREFS, 0)
 REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
 HELPMSGS = {topic: text.format(p = COMMAND_PREFIX) for topic, text

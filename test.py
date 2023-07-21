@@ -1813,6 +1813,23 @@ class GestaltTest(unittest.TestCase):
 
         self.assertCommand(alpha, c1, 'gs;swap close test-beta')
 
+    def test_31_quotes(self):
+        c = alpha.dm_channel
+        send(alpha, c, 'gs;p') # create override
+        self.assertCommand(alpha, c, 'gs;p %s rename "1 1"'
+                % self.get_proxid(alpha, None))
+
+        self.assertCommand(alpha, c, 'gs;p "1 1" rename "2 2"')
+        self.assertCommand(alpha, c, 'gs;p \'2 2\' rename \'3 3\'')
+        self.assertNotCommand(alpha, c, 'gs;p \'3 3" rename "4 4"')
+        self.assertCommand(alpha, c, 'gs;p \u201c3 3\u201f rename "4 4"')
+        self.assertCommand(alpha, c, 'gs;p "4 4" rename \u201c5 5\u201f')
+        self.assertNotCommand(alpha, c, 'gs;p \u300c5 5\u300c rename "6 6"')
+        self.assertCommand(alpha, c, 'gs;p \u300c5 5\u300f rename "6 6"')
+        self.assertNotCommand(alpha, c, 'gs;p \u201c6 6\u2018 rename "7 7"')
+        self.assertNotCommand(alpha, c, 'gs;p "6 6"" "7 7"')
+        self.assertNotCommand(alpha, c, 'gs;p "6 6""" "7 7"')
+
 
 def main():
     global alpha, beta, gamma, g, instance

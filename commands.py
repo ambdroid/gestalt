@@ -47,11 +47,13 @@ class CommandReader:
         return split[0]
 
     def read_quote(self):
-        match = re.match('\\"[^\\"]*\\"', self.cmd)
-        if match == None:
-            return self.read_word()
-        self.cmd = match.string[len(match[0]):].strip()
-        return match[0][1:-1]
+        if self.is_empty():
+            return ''
+        if regex := QUOTE_REGEXES.get(self.cmd[0]):
+            if match := regex.fullmatch(self.cmd):
+                self.cmd = match.group(2).strip()
+                return match.group(1)
+        return self.read_word()
 
     def read_bool_int(self):
         word = self.read_word().lower()
@@ -59,10 +61,11 @@ class CommandReader:
             return CommandReader.BOOL_KEYWORDS[word]
 
     def read_remainder(self):
-        ret = self.cmd
-        if len(ret) > 1 and ret[0] == ret[-1] == '"':
-            ret = ret[1:-1]
-        self.cmd = ''
+        if self.is_empty():
+            return ''
+        if self.cmd[0] in QUOTE_REGEXES:
+            return self.read_quote()
+        (ret, self.cmd) = (self.cmd, '')
         return ret
 
     # discord.ext includes a MemberConverter
