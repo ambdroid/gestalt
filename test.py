@@ -1829,6 +1829,10 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, c, 'gs;p \u201c6 6\u2018 rename "7 7"')
         self.assertNotCommand(alpha, c, 'gs;p "6 6"" "7 7"')
         self.assertNotCommand(alpha, c, 'gs;p "6 6""" "7 7"')
+        self.assertCommand(alpha, c, 'gs;p "6 6" rename "unclosed string')
+        self.assertCommand(alpha, c, 'gs;p \'"unclosed string\' rename "quote')
+        self.assertNotCommand(alpha, c, 'gs;p "quote rename "override')
+        self.assertCommand(alpha, c, 'gs;p "quote rename override')
 
 
 def main():
