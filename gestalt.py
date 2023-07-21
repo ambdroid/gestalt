@@ -390,6 +390,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         raise RuntimeError('That proxy has not been synced yet.')
 
 
+    def maybe_remove_embeds(self, message, content):
+        if message.channel.permissions_for(message.author).embed_links:
+            return content
+        return LINK_REGEX.sub(
+                lambda match: match.group(0)
+                if (match.group(0).startswith('<')
+                    and match.group(0).endswith('>'))
+                else '<%s>' % match.group(0),
+                content)
+
+
     async def get_webhook(self, channel, create = False):
         if type(channel) == discord.Thread:
             channel = channel.parent
@@ -480,7 +491,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if msgfiles == [] and content == '':
             return
 
-        args = (message, proxy, prefs, content)
+        args = (message, proxy, prefs, self.maybe_remove_embeds(message,
+            content))
         proxtype = proxy['type']
         if proxtype == ProxyType.collective:
             present = self.get_proxy_collective(*args)
@@ -528,10 +540,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
         thread = (channel if type(channel) == discord.Thread
                 else discord.utils.MISSING)
+        am = discord.AllowedMentions(everyone = channel.permissions_for(
+            message.author).mention_everyone)
         try:
             (new, hook) = await self.execute_webhook(channel, thread = thread,
                     files = msgfiles and [i async for i in msgfiles],
-                    embed = embed, **present)
+                    embed = embed, allowed_mentions = am, **present)
         except discord.errors.Forbidden:
             raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
 
@@ -549,7 +563,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if new.content.count('<') != present['content'].count('<'):
             try:
                 new = await hook.edit_message(new.id,
-                        content = present['content'], thread = thread)
+                        content = present['content'], thread = thread,
+                        allowed_mentions = am)
             except:
                 pass
 

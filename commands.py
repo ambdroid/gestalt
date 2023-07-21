@@ -471,8 +471,12 @@ class GestaltCommands:
             return await self.mark_success(message, False)
 
         try:
-            edited = await hook.edit_message(proxied.id, content = content,
-                thread = thread)
+            edited = await hook.edit_message(proxied.id,
+                    content = self.maybe_remove_embeds(message, content),
+                    thread = thread,
+                    allowed_mentions = discord.AllowedMentions(
+                        everyone = channel.permissions_for(
+                            message.author).mention_everyone))
         except discord.errors.NotFound:
             await self.confirm_webhook_deletion(hook)
             return await self.mark_success(message, False)
