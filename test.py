@@ -68,11 +68,12 @@ class Member:
         self.roles.append(role)
         role.members.append(self)
         run(instance.on_member_update(before, self))
-    async def _del_role(self, role):
+    def _del_role(self, role, _async = False):
         before = self._copy()
         self.roles.remove(role)
-        role.remove(self)
-        await instance.on_member_update(before, self)
+        role.members.remove(self)
+        coro = instance.on_member_update(before, self)
+        return coro if _async else run(coro)
     @property
     def display_avatar(self):
         # TODO: guild avatars
@@ -343,9 +344,7 @@ class Guild(Object):
         # event order observed experimentally
         # discord.py doesn't document these things
         for member in role.members:
-            before = member._copy()
-            member.roles.remove(role)
-            await instance.on_member_update(before, member)
+            await member._del_role(role, _async = True)
         del self._roles[role.id]
         await instance.on_guild_role_delete(role)
     def _add_member(self, user, perms = discord.Permissions.all()):
@@ -614,7 +613,8 @@ class GestaltTest(unittest.TestCase):
         # now try again with a new role
         role = g._add_role('delete me')
         # add the role to alpha, then create collective
-        g.get_member(alpha.id)._add_role(role)
+        member = g.get_member(alpha.id)
+        member._add_role(role)
         self.assertCommand(alpha, g['main'], 'gs;c new %s' % role.mention)
         proxid = self.get_proxid(alpha, role)
         self.assertIsNotNone(proxid)
@@ -622,6 +622,12 @@ class GestaltTest(unittest.TestCase):
         # set tags and test it
         self.assertCommand(alpha, g['main'], 'gs;p %s tags d:text' % proxid)
         self.assertProxied(alpha, g['main'], 'd:test')
+
+        # try removing the role from alpha
+        member._del_role(role)
+        self.assertIsNone(self.get_proxid(alpha, role))
+        member._add_role(role)
+        self.assertIsNotNone(self.get_proxid(alpha, role))
 
         # delete the collective normally
         collid = self.get_collid(role)

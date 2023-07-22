@@ -344,7 +344,7 @@ class GestaltCommands:
                 if not member.bot:
                     self.mkproxy(member.id, ProxyType.collective,
                             cmdname = name, guildid = role.guild.id,
-                            maskid = collid)
+                            otherid = role.id, maskid = collid)
 
             await self.mark_success(message, True)
 
