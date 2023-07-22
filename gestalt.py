@@ -72,6 +72,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'chanid integer primary key,'
                 'hookid integer unique,'
                 'token text)')
+        # note that collective proxies store both the roleid and maskid
+        # because collectives might not always be tied to a role
         self.execute(
                 'create table if not exists proxies('
                 'proxid text primary key collate nocase,'   # of form 'abcde'
@@ -81,11 +83,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'prefix text,'
                 'postfix text,'
                 'type integer,'                 # see enum ProxyType
-                'otherid integer,'              # userid for swaps
+                'otherid integer,'              # roleid or userid for swaps
                 'maskid text collate nocase,'   # same collation for joining
                 'flags integer,'                # see enum ProxyFlags
                 'state integer,'                # see enum ProxyState
                 'unique(userid, maskid))')
+        # for fast proxy deletion on role removal
+        self.execute(
+                'create index if not exists proxies_userid_otherid '
+                'on proxies(userid, otherid)')
         self.execute(
                 'create table if not exists masks('
                 'maskid text collate nocase,'
@@ -311,18 +317,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             try:
                 self.mkproxy(member.id, ProxyType.collective,
                         cmdname = mask['nick'], guildid = member.guild.id,
-                        maskid = mask['maskid'])
+                        otherid = role.id, maskid = mask['maskid'])
             except sqlite.IntegrityError:
                 pass
 
 
     def on_member_role_remove(self, member, role):
-        collid = self.fetchone(
-                'select maskid from masks where roleid = ?',
-                (role.id,))
-        if collid:
-            self.execute('delete from proxies where (userid, maskid) = (?, ?)',
-                    (member.id, collid[0]))
+        self.execute('delete from proxies where (userid, otherid) = (?, ?)',
+                (member.id, role.id))
 
 
     async def on_guild_role_delete(self, role):
