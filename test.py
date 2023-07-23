@@ -1780,7 +1780,11 @@ class GestaltTest(unittest.TestCase):
         self.assertIn('However,', text)
         self.assertNotIn('Become', text)
 
+        # check ap reaction to proxy deletion
+        self.assertCommand(alpha, c1, 'gs;ap test-beta')
         self.assertCommand(alpha, c1, 'gs;swap close test-beta')
+        send(alpha, c1, 'gs;ap')
+        self.assertIn('no autoproxy', c1[-1].embeds[0].description)
 
     def test_30_proxy_list(self):
         g1 = Guild(name = 'gestalt guild')
