@@ -266,6 +266,8 @@ class GestaltCommands:
                     'left join masks using (maskid) '
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
+        # NOTE: valid == False if proxy has been deleted
+        # the lack of joined row from proxies sets fetched proxid to NULL
         if (valid := ap and ap['proxid']):
             if not (valid := self.proxy_usable_in(ap, message.guild)):
                 self.set_autoproxy(message.author, None)

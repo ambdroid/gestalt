@@ -584,12 +584,14 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def proxy_visible_in(self, proxy, guild):
         if proxy['state'] == ProxyState.hidden:
             return False
-        if proxy['type'] in (ProxyType.swap, ProxyType.pkswap,
-                ProxyType.pkreceipt):
-            return bool(guild.get_member(proxy['otherid']))
+        if proxy['type'] == ProxyType.override:
+            return True
         elif proxy['type'] == ProxyType.collective:
             return proxy['guildid'] == guild.id
-        return True # override
+        elif proxy['type'] in (ProxyType.swap, ProxyType.pkswap,
+                ProxyType.pkreceipt):
+            return bool(guild.get_member(proxy['otherid']))
+        return False
 
 
     def proxy_usable_in(self, proxy, guild):
