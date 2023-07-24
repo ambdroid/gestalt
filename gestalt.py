@@ -124,7 +124,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def __del__(self):
-        print('Closing database.')
+        self.log('Closing database.')
         self.conn.commit()
         self.conn.close()
 
@@ -133,6 +133,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def handler(self):
         self.loop.create_task(self.close())
         self.conn.commit()
+
+
+    def log(self, text, *args):
+        print(text % args, flush = True)
 
 
     def execute(self, *args): return self.cur.execute(*args)
@@ -156,8 +160,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def setup_hook(self):
-        print('Logged in as %s, id %d!' % (self.user, self.user.id),
-                flush = True)
+        self.log('Logged in as %s, id %d!', self.user, self.user.id)
         self.session = aiohttp.ClientSession()
         # if it ain't broke don't fix it
         # (except it does seem slightly broken? it needs the -1 in testing)
@@ -172,7 +175,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_ready(self):
-        print('In %i guild(s).' % len(self.guilds), flush = True)
+        self.log('In %i guild(s).', len(self.guilds))
         await self.change_presence(status = discord.Status.online,
                 activity = discord.Game(name = COMMAND_PREFIX + 'help'))
 
@@ -437,7 +440,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             self.execute('delete from webhooks where hookid = ?', (hook.id,))
             return True
         else:
-            print('False NotFound for webhook %i' % hook.id, flush = True)
+            self.log('False NotFound for webhook %i', hook.id)
 
 
     async def execute_webhook(self, channel, **kwargs):
@@ -451,7 +454,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 return (await hook.send(wait = True, **kwargs), hook)
 
 
-    async def make_log(self, message, orig, proxy = None, old = None):
+    async def make_log_message(self, message, orig, proxy = None, old = None):
         logchan = self.fetchone('select logchan from guilds where guildid = ?',
                 (orig.guild.id,))
         if not logchan:
@@ -582,7 +585,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             except:
                 pass
 
-        await self.make_log(new, message, proxy)
+        await self.make_log_message(new, message, proxy)
 
         return new
 
@@ -601,7 +604,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     and proxy['otherid'] in (role.id for role in member.roles)):
                 self.execute('delete from proxies where proxid = ?',
                         (proxy['proxid'],))
-                print('Deleted proxy %s' % str(dict(proxy)), flush = True)
+                self.log('Deleted proxy %s', str(dict(proxy)))
                 return
         return proxy
 

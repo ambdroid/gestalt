@@ -371,6 +371,8 @@ class TestBot(gestalt.Gestalt):
         self.session = ClientSession()
         self.pk_ratelimit = discord.gateway.GatewayRatelimiter(count = 1000,
                 per = 1.0)
+    def log(*args):
+        pass
     @property
     def user(self):
         return self._user
@@ -1926,9 +1928,6 @@ def main():
 
 
 # monkey patch. this probably violates the Geneva Conventions
-print = print # dynamic scoping lmao
-gestalt.__builtins__['print'] = lambda *args, **kwargs : None
-
 discord.Webhook.partial = Webhook.partial
 discord.Thread = Thread
 # don't spam the channel with error messages

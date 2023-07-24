@@ -485,7 +485,7 @@ class GestaltCommands:
 
         await self.try_delete(message)
 
-        await self.make_log(edited, message, old = proxied)
+        await self.make_log_message(edited, message, old = proxied)
 
 
     async def cmd_become(self, message, proxy):
