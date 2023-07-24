@@ -357,6 +357,8 @@ class Guild(Object):
         return member
     def _remove_member(self, user):
         del self._members[user.id]
+        run(instance.on_raw_member_remove(Object(user = user,
+            guild_id = self.id)))
     def get_member(self, user_id):
         return self._members.get(user_id)
     def get_role(self, role_id):
@@ -369,8 +371,6 @@ class TestBot(gestalt.Gestalt):
         self.session = ClientSession()
         self.pk_ratelimit = discord.gateway.GatewayRatelimiter(count = 1000,
                 per = 1.0)
-    def __del__(self):
-        pass # suppress 'closing database' message
     @property
     def user(self):
         return self._user
@@ -818,7 +818,7 @@ class GestaltTest(unittest.TestCase):
         rolefirst = g._add_role('conflict')
         rolesecond = g2._add_role('conflict')
         g.get_member(alpha.id)._add_role(rolefirst)
-        g.get_member(alpha.id)._add_role(rolesecond)
+        g2.get_member(alpha.id)._add_role(rolesecond)
 
         # open a swap. swaps are global so alpha will use it to test conflicts
         self.assertCommand(
@@ -1877,6 +1877,30 @@ class GestaltTest(unittest.TestCase):
 
         self.assertCommand(alpha, c, 'gs;swap close test-alpha')
 
+    def test_33_consistency(self):
+        g = Guild(name = 'inconsistent guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(instance.user)
+        role = g._add_role('remove')
+        member = g.get_member(alpha.id)
+        member._add_role(role)
+        self.assertCommand(alpha, c, 'gs;c new remove')
+        self.assertCommand(alpha, c, 'gs;p remove tags r:text')
+        # remove the role with no fired event
+        # pretend this happens when the bot is offline or something
+        member.roles.remove(role)
+        role.members.remove(member)
+        self.assertNotCommand(alpha, c, 'gs;p remove tags r:text')
+
+        c = alpha.dm_channel
+        member._add_role(role)
+        self.assertCommand(alpha, c, 'gs;p remove tags r:text')
+        g._remove_member(member)
+        self.assertNotCommand(alpha, c, 'gs;p remove tags r:text')
+        g._add_member(alpha)
+        self.assertNotCommand(alpha, c, 'gs;p remove tags r:text')
+
 
 def main():
     global alpha, beta, gamma, g, instance
@@ -1902,6 +1926,9 @@ def main():
 
 
 # monkey patch. this probably violates the Geneva Conventions
+print = print # dynamic scoping lmao
+gestalt.__builtins__['print'] = lambda *args, **kwargs : None
+
 discord.Webhook.partial = Webhook.partial
 discord.Thread = Thread
 # don't spam the channel with error messages

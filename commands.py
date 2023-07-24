@@ -95,7 +95,7 @@ class GestaltCommands:
             raise RuntimeError('Please provide a proxy name/ID.')
 
         # can't do 'and ? in (proxid, cmdname)'; breaks case insensitivity
-        proxies = self.fetchall(
+        proxies = self.fetch_valid_proxies(
                 'select * from proxies where userid = ? '
                 'and (proxid = ? or cmdname = ?) '
                 'and state != ?',
@@ -197,7 +197,7 @@ class GestaltCommands:
 
 
     async def cmd_proxy_list(self, message, all_):
-        rows = sorted(self.fetchall(
+        rows = sorted(self.fetch_valid_proxies(
                 'select proxies.*, masks.roleid, masks.nick from '
                     'proxies left join masks using (maskid) '
                 'where proxies.userid = ?',

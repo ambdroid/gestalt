@@ -140,6 +140,13 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     def fetchall(self, *args): return self.cur.execute(*args).fetchall()
 
 
+    # turns out there's no applicable situation that uses fetchone() yet
+    # so only the fetchall() version is defined
+    def fetch_valid_proxies(self, *args):
+        return [proxy for proxy in self.cur.execute(*args).fetchall()
+                if self.delete_invalid_proxy(proxy)]
+
+
     def has_perm(self, message, **kwargs):
         if not message.guild:
             return True
@@ -292,7 +299,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     def get_tags_conflict(self, userid, guildid, pair):
         (prefix, postfix) = pair
-        return [proxy['proxid'] for proxy in self.fetchall(
+        return [proxy['proxid'] for proxy in self.fetch_valid_proxies(
             'select * from proxies where userid = ?', (userid,))
             if proxy['prefix'] is not None
             # if prefix is to be global, check everything
@@ -348,6 +355,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
     async def on_member_join(self, member):
         if not member.bot:
             self.on_member_role_add(member, member.guild.default_role)
+
+
+    async def on_raw_member_remove(self, payload):
+        self.execute('delete from proxies where (userid, guildid) = (?, ?)',
+                (payload.user.id, payload.guild_id))
 
 
     def get_proxy_collective(self, message, proxy, prefs, content):
@@ -581,6 +593,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.mkproxy(user.id, ProxyType.override)
 
 
+    def delete_invalid_proxy(self, proxy):
+        if proxy['type'] == ProxyType.collective:
+            if not (guild := self.get_guild(proxy['guildid'])):
+                return # assume it's temporarily unavailable
+            if not ((member := guild.get_member(proxy['userid']))
+                    and proxy['otherid'] in (role.id for role in member.roles)):
+                self.execute('delete from proxies where proxid = ?',
+                        (proxy['proxid'],))
+                print('Deleted proxy %s' % str(dict(proxy)), flush = True)
+                return
+        return proxy
+
+
     def proxy_visible_in(self, proxy, guild):
         if proxy['state'] == ProxyState.hidden:
             return False
@@ -608,7 +633,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
         lower = message.content.lower()
-        proxies = self.fetchall(
+        proxies = self.fetch_valid_proxies(
                 'select * from proxies where userid = ? and guildid in (0, ?)',
                 (message.author.id, message.guild.id))
         # this can't be a join because we need it even if there's no proxy set
