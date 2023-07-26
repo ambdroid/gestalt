@@ -27,6 +27,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.conn.row_factory = sqlite.Row
         self.cur = self.conn.cursor()
         self.execute(
+                'create table if not exists meta('
+                'singleton integer unique,'
+                'motd text,'
+                'check(singleton = 1))')
+        self.execute('insert or ignore into meta values (1, "")')
+        self.execute(
                 'create table if not exists guilds('
                 'guildid integer primary key,'
                 'logchan integer)')
@@ -174,10 +180,17 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.sync_loop.start()
 
 
+    async def update_status(self):
+        motd = self.fetchone('select motd from meta')['motd']
+        await self.change_presence(status = discord.Status.online,
+                activity = discord.Game(name =
+                    '%shelp%s' % (COMMAND_PREFIX, (motd and ' | %s' % motd))))
+
+
     async def on_ready(self):
         self.log('In %i guild(s).', len(self.guilds))
-        await self.change_presence(status = discord.Status.online,
-                activity = discord.Game(name = COMMAND_PREFIX + 'help'))
+        self.owner = (await self.application_info()).owner.id
+        await self.update_status()
 
 
     async def close(self):
