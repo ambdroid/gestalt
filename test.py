@@ -696,7 +696,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, chan, 'gs;p %s keepproxy on' % proxid)
         self.assertProxied(alpha, chan, '[message]')
         self.assertEqual(chan[-1].content, '[message]')
-        self.assertCommand(alpha, chan, 'gs;p %s keepproxy' % proxid)
+        self.assertCommand(alpha, chan, 'gs;p %s keepproxy off' % proxid)
         self.assertProxied(alpha, chan, '[message]')
         self.assertEqual(chan[-1].content, 'message')
         self.assertCommand(alpha, chan, 'gs;p %s tags e:text' % proxid)
@@ -963,14 +963,13 @@ class GestaltTest(unittest.TestCase):
                 'We are Ourselves. We were and are. We\'re. We\'re. are We? '
                 'We Us Our Ours.')
         self.assertCommand(alpha, chan, 'gs;account config replace off')
-        msg = send(alpha, chan, 'e:' + before)
-        self.assertEqual(msg.content, before)
-        self.assertCommand(alpha, chan, 'gs;a config replace')
-        msg = send(alpha, chan, 'e:' + before)
-        self.assertEqual(msg.content, after)
+        self.assertEqual(send(alpha, chan, 'e:' + before).content, before)
+        self.assertCommand(alpha, chan, 'gs;a config replace on')
+        self.assertEqual(send(alpha, chan, 'e:' + before).content, after)
         self.assertCommand(alpha, chan, 'gs;a config replace off')
+        self.assertEqual(send(alpha, chan, 'e:' + before).content, before)
         self.assertCommand(alpha, chan, 'gs;a config defaults')
-        self.assertEqual(msg.content, after)
+        self.assertEqual(send(alpha, chan, 'e:' + before).content, after)
 
     def test_11_avatar_url(self):
         chan = g['main']

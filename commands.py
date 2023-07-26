@@ -246,8 +246,6 @@ class GestaltCommands:
 
 
     async def cmd_proxy_keepproxy(self, message, proxy, keep):
-        if keep == None:
-            keep = not bool(proxy['flags'] & ProxyFlags.keepproxy)
         self.execute(
                 'update proxies set flags = (flags & ~?) | ? '
                 'where proxid = ?',
@@ -387,13 +385,9 @@ class GestaltCommands:
 
     async def cmd_config_update(self, message, user, name, value):
         bit = int(Prefs[name])
-        if value == None: # only 'config' + name given. invert the thing
-            prefs = user['prefs'] ^ bit
-        else:
-            prefs = (user['prefs'] & ~bit) | (bit * value)
         self.execute(
                 'update users set prefs = ? where userid = ?',
-                (prefs, message.author.id))
+                ((user['prefs'] & ~bit) | (bit * value), message.author.id))
 
         await self.mark_success(message, True)
 
@@ -676,7 +670,8 @@ class GestaltCommands:
                         newname)
 
             elif arg == 'keepproxy':
-                keep = reader.read_bool_int()
+                if (keep := reader.read_bool_int()) is None:
+                    raise RuntimeError('Please specify "on" or "off".')
                 return await self.cmd_proxy_keepproxy(message, proxy, keep)
 
         elif arg in ['autoproxy', 'ap']:
@@ -791,12 +786,8 @@ class GestaltCommands:
                 if not arg in Prefs.__members__.keys():
                     raise RuntimeError('That setting does not exist.')
 
-                if reader.is_empty():
-                    value = None
-                else:
-                    value = reader.read_bool_int()
-                    if value == None:
-                        raise RuntimeError('Please specify "on" or "off".')
+                if (value := reader.read_bool_int()) is None:
+                    raise RuntimeError('Please specify "on" or "off".')
 
                 return await self.cmd_config_update(message, user, arg, value)
 
