@@ -90,8 +90,8 @@ HELPMSGS = {
         '`{p}proxy list`: list your proxies.\n'
         '`{p}proxy (id/name) tags [tags]`: set tags\n'
         '`{p}proxy (id/name) rename (new name)`: rename proxy\n'
-        '`{p}proxy (id/name) keepproxy (on/off/blank)`: set or toggle '
-        'keepproxy\n',
+        '`{p}proxy (id/name) keepproxy (on/off)`: don\'t remove tags from '
+        'proxied messages\n',
 
         'swap':
         '**Swaps**: (shortcut `{p}s`)\n'
@@ -152,7 +152,7 @@ HELPMSGS = {
         'account':
         '**Account**: (shortcut: `{p}a`)\n'
         '`{p}account config`: list your current settings.\n'
-        '`{p}account config [name] [on/off/blank]`: toggle settings.\n'
+        '`{p}account config [name] [on/off]`: change your settings.\n'
         '`{p}account config defaults`: reset your settings.\n'
         '- `replace`: convert singular pronouns to plural in collectives. '
         '(default: **off**)\n'
