@@ -924,3 +924,10 @@ class GestaltCommands:
                 self.mkhistory(reply, message.author)
                 return
 
+        elif arg == 'motd':
+            if message.author.id == self.owner:
+                self.execute('update meta set motd = ?',
+                        (reader.read_remainder(),))
+                await self.update_status()
+                await self.mark_success(message, True)
+
