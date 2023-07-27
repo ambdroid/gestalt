@@ -582,8 +582,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.mkhistory(new, message.author, channel = message.channel,
                 proxy = proxy)
 
-        await self.try_delete(message, delay = DELETE_DELAY
-                if prefs & Prefs.delay else None)
+        if not proxy['flags'] & ProxyFlags.echo:
+            await self.try_delete(message, delay = DELETE_DELAY
+                    if prefs & Prefs.delay else None)
 
         # try to automatically fix external emojis
         # custom emojis are of the form /<:[a-zA-Z90-9_~]+:[0-9]+>/

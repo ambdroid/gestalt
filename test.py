@@ -701,6 +701,24 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(chan[-1].content, 'message')
         self.assertCommand(alpha, chan, 'gs;p %s tags e:text' % proxid)
 
+        # test echo
+        self.assertCommand(alpha, chan, 'gs;p %s echo on' % proxid)
+        (msg, proxied) = (send(alpha, chan, 'e:echo!'), chan[-1])
+        self.assertFalse(msg._deleted)
+        self.assertGreater(proxied.id, msg.id)
+        self.assertIsNotNone(proxied.webhook_id)
+        self.assertEqual(proxied.content, 'echo!')
+
+        # echo and keepproxy
+        self.assertCommand(alpha, chan, 'gs;p %s keepproxy on' % proxid)
+        (msg, proxied) = (send(alpha, chan, 'e:echo!'), chan[-1])
+        self.assertFalse(msg._deleted)
+        self.assertGreater(proxied.id, msg.id)
+        self.assertIsNotNone(proxied.webhook_id)
+        self.assertEqual(proxied.content, 'e:echo!')
+        self.assertCommand(alpha, chan, 'gs;p %s keepproxy off' % proxid)
+        self.assertCommand(alpha, chan, 'gs;p %s echo off' % proxid)
+
         # invalid tags. these should fail
         self.assertNotCommand(alpha, chan, 'gs;p %s tags ' % proxid)
         self.assertNotCommand(alpha, chan, 'gs;p %s tags text ' % proxid)
