@@ -245,12 +245,11 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
-    async def cmd_proxy_keepproxy(self, message, proxy, keep):
+    async def cmd_proxy_flag(self, message, proxy, name, value):
+        bit = int(ProxyFlags[name])
         self.execute(
-                'update proxies set flags = (flags & ~?) | ? '
-                'where proxid = ?',
-                (ProxyFlags.keepproxy, ProxyFlags.keepproxy * int(keep),
-                proxy['proxid']))
+                'update proxies set flags = ? where proxid = ?',
+                ((proxy['flags'] & ~bit) | (bit * value), proxy['proxid']))
 
         await self.mark_success(message, True)
 
@@ -669,10 +668,10 @@ class GestaltCommands:
                 return await self.cmd_proxy_rename(message, proxy['proxid'],
                         newname)
 
-            elif arg == 'keepproxy':
-                if (keep := reader.read_bool_int()) is None:
+            elif arg in ProxyFlags.__members__.keys():
+                if (value := reader.read_bool_int()) is None:
                     raise RuntimeError('Please specify "on" or "off".')
-                return await self.cmd_proxy_keepproxy(message, proxy, keep)
+                return await self.cmd_proxy_flag(message, proxy, arg, value)
 
         elif arg in ['autoproxy', 'ap']:
             if not message.guild:

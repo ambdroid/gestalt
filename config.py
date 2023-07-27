@@ -91,7 +91,9 @@ HELPMSGS = {
         '`{p}proxy (id/name) tags [tags]`: set tags\n'
         '`{p}proxy (id/name) rename (new name)`: rename proxy\n'
         '`{p}proxy (id/name) keepproxy (on/off)`: don\'t remove tags from '
-        'proxied messages\n',
+        'proxied messages\n'
+        '`{p}proxy (id/name) echo (on/off)`: don\'t delete the original '
+        'message',
 
         'swap':
         '**Swaps**: (shortcut `{p}s`)\n'
