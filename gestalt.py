@@ -775,8 +775,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def on_raw_bulk_message_delete(self, payload):
-       self.cur.executemany('delete from history where msgid = ?',
-               ((x,) for x in payload.message_ids))
+        for id in payload.message_ids:
+            await self.on_raw_message_delete(
+                    discord.raw_models.RawMessageDeleteEvent(
+                        {'id': id, 'channel_id': payload.channel_id}))
 
 
     # on_reaction_add doesn't catch everything
