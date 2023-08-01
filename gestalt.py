@@ -618,7 +618,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     and proxy['otherid'] in (role.id for role in member.roles)):
                 self.execute('delete from proxies where proxid = ?',
                         (proxy['proxid'],))
-                self.log('Deleted proxy %s', str(dict(proxy)))
+                self.log('Deleted proxy %s', proxy['proxid'])
                 return
         return proxy
 
