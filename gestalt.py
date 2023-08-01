@@ -271,7 +271,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             flags = ProxyFlags(0), state = ProxyState.active):
         if prefix is not None and self.get_tags_conflict(userid, guildid,
                 (prefix, postfix)):
-            raise RuntimeError(ERROR_TAGS)
+            raise UserError(ERROR_TAGS)
         self.execute(
                 'insert into proxies values '
                 '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -417,7 +417,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     'avatar_url': mask['avatar'],
                     'color': mask['color'],
                     'content': content}
-        raise RuntimeError('That proxy has not been synced yet.')
+        raise UserError('That proxy has not been synced yet.')
 
 
     def maybe_remove_embeds(self, message, content):
@@ -531,7 +531,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         elif proxtype == ProxyType.pkswap:
             present = self.get_proxy_pkswap(*args)
         else:
-            raise RuntimeError('Unknown proxy type')
+            raise UserError('Unknown proxy type')
         # in case e.g. it's a swap but the other user isn't in the guild
         if present == None:
             return
@@ -577,7 +577,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     files = msgfiles and [i async for i in msgfiles],
                     embed = embed, allowed_mentions = am, **present)
         except discord.errors.Forbidden:
-            raise RuntimeError('I need `Manage Webhooks` permission to proxy.')
+            raise UserError('I need `Manage Webhooks` permission to proxy.')
 
         self.mkhistory(new, message.author, channel = message.channel,
                 proxy = proxy)
@@ -684,7 +684,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if (prefix := lower.startswith(COMMAND_PREFIX)) or not message.guild:
             if mandatory:
                 await self.try_delete(message)
-                raise RuntimeError(
+                raise UserError(
                         'You cannot use commands in a Mandatory mode channel.')
 
             # init user if hasn't been init'd yet
@@ -726,8 +726,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     self.set_autoproxy(message.author, None)
                 return
             if not self.has_perm(message, manage_messages = True):
-                raise RuntimeError(
-                        'I need `Manage Messages` permission to proxy.')
+                raise UserError('I need `Manage Messages` permission to proxy.')
             msg = await self.do_proxy(message, match, prefs)
             if msg and latch:
                 self.set_autoproxy(message.author, match['proxid'])
@@ -756,7 +755,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     (authid,))
             try:
                 await self.on_user_message(message, user)
-            except RuntimeError as e:
+            except UserError as e:
                 # an uninit'd user shouldn't ever get errors, but just in case
                 if ((user and user['prefs']) or DEFAULT_PREFS) & Prefs.errors:
                     await self.send_embed(message, e.args[0])

@@ -16,7 +16,7 @@ def escape(text):
 def parse_tags(tags):
     split = tags.lower().split('text')
     if len(split) != 2 or not ''.join(split):
-        raise RuntimeError(
+        raise UserError(
                 'Please provide valid tags around `text` (e.g. `[text]`).')
     return split
 
@@ -92,7 +92,7 @@ class CommandReader:
 class GestaltCommands:
     def get_user_proxy(self, message, name):
         if name == '':
-            raise RuntimeError('Please provide a proxy name/ID.')
+            raise UserError('Please provide a proxy name/ID.')
 
         # can't do 'and ? in (proxid, cmdname)'; breaks case insensitivity
         proxies = self.fetch_valid_proxies(
@@ -102,9 +102,9 @@ class GestaltCommands:
                 (message.author.id, name, name, ProxyState.hidden))
 
         if not proxies:
-            raise RuntimeError('You have no proxy with that name/ID.')
+            raise UserError('You have no proxy with that name/ID.')
         if len(proxies) > 1:
-            raise RuntimeError('You have multiple proxies with that name/ID.')
+            raise UserError('You have multiple proxies with that name/ID.')
 
         return proxies[0]
 
@@ -123,10 +123,9 @@ class GestaltCommands:
         guildid = message.guild.id if guildid == '' else int(guildid)
         guild = self.get_guild(guildid)
         if guild == None:
-            raise RuntimeError(
-                    'That guild does not exist or I am not in it.')
+            raise UserError('That guild does not exist or I am not in it.')
         if guild.get_member(message.author.id) == None:
-            raise RuntimeError('You are not a member of that guild.')
+            raise UserError('You are not a member of that guild.')
 
         memberauth = guild.get_member(message.author.id)
         memberbot = guild.get_member(self.user.id)
@@ -229,7 +228,7 @@ class GestaltCommands:
         (prefix, postfix) = parse_tags(tags)
         if prefix is not None and self.get_tags_conflict(message.author.id,
             proxy['guildid'], (prefix, postfix)) not in ([proxy['proxid']], []):
-            raise RuntimeError(ERROR_TAGS)
+            raise UserError(ERROR_TAGS)
 
         self.execute(
                 'update proxies set prefix = ?, postfix = ? where proxid = ?',
@@ -300,9 +299,9 @@ class GestaltCommands:
         else:
             proxy = self.get_user_proxy(message, arg)
             if proxy['type'] == ProxyType.override:
-                raise RuntimeError('You can\'t autoproxy your override.')
+                raise UserError('You can\'t autoproxy your override.')
             if not self.proxy_usable_in(proxy, message.guild):
-                raise RuntimeError('You can\'t use that proxy in this guild.')
+                raise UserError('You can\'t use that proxy in this guild.')
             self.set_autoproxy(member, proxy['proxid'], latch = 0)
 
         await self.mark_success(message, True)
@@ -438,7 +437,7 @@ class GestaltCommands:
 
     async def cmd_edit(self, message, content):
         if not content:
-            raise RuntimeError('We need a message here!')
+            raise UserError('We need a message here!')
         channel = message.channel
         (thread, channel) = ((channel, channel.parent)
                 if type(channel) == discord.Thread
@@ -513,14 +512,14 @@ class GestaltCommands:
             async with self.session.get(PK_ENDPOINT + url,
                     timeout = aiohttp.ClientTimeout(total = 5.0)) as r:
                 if r.status != 200:
-                    raise RuntimeError(ERROR_PKAPI)
+                    raise UserError(ERROR_PKAPI)
                 response = await r.text(encoding = 'UTF-8')
                 try:
                     return json.loads(response)
                 except json.decoder.JSONDecodeError:
-                    raise RuntimeError(ERROR_PKAPI)
+                    raise UserError(ERROR_PKAPI)
         except asyncio.TimeoutError:
-            raise RuntimeError('Could not reach PluralKit API.')
+            raise UserError('Could not reach PluralKit API.')
 
 
     async def cmd_pk_swap(self, message, swap, pkhid):
@@ -529,10 +528,10 @@ class GestaltCommands:
             member = await self.pk_api_get('/members/' + pkhid)
         try:
             if system['id'] != member['system']:
-                raise RuntimeError('That member is not in your system.')
+                raise UserError('That member is not in your system.')
             # in the unlikely that PK goes rogue and tries to mess with us
             if len(member['uuid']) == 5:
-                raise RuntimeError(ERROR_PKAPI)
+                raise UserError(ERROR_PKAPI)
             # it would be really nice to just check the pkhid in the command
             # that way we could check if the proxy exists as the first step
             # unfortunately, pkhids are NOT guaranteed to be constant!
@@ -556,7 +555,7 @@ class GestaltCommands:
                         cmdname = receipt, otherid = swap['otherid'],
                         maskid = proxid, state = ProxyState.inactive)
         except KeyError:
-            raise RuntimeError(ERROR_PKAPI)
+            raise UserError(ERROR_PKAPI)
 
         await self.mark_success(message, True)
 
@@ -579,27 +578,27 @@ class GestaltCommands:
         ref = ref.cached_message or await message.channel.fetch_message(
                 ref.message_id)
         if not (ref and ref.webhook_id):
-                raise RuntimeError('Please reply to a proxied message.')
+                raise UserError('Please reply to a proxied message.')
 
         async with self.in_progress(message):
             proxied = await self.pk_api_get('/messages/' + str(ref.id))
         try:
             pkuuid = proxied['member']['uuid']
         except KeyError:
-            raise RuntimeError(ERROR_PKAPI)
+            raise UserError(ERROR_PKAPI)
 
         mask = self.fetchone(
                 'select * from proxies where (type, maskid, state) = (?, ?, ?)',
                 (ProxyType.pkswap, pkuuid, ProxyState.active))
         if not mask:
-            raise RuntimeError('That member has no Gestalt proxies.')
+            raise UserError('That member has no Gestalt proxies.')
 
         mask = self.fetchone(
                 'select color, updated from masks '
                 'where (maskid, guildid) = (?, ?)',
                 ('pk-' + pkuuid, message.guild.id))
         if mask and mask['updated'] > ref.id:
-            raise RuntimeError('Please use a more recent proxied message.')
+            raise UserError('Please use a more recent proxied message.')
 
         self.execute(
                 'insert or replace into masks values '
@@ -640,7 +639,7 @@ class GestaltCommands:
         elif arg == 'permcheck':
             guildid = reader.read_word()
             if re.search('[^0-9]', guildid) or not (guildid or message.guild):
-                raise RuntimeError('Please provide a valid guild ID.')
+                raise UserError('Please provide a valid guild ID.')
             return await self.cmd_permcheck(message, guildid)
 
         elif arg in ['proxy', 'p']:
@@ -664,18 +663,18 @@ class GestaltCommands:
             elif arg == 'rename':
                 newname = reader.read_remainder()
                 if not newname:
-                    raise RuntimeError('Please provide a new name.')
+                    raise UserError('Please provide a new name.')
                 return await self.cmd_proxy_rename(message, proxy['proxid'],
                         newname)
 
             elif arg in ProxyFlags.__members__.keys():
                 if (value := reader.read_bool_int()) is None:
-                    raise RuntimeError('Please specify "on" or "off".')
+                    raise UserError('Please specify "on" or "off".')
                 return await self.cmd_proxy_flag(message, proxy, arg, value)
 
         elif arg in ['autoproxy', 'ap']:
             if not message.guild:
-                raise RuntimeError(ERROR_DM)
+                raise UserError(ERROR_DM)
 
             if arg := reader.read_remainder():
                 return await self.cmd_autoproxy_set(message, arg)
@@ -683,7 +682,7 @@ class GestaltCommands:
 
         elif arg in ['collective', 'c']:
             if not message.guild:
-                raise RuntimeError(ERROR_DM)
+                raise UserError(ERROR_DM)
             guild = message.guild
             arg = reader.read_quote()
 
@@ -692,17 +691,17 @@ class GestaltCommands:
 
             elif arg.lower() in ['new', 'create']:
                 if not message.author.guild_permissions.manage_roles:
-                    raise RuntimeError(ERROR_MANAGE_ROLES)
+                    raise UserError(ERROR_MANAGE_ROLES)
 
                 role = reader.read_role()
                 if role == None:
-                    raise RuntimeError('Please provide a role.')
+                    raise UserError('Please provide a role.')
 
                 if role.managed:
                     # bots, server booster, integrated subscription services
                     # requiring users to pay to participate is antithetical
                     # to community-oriented identity play
-                    raise RuntimeError(ERROR_CURSED)
+                    raise UserError(ERROR_CURSED)
 
                 return await self.cmd_collective_new(message, role)
 
@@ -713,39 +712,38 @@ class GestaltCommands:
                 try:
                     # if get_user_proxy succeeds, ['maskid'] must exist
                     collid = self.get_user_proxy(message, collid)['maskid']
-                except RuntimeError:
+                except UserError:
                     pass # could save error, but would be confusing
                 row = self.fetchone('select * from masks where maskid = ?',
                         (collid,))
                 # non-collective masks shouldn't have visible ids
                 # but check just to be safe
                 if row == None or row['type'] != ProxyType.collective:
-                    raise RuntimeError('Collective not found.')
+                    raise UserError('Collective not found.')
                 if row['guildid'] != guild.id:
-                    raise RuntimeError(
-                            'That collective belongs to another guild.')
+                    raise UserError('That collective belongs to another guild.')
 
                 if action in ['nick', 'name', 'avatar', 'color', 'colour']:
                     arg = reader.read_remainder()
 
                     role = guild.get_role(row['roleid'])
                     if role == None:
-                        raise RuntimeError('That role no longer exists?')
+                        raise UserError('That role no longer exists?')
 
                     member = message.author # Member because this isn't a DM
                     if not (role in member.roles
                             or member.guild_permissions.manage_roles):
-                        raise RuntimeError(
+                        raise UserError(
                                 'You don\'t have access to that collective!')
 
                     # allow empty avatar URL but not name
                     if action in ['name', 'nick'] and not arg:
-                        raise RuntimeError('Please provide a new name.')
+                        raise UserError('Please provide a new name.')
                     if action == 'avatar':
                         if message.attachments and not arg:
                             arg = message.attachments[0].url
                         elif arg and not LINK_REGEX.fullmatch(arg):
-                            raise RuntimeError('Invalid avatar URL!')
+                            raise UserError('Invalid avatar URL!')
                     if action in ['color', 'colour']:
                         if arg == '-clear':
                             arg = None
@@ -754,7 +752,7 @@ class GestaltCommands:
                             try:
                                 arg = str(discord.Color.from_str(arg))
                             except ValueError:
-                                raise RuntimeError(
+                                raise UserError(
                                         'Please enter a color (e.g. `#012345`)')
 
                     return await self.cmd_collective_update(message, collid,
@@ -762,7 +760,7 @@ class GestaltCommands:
 
                 elif action == 'delete':
                     if not message.author.guild_permissions.manage_roles:
-                        raise RuntimeError(ERROR_MANAGE_ROLES)
+                        raise UserError(ERROR_MANAGE_ROLES)
                     # all the more reason to delete it then, right?
                     # if guild.get_role(row[1]) == None:
 
@@ -783,10 +781,10 @@ class GestaltCommands:
                     return await self.cmd_config_default(message)
 
                 if not arg in Prefs.__members__.keys():
-                    raise RuntimeError('That setting does not exist.')
+                    raise UserError('That setting does not exist.')
 
                 if (value := reader.read_bool_int()) is None:
-                    raise RuntimeError('Please specify "on" or "off".')
+                    raise UserError('Please specify "on" or "off".')
 
                 return await self.cmd_config_update(message, user, arg, value)
 
@@ -799,8 +797,7 @@ class GestaltCommands:
                     try:
                         arg = str(discord.Color.from_str(arg))
                     except ValueError:
-                        raise RuntimeError(
-                                'Please enter a color (e.g. `#012345`)')
+                        raise UserError('Please enter a color (e.g. `#012345`)')
 
                 return await self.cmd_account_update(message, arg)
 
@@ -809,16 +806,16 @@ class GestaltCommands:
             arg = reader.read_word().lower()
             if arg == 'open':
                 if not message.guild:
-                    raise RuntimeError(ERROR_DM)
+                    raise UserError(ERROR_DM)
 
                 if (member := reader.read_member()) is None:
-                    raise RuntimeError('User not found.')
+                    raise UserError('User not found.')
                 tags = reader.read_remainder() or None
 
                 if member.id == self.user.id:
-                    raise RuntimeError(ERROR_BLURSED)
+                    raise UserError(ERROR_BLURSED)
                 if member.bot:
-                    raise RuntimeError(ERROR_CURSED)
+                    raise UserError(ERROR_CURSED)
 
                 return await self.cmd_swap_open(message, member, tags)
 
@@ -826,8 +823,7 @@ class GestaltCommands:
                 name = reader.read_quote()
                 proxy = self.get_user_proxy(message, name)
                 if proxy['type'] != ProxyType.swap:
-                    raise RuntimeError(
-                            'You do not have a swap with that ID.')
+                    raise UserError('You do not have a swap with that ID.')
 
                 return await self.cmd_swap_close(message, proxy)
 
@@ -838,9 +834,9 @@ class GestaltCommands:
         elif arg in ['become', 'bc']:
             proxy = self.get_user_proxy(message, reader.read_quote())
             if (proxy['type'] == ProxyType.override):
-                raise RuntimeError('You are already yourself!')
+                raise UserError('You are already yourself!')
             if proxy['state'] != ProxyState.active:
-                raise RuntimeError('That proxy is not active.')
+                raise UserError('That proxy is not active.')
 
             return await self.cmd_become(message, proxy)
 
@@ -851,7 +847,7 @@ class GestaltCommands:
                 swap = self.get_user_proxy(message, reader.read_quote())
                 if (swap['type'] != ProxyType.swap
                         or swap['state'] != ProxyState.active):
-                    raise RuntimeError('Please provide an active swap.')
+                    raise UserError('Please provide an active swap.')
                 pkid = reader.read_word()
 
                 return await self.cmd_pk_swap(message, swap, pkid)
@@ -859,30 +855,30 @@ class GestaltCommands:
             elif arg == 'close':
                 swap = self.get_user_proxy(message, reader.read_quote())
                 if swap['type'] not in (ProxyType.pkreceipt, ProxyType.pkswap):
-                    raise RuntimeError('Please provide a swap receipt.')
+                    raise UserError('Please provide a swap receipt.')
 
                 return await self.cmd_pk_close(message, swap)
 
             elif arg == 'sync':
                 if not message.guild:
-                    raise RuntimeError(ERROR_DM)
+                    raise UserError(ERROR_DM)
                 if not message.reference:
-                    raise RuntimeError('Please reply to a proxied message.')
+                    raise UserError('Please reply to a proxied message.')
 
                 return await self.cmd_pk_sync(message)
 
         elif arg == 'log':
             if not message.guild:
-                raise RuntimeError(ERROR_DM)
+                raise UserError(ERROR_DM)
             if not message.author.guild_permissions.administrator:
-                raise RuntimeError(
+                raise UserError(
                         'You need `Manage Server` permissions to do that.')
 
             arg = reader.read_word().lower()
             if arg == 'channel':
                 channel = reader.read_channel()
                 if not channel:
-                    raise RuntimeError('Please mention a channel.')
+                    raise UserError('Please mention a channel.')
 
                 return await self.cmd_log_channel(message, channel)
 
@@ -891,20 +887,20 @@ class GestaltCommands:
 
         elif arg == 'channel':
             if not message.guild:
-                raise RuntimeError(ERROR_DM)
+                raise UserError(ERROR_DM)
             if not message.author.guild_permissions.manage_channels:
-                raise RuntimeError(
+                raise UserError(
                         'You need `Manage Channels` permissions to do that.')
 
             channel = reader.read_channel()
             if not channel:
-                raise RuntimeError('Please mention a channel.')
+                raise UserError('Please mention a channel.')
 
             arg = reader.read_word()
             if arg == 'mode':
                 mode = reader.read_word()
                 if mode not in ChannelMode.__members__.keys():
-                    raise RuntimeError('Invalid channel mode.')
+                    raise UserError('Invalid channel mode.')
 
                 return await self.cmd_channel_mode(message, channel, mode)
 

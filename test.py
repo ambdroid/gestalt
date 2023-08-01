@@ -1264,7 +1264,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(beta, c, 'gs;c guild name guild')
         instance.get_user_proxy(send(alpha, c, 'command'), 'guild')
         self.assertCommand(alpha, c, 'gs;c guild delete')
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(c[-1], 'guild')
 
         # With names, users can infer *and control* names of hidden proxies.
@@ -1291,7 +1291,7 @@ class GestaltTest(unittest.TestCase):
         # self.assertIsNotNone(instance.get_user_proxy(c[-1], 'test-beta'))
         self.assertNotCommand(beta, c, 'gs;p test-alpha auto on')
         # self.assertNotCommand(send(beta, c, 'gs;swap close test-alpha'))
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(c[-1], 'test-alpha')
         # self.assertCommand(alpha, c, 'gs;swap close test-beta')
         instance.execute('delete from proxies where proxid = ?', (proxid,))
@@ -1326,7 +1326,7 @@ class GestaltTest(unittest.TestCase):
             'member!'))
         # should be deleted upon swap close
         self.assertCommand(alpha, c, 'gs;swap close test-gamma')
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
         # handle PluralKit linked accounts
         instance.session._add('/systems/' + str(gamma.id), '{"id": "exmpl"}')
@@ -1392,9 +1392,9 @@ class GestaltTest(unittest.TestCase):
         # first by receipt
         instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         self.assertCommand(alpha, c, 'gs;pk close "test-beta\'s member!"')
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, 'a'), 'member!')
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
         instance.get_user_proxy(send(beta, c, 'a'), 'test-alpha')
         instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta')
@@ -1403,9 +1403,9 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;pk swap test-beta aaaaa')
         instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         self.assertCommand(beta, c, 'gs;pk close member!')
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, 'a'), 'member!')
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
         instance.get_user_proxy(send(beta, c, 'a'), 'test-alpha')
         instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta')

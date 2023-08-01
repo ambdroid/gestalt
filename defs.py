@@ -199,3 +199,6 @@ REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
 HELPMSGS = {topic: text.format(p = COMMAND_PREFIX) for topic, text
         in HELPMSGS.items()}
 
+class UserError(Exception):
+    pass
+
