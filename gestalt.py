@@ -213,7 +213,15 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def try_delete(self, message, delay = None):
         if self.has_perm(message, manage_messages = True):
-            await message.delete(delay = delay)
+            try:
+                await message.delete(delay = delay)
+            except discord.errors.NotFound:
+                # task failed successfully
+                # this might indicate a conflict with another proxy bot
+                # pk handles this by deleting a proxied message
+                # ...but if we do that too, it might mean neither bot wins
+                # so just ignore it
+                pass
             return True
 
 
