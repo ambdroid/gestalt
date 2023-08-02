@@ -1,4 +1,5 @@
 import json
+import time
 import asyncio
 
 import aiohttp
@@ -334,8 +335,9 @@ class GestaltCommands:
         # '@everyone' is awkward and more likely to cause collisions as cmdname
         name = role.guild.name if role == role.guild.default_role else role.name
         self.execute('insert or ignore into masks values'
-                '(?, ?, ?, ?, NULL, NULL, ?, NULL)',
-                (collid, role.guild.id, role.id, name, ProxyType.collective))
+                '(?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)',
+                (collid, role.guild.id, role.id, name, ProxyType.collective,
+                    int(time.time())))
         # if there wasn't already a collective on that role
         if self.cur.rowcount == 1:
             for member in role.members:
@@ -602,11 +604,11 @@ class GestaltCommands:
 
         self.execute(
                 'insert or replace into masks values '
-                '(?, ?, NULL, ?, ?, ?, ?, ?)',
+                '(?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)',
                 ('pk-' + pkuuid, message.guild.id, ref.author.display_name,
                     str(ref.author.display_avatar),
                     mask['color'] if mask else None,
-                    ProxyType.pkswap, ref.id))
+                    ProxyType.pkswap, int(time.time()), ref.id))
         try:
             # if pk color is null, keep it None
             if (color := proxied['member']['color']) is not None:
