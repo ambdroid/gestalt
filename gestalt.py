@@ -7,6 +7,7 @@ import random
 import signal
 import string
 import math
+import time
 import sys
 import re
 
@@ -46,8 +47,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         self.execute(
                 'create table if not exists history('
                 'msgid integer primary key,'
+                'origid integer,'
                 'threadid integer,'
                 'chanid integer,'
+                'guildid integer,'
                 'authid integer,'
                 'otherid integer,'
                 'proxid text,'
@@ -93,6 +96,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'maskid text collate nocase,'   # same collation for joining
                 'flags integer,'                # see enum ProxyFlags
                 'state integer,'                # see enum ProxyState
+                'created integer,'              # unix timestamp
+                'msgcount integer,'             # reserved
                 'unique(userid, maskid))')
         # for fast proxy deletion on role removal
         self.execute(
@@ -106,8 +111,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'nick text,'
                 'avatar text,'
                 'color text,'
-                'type int,'     # also uses enum ProxyType
-                'updated int,'  # snowflake; for future automatic pk syncing
+                'type integer,'     # also uses enum ProxyType
+                'created integer,'  # unix timestamp
+                'updated integer,'  # snowflake; for future automatic pk sync
+                'msgcount integer,' # reserved
                 'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
         self.execute(
@@ -274,24 +281,25 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             raise UserError(ERROR_TAGS)
         self.execute(
                 'insert into proxies values '
-                '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
                 (proxid := self.gen_id(), cmdname, userid, guildid,
                     prefix, postfix, proxtype, otherid, maskid,
-                    flags, state))
+                    flags, state, int(time.time())))
         return proxid
 
 
-    def mkhistory(self, message, author, channel = None,
+    def mkhistory(self, message, author, channel = None, orig = None,
             proxy = {'otherid': None, 'proxid': None, 'maskid': None}):
         if channel:
             (threadid, chanid) = ((channel.id, channel.parent.id)
                     if type(channel) == discord.Thread
                     else (0, channel.id))
+            guildid = channel.guild.id
         else:
-            (threadid, chanid) = (0, 0)
-        self.execute('insert into history values (?, ?, ?, ?, ?, ?, ?)',
-                (message.id, threadid, chanid, author.id, proxy['otherid'],
-                    proxy['proxid'], proxy['maskid']))
+            (threadid, chanid, guildid) = (0, 0, 0)
+        self.execute('insert into history values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (message.id, orig, threadid, chanid, guildid, author.id,
+                    proxy['otherid'], proxy['proxid'], proxy['maskid']))
 
 
     def init_member(self, member):
@@ -580,7 +588,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             raise UserError('I need `Manage Webhooks` permission to proxy.')
 
         self.mkhistory(new, message.author, channel = message.channel,
-                proxy = proxy)
+                orig = message.id, proxy = proxy)
 
         if not proxy['flags'] & ProxyFlags.echo:
             await self.try_delete(message, delay = DELETE_DELAY
