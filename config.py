@@ -7,6 +7,8 @@ PK_WINDOW = 1.0
 
 DELETE_DELAY = 0.4
 
+TIMEOUT_EDIT = 10 * 60
+
 REPLACEMENTS = [
         ('\\bam\\b', 'are'),
         ('\\bmyself\\b', 'Ourselves'),
