@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-from datetime import datetime
 from asyncio import run
+import datetime
 import unittest
 import re
 
@@ -18,11 +18,18 @@ import gestalt
 # i wish it didn't have to be this way but i promise this is the best solution
 
 
+class warptime(datetime.datetime):
+    warp = 0
+    def now(_ = None):
+        return (super(warptime, warptime).now(datetime.timezone.utc)
+                + datetime.timedelta(seconds = warptime.warp))
+
 class Object:
-    nextid = 0
+    nextid = gestalt.discord.utils.time_snowflake(warptime.now())
     def __init__(self, **kwargs):
+        # don't call now() each time
+        self.id = ((warptime.warp * 1000) << 22) + Object.nextid
         Object.nextid += 1
-        self.id = Object.nextid
         self.__dict__.update(kwargs)
 
 class User(Object):
@@ -199,7 +206,7 @@ class Webhook(Object):
             raise NotFound()
         newmsg = Message(**msg.__dict__)
         newmsg.content = content
-        newmsg.edited_at = datetime.now()
+        newmsg.edited_at = warptime.now()
         newmsg._prev = msg
         msg.channel._messages[msg.channel._messages.index(msg)] = newmsg
         return newmsg
@@ -415,7 +422,8 @@ class NotFound(discord.errors.NotFound):
         pass
 
 def send(user, channel, content, reference = None, files = [], orig = False):
-    msg = Message(author = user, content = content, reference = reference,
+    author = channel.guild.get_member(user.id) if channel.guild else user
+    msg = Message(author = author, content = content, reference = reference,
             attachments = files)
     run(channel._add(msg))
     return channel[-1] if msg._deleted and not orig else msg
@@ -1111,7 +1119,7 @@ class GestaltTest(unittest.TestCase):
         # make sure that the correct most recent msgid is pulled from db
         self.assertCommand(beta, chan,
             'gs;p %s tags e: text' % self.get_proxid(beta, g.default_role))
-        first = send(alpha, chan, 'e: edti me')
+        first = self.assertProxied(alpha, chan, 'e: edti me')
         run(send(alpha, chan, 'e: delete me').delete())
         run(send(alpha, chan, 'e: delete me too')._bulk_delete())
         send(alpha, chan, 'e: manually delete me')._react(
@@ -1120,6 +1128,25 @@ class GestaltTest(unittest.TestCase):
         send(alpha, chan, 'gs;help this message should be ignored')
         self.assertDeleted(alpha, chan, 'gs;edit edit me');
         self.assertEditedContent(first, 'edit me');
+
+        # test new user
+        new = User(name = 'new')
+        g._add_member(new)
+        self.assertFalse(send(new, chan, 'gs;edit hoohoo')._deleted)
+
+        # test old message
+        msg = self.assertProxied(alpha, chan, 'e: edit me')
+        self.assertDeleted(alpha, chan, 'gs;edit edti me')
+        self.assertEditedContent(msg, 'edti me')
+        warptime.warp += gestalt.TIMEOUT_EDIT - 1
+        self.assertDeleted(alpha, chan, 'gs;edit editme')
+        self.assertEditedContent(msg, 'editme')
+        warptime.warp += 2
+        self.assertFalse(send(alpha, chan, 'gs;edit edit me')._deleted)
+        self.assertEditedContent(msg, 'editme')
+        self.assertDeleted(alpha, chan, 'gs;edit edit me',
+                Object(message_id = msg.id))
+        self.assertEditedContent(msg, 'edit me')
 
         # make sure that gs;edit on a non-webhook message doesn't cause problems
         # delete "or proxied.webhook_id != hook[1]" to see this be a problem
@@ -1945,6 +1972,7 @@ def main():
 
 
 # monkey patch. this probably violates the Geneva Conventions
+datetime.datetime = warptime
 discord.Webhook.partial = Webhook.partial
 discord.Thread = Thread
 # don't spam the channel with error messages
