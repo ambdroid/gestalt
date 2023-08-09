@@ -9,6 +9,7 @@ import aiohttp
 import discord
 
 import gestalt
+import gesp
 
 
 # this test harness reimplements most relevant parts of the discord API, offline
@@ -1946,6 +1947,33 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, c, 'gs;p remove tags r:text')
         g._add_member(alpha)
         self.assertNotCommand(alpha, c, 'gs;p remove tags r:text')
+
+    def test_34_gesp(self):
+        self.assertEqual(gesp.eval('(add 1 1)'), 2)
+        self.assertEqual(gesp.eval('(sub 5 10)'), -5)
+        self.assertEqual(gesp.eval('(div 10 5)'), 2)
+        self.assertEqual(gesp.eval('(if (and (eq 1 1) (eq 2 2)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (and (eq 1 5) (eq 2 2)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(if (and (eq 1 1) (eq 2 5)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(if (and (eq 1 5) (eq 2 5)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(if (or (eq 1 1) (eq 2 2)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (or (eq 1 5) (eq 2 2)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (or (eq 1 1) (eq 2 5)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (or (eq 1 5) (eq 2 5)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(add (if (eq 1 1) 2 3) 2)'), 4)
+        self.assertEqual(gesp.run(gesp.eval('(add 2 (int (add 1 1)))')), 4)
+        self.assertEqual(gesp.eval('(and (eq 1 0) (int false))'), False)
+        self.assertEqual(gesp.eval('(or (eq 1 1) (int false))'), True)
+        self.assertEqual(gesp.eval('(eq (eq 1 1) true)'), True)
+        self.assertEqual(gesp.eval('(add (one) (one))'), 2)
+        self.assertEqual(gesp.eval('(add  (add  1  1)  1 )'), 3)
+        self.assertEqual(gesp.eval('(add (add 1 1)(add 1 1))'), 4)
+        self.assertEqual(gesp.eval('(if true "foo" "bar")'), 'foo')
+        with self.assertRaises(TypeError):
+            gesp.eval('(add 1)')
+        with self.assertRaises(TypeError):
+            gesp.eval('(if true 0 false)')
+        gesp.eval('(if true 0 0)')
 
 
 def main():
