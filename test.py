@@ -2009,7 +2009,14 @@ class GestaltTest(unittest.TestCase):
         interact(second, alpha, 'no')
         self.assertEqual(c[-1].embeds[0].description, 'c')
 
-        # TODO test persistance. i tried...
+        send(alpha, c, 'gs;eval (if (ask (not (ans))) "a" "b")')
+        instance.votes_save()
+        (votes, instance.votes) = (instance.votes, None)
+        instance.votes_load()
+        self.assertEqual(votes, instance.votes)
+        self.assertIsNot(votes, instance.votes)
+        interact(c[-1], alpha, 'yes')
+        self.assertEqual(c[-1].embeds[0].description, 'b')
 
 
 def main():
