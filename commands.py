@@ -7,6 +7,7 @@ import aiohttp
 import discord
 
 from defs import *
+import gesp
 
 
 def escape(text):
@@ -112,12 +113,12 @@ class GestaltCommands:
 
 
     async def cmd_help(self, message, topic):
-        await self.send_embed(message, HELPMSGS.get(topic, HELPMSGS['']))
+        await self.reply(message, HELPMSGS.get(topic, HELPMSGS['']))
 
 
     async def cmd_invite(self, message):
         if (await self.application_info()).bot_public:
-            await self.send_embed(message,
+            await self.reply(message,
                     discord.utils.oauth_url(self.user.id, permissions = PERMS))
 
 
@@ -149,7 +150,7 @@ class GestaltCommands:
             errors = REACT_CONFIRM if errors == [] else ', '.join(errors)
             lines.append('%s: %s' % (chan.mention, errors))
 
-        await self.send_embed(message, '\n'.join(lines))
+        await self.reply(message, '\n'.join(lines))
 
 
     def proxy_string(self, proxy):
@@ -223,7 +224,7 @@ class GestaltCommands:
         if omit:
             lines.append('Proxies in other servers have been omitted.')
             lines.append('To view all proxies, use `proxy list -all`.')
-        await self.send_embed(message, '\n'.join(lines))
+        await self.reply(message, '\n'.join(lines))
 
 
     async def cmd_proxy_tags(self, message, proxy, tags):
@@ -291,7 +292,7 @@ class GestaltCommands:
         lines.append('For more information, please see `%shelp proxy`.'
                 % COMMAND_PREFIX)
 
-        await self.send_embed(message, '\n'.join(lines))
+        await self.reply(message, '\n'.join(lines))
 
 
     async def cmd_autoproxy_set(self, message, arg):
@@ -327,7 +328,7 @@ class GestaltCommands:
                             else guild.get_role(row['roleid']).mention))
                     for row in rows])
 
-        await self.send_embed(message, text)
+        await self.reply(message, text)
 
 
     async def cmd_collective_new(self, message, role):
@@ -374,7 +375,7 @@ class GestaltCommands:
         text = '\n'.join(['%s: **%s**' %
                 (pref.name, 'on' if user['prefs'] & pref else 'off')
                 for pref in Prefs])
-        await self.send_embed(message, text)
+        await self.reply(message, text)
 
 
     async def cmd_config_default(self, message):
@@ -913,7 +914,7 @@ class GestaltCommands:
                 return await self.cmd_channel_mode(message, channel, mode)
 
         elif arg == 'explain':
-            if self.has_perm(message, send_messages = True):
+            if self.has_perm(message.channel, send_messages = True):
                 reply = await message.channel.send(EXPLAIN)
                 self.mkhistory(reply, message.author)
                 return
@@ -924,4 +925,12 @@ class GestaltCommands:
                         (reader.read_remainder(),))
                 await self.update_status()
                 await self.mark_success(message, True)
+
+        elif arg == 'eval':
+            program = reader.read_remainder()
+            try:
+                result = gesp.eval(program)
+            except Exception as e:
+                raise UserError(e.args[0])
+            await self.program_finished(message.channel, result)
 

@@ -1,6 +1,9 @@
 from collections import ChainMap, namedtuple
 from functools import reduce
+import json
 import re
+
+import discord
 
 ParseState = namedtuple('ParseState', ['pairs', 'stack', 'pos'])
 def get_pairs(code):
@@ -74,7 +77,9 @@ types = {
     'if': lambda args : (len(args) == 3 and args[0] == bool
         and args[1] == args[2]) and args[1],
     'one': lambda args : len(args) == 0 and int,
-    'int': lambda args: len(args) == 1 and args[0],
+    'int': lambda args : len(args) == 1 and args[0],
+    'ask': lambda args : len(args) == 1 and args[0] == bool and bool,
+    'ans': lambda args : len(args) == 0 and bool,
     }
 
 def check(ast, context = {}):
@@ -100,7 +105,9 @@ def comp(ast, index):
         jmp2 = [index + len(a) + 2 + len(b) + len(jmp) + len(c) - 1, 'jp']
         return a + jmp + b + jmp2 + c
     if ast.op == 'int':
-        (pre, post) = ([ast.op], [])
+        (pre, post) = (['int'], [])
+    elif ast.op == 'ask':
+        (pre, post) = (['ask'], ['popans'])
     else:
         (pre, post) = ([], [ast.op])
     return pre + reduce(
@@ -109,10 +116,9 @@ def comp(ast, index):
             []
             ) + post
 
-ProgramState = namedtuple('ProgramState', ['program', 'pc', 'stack'])
+ProgramState = namedtuple('ProgramState', ['program', 'pc', 'stack', 'context'])
 def run(state):
-    pc = state.pc
-    stack = state.stack
+    (_, pc, stack, context) = state
     while pc < len(state.program):
         op = state.program[pc]
         if op == 'jp':
@@ -156,8 +162,12 @@ def run(state):
             stack.append(stack.pop() <= stack.pop())
         elif op == 'one':
             stack.append(1)
-        elif op == 'int':
-            return ProgramState(state.program, pc + 1, stack)
+        elif op in ('int', 'ask'):
+            return ProgramState(state.program, pc + 1, stack, context)
+        elif op == 'ans':
+            stack.append(context['answer'])
+        elif op == 'popans':
+            del context['answer']
         else:
             stack.append(op)
         pc += 1
@@ -168,5 +178,50 @@ def run(state):
 def eval(program):
     exp = parse_full(program)[0]
     check(exp)
-    return run(ProgramState(comp(exp, 0), 0, []))
+    return run(ProgramState(comp(exp, 0), 0, [], {}))
+
+class GestaltVoting:
+    def votes_load(self):
+        self.votes = {row['msgid']: ProgramState(**json.loads(row['state']))
+                for row in self.fetchall('select * from votes')}
+
+
+    def votes_save(self):
+        self.execute('delete from votes')
+        self.cur.executemany('insert into votes values (?, ?)',
+                ((msgid, json.dumps(state._asdict()))
+                    for msgid, state in self.votes.items()))
+
+
+    async def program_finished(self, channel, result):
+        if type(result) == ProgramState:
+            view = discord.ui.View()
+            view.add_item(discord.ui.Button(
+                custom_id = 'yes',
+                style = discord.ButtonStyle.green,
+                label = 'Yes'
+                ))
+            view.add_item(discord.ui.Button(
+                custom_id = 'no',
+                style = discord.ButtonStyle.red,
+                label = 'No'
+                ))
+            if msg := await self.send_embed(channel, 'Buttons', view):
+                self.votes[msg.id] = result
+        else:
+            await self.send_embed(channel, str(result))
+
+
+    # the docs discourage using this
+    # but it's easier than using the callbacks across reboots
+    async def on_interaction(self, interaction):
+        if (msgid := interaction.message.id) in self.votes:
+            await interaction.response.send_message(
+                    embed = discord.Embed(description = 'You voted ' + interaction.data['custom_id']),
+                    ephemeral = True)
+            (*rest, context) = self.votes[msgid]
+            state = ProgramState(*rest, context
+                | {'answer': interaction.data['custom_id'] == 'yes'})
+            del self.votes[msgid]
+            await self.program_finished(interaction.channel, run(state))
 
