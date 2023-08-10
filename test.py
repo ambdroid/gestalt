@@ -273,7 +273,8 @@ class Channel(Object):
     def permissions_for(self, user):
         # TODO need channel-level permissions
         return self.guild.get_member(user.id).guild_permissions
-    async def send(self, content = None, embed = None, file = None):
+    async def send(self, content = None, embed = None, file = None,
+            view = None):
         msg = Message(author = instance.user, content = content, embed = embed)
         await self._add(msg)
         return msg
@@ -372,6 +373,30 @@ class Guild(Object):
     def get_role(self, role_id):
         return self._roles[role_id]
 
+# incoming messages have Attachments, outgoing messages have Files
+# but we'll pretend that they're the same for simplicity
+class File:
+    def __init__(self, size):
+        self.size = size
+    def is_spoiler(self):
+        return False
+    async def to_file(self, spoiler):
+        return self
+
+class Interaction:
+    def __init__(self, message, user, button):
+        (self.message, self.user) = (message, user)
+        self.data = {'custom_id': button}
+        # TODO check that the message actuall has the buttons
+    @property
+    def channel(self):
+        return self.message.channel
+    @property
+    def response(self):
+        return self # lol
+    async def send_message(self, **kwargs):
+        pass # only used for ephemeral messages; bot never sees those
+
 class TestBot(gestalt.Gestalt):
     def __init__(self):
         self._user = User(name = 'Gestalt', bot = True)
@@ -396,16 +421,6 @@ class TestBot(gestalt.Gestalt):
     def get_guild(self, id):
         return Guild.guilds.get(id)
 
-# incoming messages have Attachments, outgoing messages have Files
-# but we'll pretend that they're the same for simplicity
-class File:
-    def __init__(self, size):
-        self.size = size
-    def is_spoiler(self):
-        return False
-    async def to_file(self, spoiler):
-        return self
-
 class ClientSession:
     class Response:
         def __init__(self, text): self._text = text
@@ -428,6 +443,9 @@ def send(user, channel, content, reference = None, files = [], orig = False):
             attachments = files)
     run(channel._add(msg))
     return channel[-1] if msg._deleted and not orig else msg
+
+def interact(message, user, button):
+    run(instance.on_interaction(Interaction(message, user, button)))
 
 class GestaltTest(unittest.TestCase):
 
@@ -1974,6 +1992,24 @@ class GestaltTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             gesp.eval('(if true 0 false)')
         gesp.eval('(if true 0 0)')
+
+    def test_35_voting(self):
+        g = Guild(name = 'democratic guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(instance.user)
+
+        send(alpha, c, 'gs;eval (if (ask (not (ans))) "a" "b")')
+        first = c[-1]
+        send(alpha, c, 'gs;eval (if (ask (not (ans))) "c" "d")')
+        second = c[-1]
+        send(alpha, c, 'gs;eval (if (ask (not (ans))) "c" "d")')
+        interact(first, alpha, 'yes')
+        self.assertEqual(c[-1].embeds[0].description, 'b')
+        interact(second, alpha, 'no')
+        self.assertEqual(c[-1].embeds[0].description, 'c')
+
+        # TODO test persistance. i tried...
 
 
 def main():

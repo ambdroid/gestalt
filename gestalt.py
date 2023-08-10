@@ -18,9 +18,10 @@ import discord
 from defs import *
 import commands
 import auth
+import gesp
 
 
-class Gestalt(discord.Client, commands.GestaltCommands):
+class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     def __init__(self, *, dbfile):
         super().__init__(intents = INTENTS)
 
@@ -118,6 +119,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
         self.execute(
+                'create table if not exists votes('
+                'msgid integer primary key,'
+                'state text)')
+        self.execute(
                 'create table if not exists deleted('
                 'id text unique collate nocase'
                 ')')
@@ -134,9 +139,11 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'end')
 
         self.ignore_delete_cache = set()
+        self.votes_load()
 
 
     def __del__(self):
+        self.votes_save()
         self.log('Closing database.')
         self.conn.commit()
         self.conn.close()
@@ -164,12 +171,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 if self.delete_invalid_proxy(proxy)]
 
 
-    def has_perm(self, message, **kwargs):
-        if not message.guild:
+    def has_perm(self, channel, **kwargs):
+        if not channel.guild:
             return True
-        member = message.guild.get_member(self.user.id)
+        member = channel.guild.get_member(self.user.id)
         return discord.Permissions(**kwargs).is_subset(
-                message.channel.permissions_for(member))
+                channel.permissions_for(member))
 
 
     async def setup_hook(self):
@@ -212,7 +219,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def try_delete(self, message, delay = None):
-        if self.has_perm(message, manage_messages = True):
+        if self.has_perm(message.channel, manage_messages = True):
             try:
                 await message.delete(delay = delay)
             except discord.errors.NotFound:
@@ -226,7 +233,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def try_add_reaction(self, message, reaction):
-        if self.has_perm(message, add_reactions = True,
+        if self.has_perm(message.channel, add_reactions = True,
                 read_message_history = True):
             try:
                 await message.add_reaction(reaction)
@@ -256,15 +263,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         return self.InProgress(self, message)
 
 
-    async def send_embed(self, replyto, text):
-        if not self.has_perm(replyto, send_messages = True):
-            return
-        msg = await replyto.channel.send(
-                embed = discord.Embed(description = text))
+    async def send_embed(self, channel, text, view = None):
+        if self.has_perm(channel, send_messages = True):
+            return await channel.send(
+                    embed = discord.Embed(description = text), view = view)
+
+
+    async def reply(self, replyto, text):
+        msg = await self.send_embed(replyto.channel, text)
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
             self.mkhistory(msg, replyto.author)
+        return msg
 
 
     def gen_id(self):
@@ -741,7 +752,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 if latch:
                     self.set_autoproxy(message.author, None)
                 return
-            if not self.has_perm(message, manage_messages = True):
+            if not self.has_perm(message.channel, manage_messages = True):
                 raise UserError('I need `Manage Messages` permission to proxy.')
             msg = await self.do_proxy(message, match, prefs)
             if msg and latch:
@@ -774,7 +785,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             except UserError as e:
                 # an uninit'd user shouldn't ever get errors, but just in case
                 if ((user and user['prefs']) or DEFAULT_PREFS) & Prefs.errors:
-                    await self.send_embed(message, e.args[0])
+                    await self.reply(message, e.args[0])
             # do this after because it's less important than proxying
             if user and user['username'] != str(message.author):
                 self.execute('update users set username = ? where userid = ?',
@@ -847,10 +858,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # sender or swapee may delete proxied message
             if payload.user_id in (row['authid'], row['otherid']):
                 if not await self.try_delete(message):
-                    await self.send_embed(message,
+                    await self.reply(message,
                             'I can\'t delete messages here.')
             else:
-                if self.has_perm(message, manage_messages = True):
+                if self.has_perm(message.channel, manage_messages = True):
                     await message.remove_reaction(emoji, reactor)
 
 
