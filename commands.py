@@ -200,8 +200,8 @@ class GestaltCommands:
 
     async def cmd_proxy_list(self, message, all_):
         rows = sorted(self.fetch_valid_proxies(
-                'select proxies.*, masks.roleid, masks.nick from '
-                    'proxies left join masks using (maskid) '
+                'select proxies.*, guildmasks.roleid, guildmasks.nick from '
+                    'proxies left join guildmasks using (maskid) '
                 'where proxies.userid = ?',
                 (message.author.id,)),
                 key = lambda row: (
@@ -259,10 +259,10 @@ class GestaltCommands:
     async def cmd_autoproxy_view(self, message):
         ap = self.fetchone(
                 'select members.latch, members.become, proxies.*, '
-                'masks.roleid, masks.nick from '
+                'guildmasks.roleid, guildmasks.nick from '
                     'members '
                     'left join proxies using (proxid) '
-                    'left join masks using (maskid) '
+                    'left join guildmasks using (maskid) '
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
         # NOTE: valid == False if proxy has been deleted
@@ -312,7 +312,7 @@ class GestaltCommands:
 
     async def cmd_collective_list(self, message):
         rows = self.fetchall(
-                'select * from masks where (guildid, type) = (?, ?)',
+                'select * from guildmasks where (guildid, type) = (?, ?)',
                 (message.guild.id, ProxyType.collective))
 
         if len(rows) == 0:
@@ -336,7 +336,7 @@ class GestaltCommands:
         collid = self.gen_id()
         # '@everyone' is awkward and more likely to cause collisions as cmdname
         name = role.guild.name if role == role.guild.default_role else role.name
-        self.execute('insert or ignore into masks values'
+        self.execute('insert or ignore into guildmasks values'
                 '(?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)',
                 (collid, role.guild.id, role.id, name, ProxyType.collective,
                     int(time.time())))
@@ -355,7 +355,7 @@ class GestaltCommands:
         if name not in ['nick', 'name', 'avatar', 'color', 'colour']:
             return
         self.execute(
-                'update masks set %s = ? '
+                'update guildmasks set %s = ? '
                 'where maskid = ?'
                 % {'name': 'nick', 'colour': 'color'}.get(name, name),
                 (value, collid))
@@ -365,7 +365,8 @@ class GestaltCommands:
 
     async def cmd_collective_delete(self, message, coll):
         self.execute('delete from proxies where maskid = ?', (coll['maskid'],))
-        self.execute('delete from masks where maskid = ?', (coll['maskid'],))
+        self.execute('delete from guildmasks where maskid = ?',
+                (coll['maskid'],))
         if self.cur.rowcount == 1:
             await self.mark_success(message, True)
 
@@ -603,14 +604,14 @@ class GestaltCommands:
             raise UserError('That member has no Gestalt proxies.')
 
         mask = self.fetchone(
-                'select color, updated from masks '
+                'select color, updated from guildmasks '
                 'where (maskid, guildid) = (?, ?)',
                 ('pk-' + pkuuid, message.guild.id))
         if mask and mask['updated'] > ref.id:
             raise UserError('Please use a more recent proxied message.')
 
         self.execute(
-                'insert or replace into masks values '
+                'insert or replace into guildmasks values '
                 '(?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)',
                 ('pk-' + pkuuid, message.guild.id, ref.author.display_name,
                     str(ref.author.display_avatar),
@@ -624,7 +625,7 @@ class GestaltCommands:
             if not mask or mask['color'] != color:
                 # colors aren't set per-server, so set it everywhere
                 # (even if the message is older, pk returns the current color)
-                self.execute('update masks set color = ? where maskid = ?',
+                self.execute('update guildmasks set color = ? where maskid = ?',
                         (color, 'pk-' + pkuuid))
         except (KeyError, ValueError, TypeError):
             pass
@@ -723,9 +724,9 @@ class GestaltCommands:
                     collid = self.get_user_proxy(message, collid)['maskid']
                 except UserError:
                     pass # could save error, but would be confusing
-                row = self.fetchone('select * from masks where maskid = ?',
+                row = self.fetchone('select * from guildmasks where maskid = ?',
                         (collid,))
-                # non-collective masks shouldn't have visible ids
+                # non-collective guildmasks shouldn't have visible ids
                 # but check just to be safe
                 if row == None or row['type'] != ProxyType.collective:
                     raise UserError('Collective not found.')

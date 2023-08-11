@@ -470,7 +470,7 @@ class GestaltTest(unittest.TestCase):
 
     def get_collid(self, role):
         row = instance.fetchone(
-                'select maskid from masks where roleid = ?',
+                'select maskid from guildmasks where roleid = ?',
                 (role.id,))
         return row[0] if row else None
 

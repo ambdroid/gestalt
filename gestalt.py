@@ -105,7 +105,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'create index if not exists proxies_userid_otherid '
                 'on proxies(userid, otherid)')
         self.execute(
-                'create table if not exists masks('
+                'create table if not exists guildmasks('
                 'maskid text collate nocase,'
                 'guildid integer,'
                 'roleid integer,'
@@ -134,7 +134,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'end')
         self.execute(
                 'create temp trigger delete_mask '
-                'after delete on masks begin '
+                'after delete on guildmasks begin '
                     'insert into deleted values (old.maskid);'
                 'end')
 
@@ -285,7 +285,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             # IDs don't need to be globally unique but it can't hurt
             exists = self.fetchone(
                     'select exists(select 1 from proxies where proxid = ?)'
-                    'or exists(select 1 from masks where maskid = ?)'
+                    'or exists(select 1 from guildmasks where maskid = ?)'
                     'or exists(select 1 from deleted where id = ?)',
                     (id,) * 3)[0]
             if not exists:
@@ -361,7 +361,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     def on_member_role_add(self, member, role):
         mask = self.fetchone(
-                'select maskid, nick from masks where roleid = ?',
+                'select maskid, nick from guildmasks where roleid = ?',
                 (role.id,))
         if mask:
             try:
@@ -379,7 +379,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     async def on_guild_role_delete(self, role):
         # no need to delete proxies; on_member_update takes care of that
-        self.execute('delete from masks where roleid = ?', (role.id,))
+        self.execute('delete from guildmasks where roleid = ?', (role.id,))
 
 
     async def on_member_update(self, before, after):
@@ -413,7 +413,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
-        mask = self.fetchone('select * from masks where maskid = ?',
+        mask = self.fetchone('select * from guildmasks where maskid = ?',
                 (proxy['maskid'],))
         return {'username': mask['nick'],
                 'avatar_url': mask['avatar'],
@@ -437,7 +437,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if not message.guild.get_member(proxy['otherid']):
             return
         mask = self.fetchone(
-                'select * from masks where (guildid, maskid) = (?, ?)',
+                'select * from guildmasks where (guildid, maskid) = (?, ?)',
                 (message.guild.id, 'pk-' + proxy['maskid']))
         if mask:
             return {'username': mask['nick'],
