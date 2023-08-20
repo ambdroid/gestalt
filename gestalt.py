@@ -119,6 +119,16 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
         self.execute(
+                'create table if not exists masks('
+                'maskid text primary key collate nocase,'
+                'nick text,'
+                'avatar text,'
+                'color text,'
+                'rules text,'
+                'created integer,'
+                'members integer,'
+                'msgcount integer)')
+        self.execute(
                 'create table if not exists votes('
                 'msgid integer primary key,'
                 'state text)')
@@ -132,18 +142,19 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'after delete on proxies begin '
                     'insert into deleted values (old.proxid);'
                 'end')
+        # NOTE: this would include masks if masks can be removed from guilds
         self.execute(
-                'create temp trigger delete_mask '
+                'create temp trigger delete_guildmask '
                 'after delete on guildmasks begin '
                     'insert into deleted values (old.maskid);'
                 'end')
 
         self.ignore_delete_cache = set()
-        self.votes_load()
+        self.load()
 
 
     def __del__(self):
-        self.votes_save()
+        self.save()
         self.log('Closing database.')
         self.conn.commit()
         self.conn.close()

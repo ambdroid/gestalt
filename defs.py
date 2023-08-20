@@ -167,6 +167,7 @@ class ProxyType(enum.IntEnum):
     swap        = 2
     pkswap      = 3
     pkreceipt   = 4
+    mask        = 5
 
 
 @enum.unique
@@ -181,6 +182,32 @@ class ProxyState(enum.IntEnum):
     hidden      = 0
     inactive    = 1
     active      = 2
+
+
+@enum.unique
+class ActionType(enum.IntEnum):
+    join    = 0
+    invite  = 1
+    remove  = 2
+    server  = 3
+    change  = 4
+    rules   = 5
+
+
+@enum.unique
+class VoteType(enum.IntEnum):
+    confirm     = 0
+    approval    = 1
+    consensus   = 2
+
+
+@enum.unique
+class RuleType(enum.IntEnum):
+#   custom      = 0 not yet!
+    dictator    = 1
+    handsoff    = 2
+    majority    = 3
+    unanimous   = 4
 
 
 # convert into dict of single opening char : regex matching all ending chars
