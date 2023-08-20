@@ -1979,9 +1979,8 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(gesp.eval('(if (or (eq 1 1) (eq 2 5)) 1 2)'), 1)
         self.assertEqual(gesp.eval('(if (or (eq 1 5) (eq 2 5)) 1 2)'), 2)
         self.assertEqual(gesp.eval('(add (if (eq 1 1) 2 3) 2)'), 4)
-        self.assertEqual(gesp.run(gesp.eval('(add 2 (int (add 1 1)))')), 4)
-        self.assertEqual(gesp.eval('(and (eq 1 0) (int false))'), False)
-        self.assertEqual(gesp.eval('(or (eq 1 1) (int false))'), True)
+        self.assertEqual(gesp.eval('(and (eq 1 0) (vote-approval 12))'), False)
+        self.assertEqual(gesp.eval('(or (eq 1 1) (vote-approval 12))'), True)
         self.assertEqual(gesp.eval('(eq (eq 1 1) true)'), True)
         self.assertEqual(gesp.eval('(add (one) (one))'), 2)
         self.assertEqual(gesp.eval('(add  (add  1  1)  1 )'), 3)
@@ -1997,26 +1996,58 @@ class GestaltTest(unittest.TestCase):
         g = Guild(name = 'democratic guild')
         c = g._add_channel('main')
         g._add_member(alpha)
+        g._add_member(beta)
+        g._add_member(gamma)
         g._add_member(instance.user)
 
-        send(alpha, c, 'gs;eval (if (ask (not (ans))) "a" "b")')
-        first = c[-1]
-        send(alpha, c, 'gs;eval (if (ask (not (ans))) "c" "d")')
-        second = c[-1]
-        send(alpha, c, 'gs;eval (if (ask (not (ans))) "c" "d")')
-        interact(first, alpha, 'yes')
-        self.assertEqual(c[-1].embeds[0].description, 'b')
-        interact(second, alpha, 'no')
-        self.assertEqual(c[-1].embeds[0].description, 'c')
+        instance.execute('insert into masks values '
+                '("mask", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesDictator(user = alpha.id).to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask', alpha.id).execute(instance)
+        msg = send(alpha, c, 'dummy command')
+        run(instance.initiate_action(msg,
+            gesp.ActionChange('mask', 'nick', 'mask!')))
+        msg2 = send(beta, c, 'dummy command')
+        run(instance.initiate_action(msg2, gesp.ActionJoin('mask', beta.id)))
+        self.assertIsNone(self.get_proxid(beta, 'mask'))
+        run(instance.initiate_action(msg, gesp.ActionInvite('mask', beta.id)))
+        self.assertIsNotNone(self.get_proxid(beta, 'mask'))
 
-        send(alpha, c, 'gs;eval (if (ask (not (ans))) "a" "b")')
-        instance.votes_save()
+        instance.execute('insert into masks values '
+                '("mask2", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesMajority().to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask2', alpha.id).execute(instance)
+        msg = send(alpha, c, 'dummy command')
+        run(instance.initiate_action(msg,
+            gesp.ActionJoin('mask2', beta.id)))
+        interact(c[-1], alpha, 'abstain')
+        self.assertIsNone(self.get_proxid(beta, 'mask2'))
+        run(instance.initiate_action(msg,
+            gesp.ActionJoin('mask2', beta.id)))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNotNone(self.get_proxid(beta, 'mask2'))
+        run(instance.initiate_action(msg,
+            gesp.ActionJoin('mask2', gamma.id)))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNone(self.get_proxid(gamma, 'mask2'))
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))
+
+        gesp.ActionRemove('mask2', gamma.id).execute(instance)
+        self.assertIsNone(self.get_proxid(gamma, 'mask2'))
+        run(instance.initiate_action(msg,
+            gesp.ActionJoin('mask2', gamma.id)))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNone(self.get_proxid(gamma, 'mask2'))
+        instance.save()
         (votes, instance.votes) = (instance.votes, None)
-        instance.votes_load()
+        instance.load()
         self.assertEqual(votes, instance.votes)
         self.assertIsNot(votes, instance.votes)
-        interact(c[-1], alpha, 'yes')
-        self.assertEqual(c[-1].embeds[0].description, 'b')
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))
 
 
 def main():
