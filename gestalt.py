@@ -692,12 +692,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def on_user_message(self, message, user):
         authid = message.author.id
-        lower = message.content.lower()
+        content = message.content
         chan = self.fetchone('select * from channels where chanid = ?',
                 (message.channel.id,))
         mandatory = chan and chan['mode'] == ChannelMode.mandatory
         # command prefix is optional in DMs
-        if (prefix := lower.startswith(COMMAND_PREFIX)) or not message.guild:
+        if (match := COMMAND_REGEX.fullmatch(content)) or not message.guild:
             if mandatory:
                 await self.try_delete(message)
                 raise UserError(
@@ -709,8 +709,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 self.init_user(message.author)
             # strip() so that e.g. 'gs; help' works (helpful with autocorrect)
             await self.do_command(message,
-                    message.content[
-                        len(COMMAND_PREFIX) if prefix else 0:].strip())
+                    match[1].strip() if match else content)
             return
 
         if not user:
@@ -731,8 +730,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         try:
             msg = None
             prefs = user['prefs']
-            if lower.startswith('\\') and not match['matchTags']:
-                if lower.startswith('\\\\') and match['latch']:
+            if content.startswith('\\') and not match['matchTags']:
+                if content.startswith('\\\\') and match['latch']:
                     self.set_autoproxy(message.author, None)
                 return
 
