@@ -3,6 +3,7 @@
 from asyncio import run
 import datetime
 import unittest
+import math
 import re
 
 import aiohttp
@@ -2016,7 +2017,7 @@ class GestaltTest(unittest.TestCase):
 
         instance.execute('insert into masks values '
                 '("mask2", "", NULL, NULL, ?, 0, 0, 0)',
-                (gesp.RulesMajority().to_json(),))
+                (gesp.RulesUnanimous().to_json(),))
         instance.load()
         gesp.ActionJoin('mask2', alpha.id).execute(instance)
         msg = send(alpha, c, 'dummy command')
@@ -2048,6 +2049,49 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNot(votes, instance.votes)
         interact(c[-1], beta, 'yes')
         self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))
+
+        run(instance.initiate_action(send(beta, c, 'mutiny!'),
+            gesp.ActionRemove('mask2', alpha.id)))
+        self.assertIsNotNone(self.get_proxid(alpha, 'mask2'))
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(alpha, 'mask2'))
+        interact(c[-1], gamma, 'yes')
+        self.assertIsNone(self.get_proxid(alpha, 'mask2'))
+
+        users = [User(name = str(i)) for i in range(6)]
+        instance.execute('insert into masks values '
+                '("mask3", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesHandsOff(user = alpha.id).to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask3', alpha.id).execute(instance)
+        msg = send(alpha, c, 'dummy command')
+        g._add_member(users[0])
+        run(instance.initiate_action(msg,
+            gesp.ActionInvite('mask3', users[0].id)))
+        self.assertIsNotNone(self.get_proxid(users[0], 'mask3'))
+        for candidate, i in zip(users[1:], range(len(users)-1)):
+            g._add_member(candidate)
+            run(instance.initiate_action(send(candidate, c, 'msg'),
+                gesp.ActionJoin('mask3', candidate.id)))
+            for j in range(math.ceil(i/2)): # i+1 current voting members
+                interact(c[-1], users[j+1], 'yes')
+            self.assertIsNone(self.get_proxid(candidate, 'mask3'))
+            interact(c[-1], users[0], 'yes')
+            self.assertIsNotNone(self.get_proxid(candidate, 'mask3'))
+
+        instance.execute('insert into masks values '
+                '("mask4", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesMajority().to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask4', users[0].id).execute(instance)
+        for candidate, i in zip(users[1:], range(len(users)-1)):
+            run(instance.initiate_action(send(candidate, c, 'msg'),
+                gesp.ActionJoin('mask4', candidate.id)))
+            for j in range(math.ceil(i/2)): # i+1 current voting members
+                interact(c[-1], users[j+1], 'yes')
+            self.assertIsNone(self.get_proxid(candidate, 'mask4'))
+            interact(c[-1], users[0], 'yes')
+            self.assertIsNotNone(self.get_proxid(candidate, 'mask4'))
 
 
 def main():
