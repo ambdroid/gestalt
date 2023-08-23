@@ -232,6 +232,33 @@ class VotableAction:
 
 
 @dc.dataclass
+class Rules:
+    rtype = None
+    table = {}
+
+    named: list[int] = dc.field(default_factory = lambda : [])
+    def for_action(self, atype):
+        raise NotImplementedError()
+    @cached_property
+    def compiled(self):
+        return {atype: comp(VotableAction.for_type(atype).embellish(
+            self.for_action(atype)), 0)
+            for atype in ActionType}
+    def from_dict(_dict):
+        return Rules.table[_dict['rtype']](**excluding(_dict, 'rtype'))
+    def from_json(js):
+        return Rules.from_dict(json.loads(js))
+    def to_dict(self):
+        return excluding(vars(self), 'compiled') | {'rtype': self.rtype}
+    def to_json(self):
+        return json.dumps(self.to_dict())
+    def __init_subclass__(cls, rtype = None):
+        if rtype:
+            cls.rtype = rtype.value
+            Rules.table[rtype.value] = cls
+
+
+@dc.dataclass
 class ActionJoin(VotableAction, atype = ActionType.join):
     candidate: int
     def execute(self, bot):
@@ -274,6 +301,96 @@ class ActionChange(VotableAction, atype = ActionType.change):
         bot.execute('update guildmasks set %s = ? where maskid = ?'
                 % self.which, # TODO CHECK THIS
                 (self.value, self.mask))
+
+
+@dc.dataclass
+class ActionRules(VotableAction, atype = ActionType.rules):
+    newrules: Rules
+    @classmethod
+    def class_dict(cls, _dict):
+        return super().class_dict(_dict | {
+            'newrules': Rules.from_dict(_dict['newrules'])})
+    def execute(self, bot):
+        bot.execute('update masks set rules = ? where maskid = ?',
+                (self.newrules.to_json(), self.mask))
+        bot.rules[self.mask] = self.newrules
+
+
+@dc.dataclass
+class RulesDictator(Rules, rtype = RuleType.dictator):
+    rule = parse_full(
+            '(eq'
+                '(initiator)'
+                '(named 0)'
+            ')'
+            )[0]
+    user: dc.InitVar[int] = None
+    def __post_init__(self, user = None):
+        if user:
+            self.named = [user]
+    def for_action(self, atype):
+        return self.rule
+
+
+class RulesHandsOff(RulesDictator, rtype = RuleType.handsoff):
+    rule_voting = parse_full(
+            '(vote-approval'
+                '(add'
+                    '(floor'
+                        '(div'
+                            '(sub'
+                                '(size-of'
+                                    '(members)'
+                                ')'
+                            '1)'
+                        '2)'
+                    ')'
+                '1)'
+            ')'
+            )[0]
+    def for_action(self, atype):
+        return (self.rule
+                if atype == ActionType.rules
+                else Exp('or', (self.rule, self.rule_voting)))
+
+
+class RulesMajority(Rules, rtype = RuleType.majority):
+    rule = parse_full(
+            '(vote-approval'
+                '(add'
+                    '(floor'
+                        '(div'
+                            '(size-of'
+                                '(members)'
+                            ')'
+                        '2)'
+                    ')'
+                '1)'
+            ')'
+            )[0]
+    def for_action(self, atype):
+        return self.rule
+
+
+class RulesUnanimous(Rules, rtype = RuleType.unanimous):
+    rule = parse_full(
+            '(vote-approval'
+                '(size-of'
+                    '(members)'
+                ')'
+            ')'
+            )[0]
+    rule_remove = parse_full(
+            '(vote-approval'
+                '(sub'
+                    '(size-of'
+                        '(members)'
+                    ')'
+                '1)'
+            ')'
+            )[0]
+    def for_action(self, atype):
+        return self.rule_remove if atype == ActionType.remove else self.rule
 
 
 @dc.dataclass
@@ -445,123 +562,6 @@ class VoteConsensus(Vote, vtype = VoteType.consensus):
                 disabled = disabled,
                 ))
         return view
-
-
-@dc.dataclass
-class Rules:
-    rtype = None
-    table = {}
-
-    named: list[int] = dc.field(default_factory = lambda : [])
-    def for_action(self, atype):
-        raise NotImplementedError()
-    @cached_property
-    def compiled(self):
-        return {atype: comp(VotableAction.for_type(atype).embellish(
-            self.for_action(atype)), 0)
-            for atype in ActionType}
-    def from_dict(_dict):
-        return Rules.table[_dict['rtype']](**excluding(_dict, 'rtype'))
-    def from_json(js):
-        return Rules.from_dict(json.loads(js))
-    def to_dict(self):
-        return excluding(vars(self), 'compiled') | {'rtype': self.rtype}
-    def to_json(self):
-        return json.dumps(self.to_dict())
-    def __init_subclass__(cls, rtype = None):
-        if rtype:
-            cls.rtype = rtype.value
-            Rules.table[rtype.value] = cls
-
-
-@dc.dataclass
-class RulesDictator(Rules, rtype = RuleType.dictator):
-    rule = parse_full(
-            '(eq'
-                '(initiator)'
-                '(named 0)'
-            ')'
-            )[0]
-    user: dc.InitVar[int] = None
-    def __post_init__(self, user = None):
-        if user:
-            self.named = [user]
-    def for_action(self, atype):
-        return self.rule
-
-
-class RulesHandsOff(RulesDictator, rtype = RuleType.handsoff):
-    rule_voting = parse_full(
-            '(vote-approval'
-                '(add'
-                    '(floor'
-                        '(div'
-                            '(sub'
-                                '(size-of'
-                                    '(members)'
-                                ')'
-                            '1)'
-                        '2)'
-                    ')'
-                '1)'
-            ')'
-            )[0]
-    def for_action(self, atype):
-        return (self.rule
-                if atype == ActionType.rules
-                else Exp('or', (self.rule, self.rule_voting)))
-
-
-class RulesMajority(Rules, rtype = RuleType.majority):
-    rule = parse_full(
-            '(vote-approval'
-                '(add'
-                    '(floor'
-                        '(div'
-                            '(size-of'
-                                '(members)'
-                            ')'
-                        '2)'
-                    ')'
-                '1)'
-            ')'
-            )[0]
-    def for_action(self, atype):
-        return self.rule
-
-
-class RulesUnanimous(Rules, rtype = RuleType.unanimous):
-    rule = parse_full(
-            '(vote-approval'
-                '(size-of'
-                    '(members)'
-                ')'
-            ')'
-            )[0]
-    rule_remove = parse_full(
-            '(vote-approval'
-                '(sub'
-                    '(size-of'
-                        '(members)'
-                    ')'
-                '1)'
-            ')'
-            )[0]
-    def for_action(self, atype):
-        return self.rule_remove if atype == ActionType.remove else self.rule
-
-
-@dc.dataclass
-class ActionRules(VotableAction, atype = ActionType.rules):
-    newrules: Rules
-    @classmethod
-    def class_dict(cls, _dict):
-        return super().class_dict(_dict | {
-            'newrules': Rules.from_dict(_dict['newrules'])})
-    def execute(self, bot):
-        bot.execute('update masks set rules = ? where maskid = ?',
-                (self.newrules.to_json(), self.mask))
-        bot.rules[self.mask] = self.newrules
 
 
 class GestaltVoting:
