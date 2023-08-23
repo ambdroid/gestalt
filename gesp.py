@@ -184,9 +184,9 @@ def run(state, context = None):
             stack.append(len(stack.pop()))
         elif op == 'vote-approval':
             return partial(VoteApproval,
+                    eligible = stack.pop(),
                     state = ProgramState(state.program, pc + 1, stack),
                     context = context,
-                    eligible = stack.pop()
                     )
         else:
             stack.append(op)
@@ -478,7 +478,12 @@ class Rules:
 
 @dc.dataclass
 class RulesDictator(Rules, rtype = RuleType.dictator):
-    rule = parse_full('(eq (initiator) (named 0))')[0]
+    rule = parse_full(
+            '(eq'
+                '(initiator)'
+                '(named 0)'
+            ')'
+            )[0]
     user: dc.InitVar[int] = None
     def __post_init__(self, user = None):
         if user:
@@ -487,10 +492,65 @@ class RulesDictator(Rules, rtype = RuleType.dictator):
         return self.rule
 
 
+class RulesHandsOff(RulesDictator, rtype = RuleType.handsoff):
+    rule_voting = parse_full(
+            '(vote-approval'
+                '(add'
+                    '(floor'
+                        '(div'
+                            '(sub'
+                                '(size-of'
+                                    '(members)'
+                                ')'
+                            '1)'
+                        '2)'
+                    ')'
+                '1)'
+            ')'
+            )[0]
+    def for_action(self, atype):
+        return (self.rule
+                if atype == ActionType.rules
+                else Exp('or', (self.rule, self.rule_voting)))
+
+
 class RulesMajority(Rules, rtype = RuleType.majority):
-    rule = parse_full('(vote-approval (add (floor (div (size-of (members)) 2)) 1))')[0]
+    rule = parse_full(
+            '(vote-approval'
+                '(add'
+                    '(floor'
+                        '(div'
+                            '(size-of'
+                                '(members)'
+                            ')'
+                        '2)'
+                    ')'
+                '1)'
+            ')'
+            )[0]
     def for_action(self, atype):
         return self.rule
+
+
+class RulesUnanimous(Rules, rtype = RuleType.unanimous):
+    rule = parse_full(
+            '(vote-approval'
+                '(size-of'
+                    '(members)'
+                ')'
+            ')'
+            )[0]
+    rule_remove = parse_full(
+            '(vote-approval'
+                '(sub'
+                    '(size-of'
+                        '(members)'
+                    ')'
+                '1)'
+            ')'
+            )[0]
+    def for_action(self, atype):
+        return self.rule_remove if atype == ActionType.remove else self.rule
 
 
 class GestaltVoting:
