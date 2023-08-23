@@ -218,9 +218,12 @@ class VotableAction:
         return exp
     def for_type(atype):
         return VotableAction.table[int(atype)]
+    @classmethod
+    def class_dict(cls, _dict):
+        return cls(**_dict)
     def from_dict(_dict):
-        return VotableAction.for_type(_dict['atype'])(
-                **excluding(_dict, 'atype'))
+        return VotableAction.for_type(_dict['atype']).class_dict(
+                excluding(_dict, 'atype'))
     def to_dict(self):
         return vars(self) | {'atype': self.atype}
     def __init_subclass__(cls, atype):
@@ -271,13 +274,6 @@ class ActionChange(VotableAction, atype = ActionType.change):
         bot.execute('update guildmasks set %s = ? where maskid = ?'
                 % self.which, # TODO CHECK THIS
                 (self.value, self.mask))
-
-
-@dc.dataclass
-class ActionRules(VotableAction, atype = ActionType.rules):
-    code: str
-    def execute(self, bot):
-        pass # TODO
 
 
 @dc.dataclass
@@ -464,12 +460,14 @@ class Rules:
         return {atype: comp(VotableAction.for_type(atype).embellish(
             self.for_action(atype)), 0)
             for atype in ActionType}
-    def from_json(js):
-        _dict = json.loads(js)
+    def from_dict(_dict):
         return Rules.table[_dict['rtype']](**excluding(_dict, 'rtype'))
+    def from_json(js):
+        return Rules.from_dict(json.loads(js))
+    def to_dict(self):
+        return excluding(vars(self), 'compiled') | {'rtype': self.rtype}
     def to_json(self):
-        return json.dumps(excluding(vars(self), 'compiled')
-                | {'rtype': self.rtype})
+        return json.dumps(self.to_dict())
     def __init_subclass__(cls, rtype = None):
         if rtype:
             cls.rtype = rtype.value
@@ -551,6 +549,19 @@ class RulesUnanimous(Rules, rtype = RuleType.unanimous):
             )[0]
     def for_action(self, atype):
         return self.rule_remove if atype == ActionType.remove else self.rule
+
+
+@dc.dataclass
+class ActionRules(VotableAction, atype = ActionType.rules):
+    newrules: Rules
+    @classmethod
+    def class_dict(cls, _dict):
+        return super().class_dict(_dict | {
+            'newrules': Rules.from_dict(_dict['newrules'])})
+    def execute(self, bot):
+        bot.execute('update masks set rules = ? where maskid = ?',
+                (self.newrules.to_json(), self.mask))
+        bot.rules[self.mask] = self.newrules
 
 
 class GestaltVoting:

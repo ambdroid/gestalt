@@ -2097,6 +2097,27 @@ class GestaltTest(unittest.TestCase):
             interact(c[-1], users[0], 'yes')
             self.assertIsNotNone(self.get_proxid(candidate, 'mask4'))
 
+        # ActionRules has the most complicated serialization
+        instance.execute('insert into masks values '
+                '("mask5", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesMajority().to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask5', alpha.id).execute(instance)
+        run(instance.initiate_action(send(alpha, c, 'dummy'),
+            gesp.ActionInvite('mask5', beta.id)))
+        self.assertIsNone(self.get_proxid(beta, 'mask5'))
+        run(instance.initiate_action(send(alpha, c, 'dummy'),
+            gesp.ActionRules('mask5', gesp.RulesDictator(user = alpha.id))))
+        instance.save()
+        (votes, instance.votes) = (instance.votes, None)
+        instance.load()
+        self.assertEqual(votes, instance.votes)
+        self.assertIsNot(votes, instance.votes)
+        interact(c[-1], alpha, 'yes')
+        run(instance.initiate_action(send(alpha, c, 'dummy'),
+            gesp.ActionInvite('mask5', beta.id)))
+        self.assertIsNotNone(self.get_proxid(beta, 'mask5'))
+
 
 def main():
     global alpha, beta, gamma, g, instance
