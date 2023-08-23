@@ -1998,6 +1998,10 @@ class GestaltTest(unittest.TestCase):
             for atype in gesp.ActionType:
                 self.assertEqual(gesp.check(rules().for_action(atype)), bool)
 
+        gesp.ActionChange('mask', which = 'nick', value = 'newname')
+        with self.assertRaises(ValueError):
+            gesp.ActionChange('mask', which = 'name', value = 'newname')
+
         g = Guild(name = 'democratic guild')
         c = g._add_channel('main')
         g._add_member(alpha)
