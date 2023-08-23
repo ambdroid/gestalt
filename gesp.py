@@ -297,9 +297,11 @@ class ActionServer(VotableAction, atype = ActionType.server):
 class ActionChange(VotableAction, atype = ActionType.change):
     which: str
     value: str
+    def __post_init__(self):
+        if self.which not in ('nick', 'avatar', 'color'):
+            raise ValueError(self.which)
     def execute(self, bot):
-        bot.execute('update guildmasks set %s = ? where maskid = ?'
-                % self.which, # TODO CHECK THIS
+        bot.execute('update masks set %s = ? where maskid = ?' % self.which,
                 (self.value, self.mask))
 
 
