@@ -1994,6 +1994,10 @@ class GestaltTest(unittest.TestCase):
         gesp.eval('(if true 0 0)')
 
     def test_35_voting(self):
+        for rules in gesp.Rules.table.values():
+            for atype in gesp.ActionType:
+                self.assertEqual(gesp.check(rules().for_action(atype)), bool)
+
         g = Guild(name = 'democratic guild')
         c = g._add_channel('main')
         g._add_member(alpha)
