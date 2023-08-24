@@ -206,60 +206,60 @@ def excluding(_dict, key):
     return {k: v for k, v in _dict.items() if k != key}
 
 
-@dc.dataclass
-class VotableAction:
-    atype = None
-    table = {}
+# there is probably a better way to do this
+# but i can't get __init_subclass__ to work otherwise
+def serializable(name, parents, attrs):
+    class Inner:
+        _type = None
+        table = {}
+        def get_type(self):
+            return self._type
+        @classmethod
+        def class_dict(cls, _dict):
+            return cls(**_dict)
+        @classmethod
+        def from_dict(cls, _dict):
+            return cls.table[_dict['_type']].class_dict(
+                    excluding(_dict, '_type'))
+        @classmethod
+        def from_json(cls, js):
+            return cls.from_dict(json.loads(js))
+        def to_dict(self):
+            # dc.asdict() converts child dc's to dicts too, unwanted
+            # (that wouldn't include the type)
+            return vars(self) | {'_type': self._type}
+        def to_json(self):
+            return json.dumps(self.to_dict(),
+                    default =
+                        lambda val : val.to_dict() if dc.is_dataclass(val)
+                        else list(val))
+    def init(cls, _type):
+        cls._type = _type.value
+        super(cls, cls).table[_type.value] = cls
+    return type(name, (Inner,), attrs | {'__init_subclass__' : init})
 
+
+@dc.dataclass
+class VotableAction(metaclass = serializable):
     mask: str
     def execute(self, bot):
         raise NotImplementedError()
-    def embellish(exp):
-        return exp
-    def for_type(atype):
-        return VotableAction.table[int(atype)]
-    @classmethod
-    def class_dict(cls, _dict):
-        return cls(**_dict)
-    def from_dict(_dict):
-        return VotableAction.for_type(_dict['atype']).class_dict(
-                excluding(_dict, 'atype'))
-    def to_dict(self):
-        return vars(self) | {'atype': self.atype}
-    def __init_subclass__(cls, atype):
-        cls.atype = atype.value
-        VotableAction.table[atype.value] = cls
 
 
 @dc.dataclass
-class Rules:
-    rtype = None
-    table = {}
-
+class Rules(metaclass = serializable):
     named: list[int] = dc.field(default_factory = lambda : [])
     def for_action(self, atype):
         raise NotImplementedError()
     @cached_property
     def compiled(self):
-        return {atype: comp(VotableAction.for_type(atype).embellish(
-            self.for_action(atype)), 0)
-            for atype in ActionType}
-    def from_dict(_dict):
-        return Rules.table[_dict['rtype']](**excluding(_dict, 'rtype'))
-    def from_json(js):
-        return Rules.from_dict(json.loads(js))
+        return {atype: comp(self.for_action(atype), 0) for atype in ActionType}
     def to_dict(self):
-        return excluding(vars(self), 'compiled') | {'rtype': self.rtype}
-    def to_json(self):
-        return json.dumps(self.to_dict())
-    def __init_subclass__(cls, rtype = None):
-        if rtype:
-            cls.rtype = rtype.value
-            Rules.table[rtype.value] = cls
+        return excluding(super().to_dict(), 'compiled')
 
 
 @dc.dataclass
-class ActionJoin(VotableAction, atype = ActionType.join):
+class ActionJoin(VotableAction, _type = ActionType.join):
     candidate: int
     def execute(self, bot):
         nick = bot.fetchone('select nick from masks where maskid = ?',
@@ -269,22 +269,21 @@ class ActionJoin(VotableAction, atype = ActionType.join):
                     maskid = self.mask)
 
 
-class ActionInvite(ActionJoin, atype = ActionType.invite):
-    #def embellish(exp):
-    #    return Exp('and', (Exp('vote-confirm', (Exp('candidate', ()),)), exp))
+class ActionInvite(ActionJoin, _type = ActionType.invite):
     pass
 
 
 @dc.dataclass
-class ActionRemove(VotableAction, atype = ActionType.remove):
+class ActionRemove(VotableAction, _type = ActionType.remove):
     candidate: int
     def execute(self, bot):
         bot.execute('delete from proxies '
                 'where (userid, maskid, type) = (?, ?, ?)',
                 (self.candidate, self.mask, ProxyType.mask))
 
+
 @dc.dataclass
-class ActionServer(VotableAction, atype = ActionType.server):
+class ActionServer(VotableAction, _type = ActionType.server):
     server: int
     def execute(self, bot):
         if bot.get_guild(self.server):
@@ -294,7 +293,7 @@ class ActionServer(VotableAction, atype = ActionType.server):
 
 
 @dc.dataclass
-class ActionChange(VotableAction, atype = ActionType.change):
+class ActionChange(VotableAction, _type = ActionType.change):
     which: str
     value: str
     def __post_init__(self):
@@ -306,7 +305,7 @@ class ActionChange(VotableAction, atype = ActionType.change):
 
 
 @dc.dataclass
-class ActionRules(VotableAction, atype = ActionType.rules):
+class ActionRules(VotableAction, _type = ActionType.rules):
     newrules: Rules
     @classmethod
     def class_dict(cls, _dict):
@@ -319,7 +318,7 @@ class ActionRules(VotableAction, atype = ActionType.rules):
 
 
 @dc.dataclass
-class RulesDictator(Rules, rtype = RuleType.dictator):
+class RulesDictator(Rules, _type = RuleType.dictator):
     rule = parse_full(
             '(eq'
                 '(initiator)'
@@ -334,7 +333,7 @@ class RulesDictator(Rules, rtype = RuleType.dictator):
         return self.rule
 
 
-class RulesHandsOff(RulesDictator, rtype = RuleType.handsoff):
+class RulesHandsOff(RulesDictator, _type = RuleType.handsoff):
     rule_voting = parse_full(
             '(vote-approval'
                 '(add'
@@ -356,7 +355,7 @@ class RulesHandsOff(RulesDictator, rtype = RuleType.handsoff):
                 else Exp('or', (self.rule, self.rule_voting)))
 
 
-class RulesMajority(Rules, rtype = RuleType.majority):
+class RulesMajority(Rules, _type = RuleType.majority):
     rule = parse_full(
             '(vote-approval'
                 '(add'
@@ -374,7 +373,7 @@ class RulesMajority(Rules, rtype = RuleType.majority):
         return self.rule
 
 
-class RulesUnanimous(Rules, rtype = RuleType.unanimous):
+class RulesUnanimous(Rules, _type = RuleType.unanimous):
     rule = parse_full(
             '(vote-approval'
                 '(size-of'
@@ -411,10 +410,7 @@ class ProgramContext:
 
 
 @dc.dataclass
-class Vote:
-    vtype = None
-    table = {}
-
+class Vote(metaclass = serializable):
     action: VotableAction
     state: ProgramState
     # why is ProgramContext stored in the Vote, you might ask
@@ -459,33 +455,20 @@ class Vote:
         raise NotImplementedError()
     def view(self, disabled = False):
         raise NotImplementedError()
-    def from_json(js):
-        # this can't be a manual call of the constructor bc future custom rules
-        # (that will have extra data)
-        _dict = json.loads(js)
-        vote = Vote.table[_dict['vtype']](**excluding(_dict, 'vtype'))
-        vote.action = VotableAction.from_dict(vote.action)
-        vote.state = ProgramState(*vote.state)
-        vote.context = ProgramContext.from_dict(vote.context)
-        (vote.yes, vote.no) = (set(vote.yes), set(vote.no))
-        if isinstance(vote.eligible, list):
-            vote.eligible = frozenset(vote.eligible)
-        return vote
-    def to_json(self):
-        return json.dumps(
-                # dc.asdict() converts child dc's to dicts too, unwanted
-                # (that wouldn't include the type)
-                vars(self) | {'vtype': self.vtype},
-                default =
-                    lambda val : val.to_dict() if dc.is_dataclass(val)
-                    else list(val))
-    def __init_subclass__(cls, vtype):
-        cls.vtype = vtype.value
-        Vote.table[vtype.value] = cls
+    @classmethod
+    def from_dict(cls, _dict):
+        return super().from_dict(_dict | {
+            'action': VotableAction.from_dict(_dict['action']),
+            'state': ProgramState(*_dict['state']),
+            'context': ProgramContext.from_dict(_dict['context']),
+            'yes': set(_dict['yes']),
+            'no': set(_dict['no']),
+            } | ({'eligible': frozenset(_dict['eligible'])}
+                if isinstance(_dict['eligible'], list) else {}))
 
 
 @dc.dataclass
-class VoteConfirm(Vote, vtype = VoteType.confirm):
+class VoteConfirm(Vote, _type = VoteType.confirm):
     user: dc.InitVar[int] = None
     def __post_init__(self, user = None):
         if user:
@@ -511,7 +494,7 @@ class VoteConfirm(Vote, vtype = VoteType.confirm):
         return view
 
 
-class VoteApproval(Vote, vtype = VoteType.approval):
+class VoteApproval(Vote, _type = VoteType.approval):
     def maybe_done(self):
         if len(self.yes) == self.eligible:
             # no other possibility except vote simply expiring
@@ -536,7 +519,7 @@ class VoteApproval(Vote, vtype = VoteType.approval):
         return view
 
 
-class VoteConsensus(Vote, vtype = VoteType.consensus):
+class VoteConsensus(Vote, _type = VoteType.consensus):
     def maybe_done(self):
         if (len(self.yes) + len(self.no) == self.eligible
                 if isinstance(self.eligible, int)
@@ -597,7 +580,7 @@ class GestaltVoting:
                     }
                 )
         await self.step_program(
-                ProgramState(rule.compiled[action.atype], 0, []),
+                ProgramState(rule.compiled[action.get_type()], 0, []),
                 context, action)
 
 
