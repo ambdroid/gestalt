@@ -296,6 +296,7 @@ class ActionServer(VotableAction, _type = ActionType.server):
 class ActionChange(VotableAction, _type = ActionType.change):
     which: str
     value: str
+    server: int = 0 # reserved
     def __post_init__(self):
         if self.which not in ('nick', 'avatar', 'color'):
             raise ValueError(self.which)
@@ -402,9 +403,16 @@ class ProgramContext:
     members: frozenset[int]
     candidate: int = None
     answer: bool = None
+    yes: frozenset[int] = None
+    no: frozenset[int] = None
     def from_dict(_dict):
-        return ProgramContext(
-                **(_dict | {'members': frozenset(_dict['members'])}))
+        return ProgramContext(**(_dict | {
+            'members': frozenset(_dict['members']),
+            } | ({
+                'yes': frozenset(_dict['yes']),
+                'no': frozenset(_dict['no']),
+                } if _dict['yes'] else {})
+            ))
     def to_dict(self):
         return vars(self)
 
@@ -524,7 +532,9 @@ class VoteConsensus(Vote, _type = VoteType.consensus):
         if (len(self.yes) + len(self.no) == self.eligible
                 if isinstance(self.eligible, int)
                 else self.yes | self.no == self.eligible):
-            raise NotImplementedError()
+            self.context.yes = frozenset(self.yes)
+            self.context.no = frozenset(self.no)
+            return True
     def view(self, disabled = False):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
