@@ -199,6 +199,7 @@ class VoteType(enum.IntEnum):
     confirm     = 0
     approval    = 1
     consensus   = 2
+    preinvite   = 3
 
 
 @enum.unique

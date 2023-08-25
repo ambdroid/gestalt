@@ -399,16 +399,16 @@ class RulesUnanimous(Rules, _type = RuleType.unanimous):
 class ProgramContext:
     initiator: int
     channel: int
-    named: list[int]
-    members: frozenset[int]
+    named: list[int] = None
+    members: frozenset[int] = None
     candidate: int = None
     answer: bool = None
     yes: frozenset[int] = None
     no: frozenset[int] = None
     def from_dict(_dict):
-        return ProgramContext(**(_dict | {
+        return ProgramContext(**(_dict | ({
             'members': frozenset(_dict['members']),
-            } | ({
+            } if _dict['members'] else {}) | ({
                 'yes': frozenset(_dict['yes']),
                 'no': frozenset(_dict['no']),
                 } if _dict['yes'] else {})
@@ -427,10 +427,10 @@ class Vote(metaclass = serializable):
     # because it doesn't cleanly fit in VotableAction or ProgramState
     # but when it's time for a Vote, the context needs to be at rest
     context: ProgramContext
-    eligible: Union[frozenset[int], int]
+    eligible: Union[frozenset[int], int] = None
     yes: set[int] = dc.field(default_factory = lambda : set())
     no: set[int] = dc.field(default_factory = lambda : set())
-    async def on_interaction(self, interaction):
+    async def on_interaction(self, interaction, bot):
         if (userid := interaction.user.id) in (
                 self.context.members
                 if isinstance(self.eligible, int)
@@ -458,8 +458,8 @@ class Vote(metaclass = serializable):
                 embed = discord.Embed(description = desc),
                 ephemeral = True)
         # TODO update message w/tally
-        return self.maybe_done()
-    def maybe_done(self):
+        return await self.maybe_done(bot)
+    async def maybe_done(self, bot):
         raise NotImplementedError()
     def view(self, disabled = False):
         raise NotImplementedError()
@@ -481,7 +481,7 @@ class VoteConfirm(Vote, _type = VoteType.confirm):
     def __post_init__(self, user = None):
         if user:
             self.eligible = frozenset([user])
-    def maybe_done(self):
+    async def maybe_done(self, bot):
         if self.yes or self.no:
             self.context.answer = bool(self.yes)
             return True
@@ -502,8 +502,19 @@ class VoteConfirm(Vote, _type = VoteType.confirm):
         return view
 
 
+class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
+    def __post_init__(self, user = None):
+        self.eligible = frozenset([self.action.candidate])
+    async def maybe_done(self, bot):
+        if self.yes or self.no:
+            if self.yes:
+                await bot.initiate_action(self.context.initiator,
+                        self.context.channel, self.action)
+            return True
+
+
 class VoteApproval(Vote, _type = VoteType.approval):
-    def maybe_done(self):
+    async def maybe_done(self, bot):
         if len(self.yes) == self.eligible:
             # no other possibility except vote simply expiring
             # however, this might change so that expiry = False
@@ -528,7 +539,7 @@ class VoteApproval(Vote, _type = VoteType.approval):
 
 
 class VoteConsensus(Vote, _type = VoteType.consensus):
-    def maybe_done(self):
+    async def maybe_done(self, bot):
         if (len(self.yes) + len(self.no) == self.eligible
                 if isinstance(self.eligible, int)
                 else self.yes | self.no == self.eligible):
@@ -575,11 +586,11 @@ class GestaltVoting:
                 ((msgid, vote.to_json()) for msgid, vote in self.votes.items()))
 
 
-    async def initiate_action(self, message, action):
+    async def initiate_action(self, userid, chanid, action):
         rule = self.rules[action.mask]
         context = ProgramContext(
-                initiator = message.author.id,
-                channel = message.channel.id,
+                initiator = userid,
+                channel = chanid,
                 named = rule.named,
                 members = {
                     row[0] for row in
@@ -594,14 +605,17 @@ class GestaltVoting:
                 context, action)
 
 
+    async def initiate_vote(self, vote):
+        if msg := await self.send_embed(
+                self.get_channel(vote.context.channel), 'Vote',
+                vote.view()):
+            self.votes[msg.id] = vote
+
+
     async def step_program(self, program, context, action):
         result = run(program, context)
         if isinstance(result, partial):
-            vote = result(action)
-            if msg := await self.send_embed(
-                    self.get_channel(context.channel), 'Vote',
-                    vote.view()):
-                self.votes[msg.id] = vote
+            await self.initiate_vote(result(action))
         elif result == True:
             action.execute(self)
 
@@ -610,8 +624,10 @@ class GestaltVoting:
     # but it's easier than using the callbacks across reboots
     async def on_interaction(self, interaction):
         if (msgid := interaction.message.id) in self.votes:
-            if await self.votes[msgid].on_interaction(interaction):
+            if await self.votes[msgid].on_interaction(interaction, self):
                 vote = self.votes[msgid]
                 del self.votes[msgid]
-                await self.step_program(vote.state, vote.context, vote.action)
+                if vote.state:
+                    await self.step_program(vote.state, vote.context,
+                            vote.action)
 
