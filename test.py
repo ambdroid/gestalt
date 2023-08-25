@@ -2014,13 +2014,13 @@ class GestaltTest(unittest.TestCase):
                 (gesp.RulesDictator(user = alpha.id).to_json(),))
         instance.load()
         gesp.ActionJoin('mask', alpha.id).execute(instance)
-        msg = send(alpha, c, 'dummy command')
-        run(instance.initiate_action(msg,
+        run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionChange('mask', 'nick', 'mask!')))
-        msg2 = send(beta, c, 'dummy command')
-        run(instance.initiate_action(msg2, gesp.ActionJoin('mask', beta.id)))
+        run(instance.initiate_action(beta.id, c.id,
+            gesp.ActionJoin('mask', beta.id)))
         self.assertIsNone(self.get_proxid(beta, 'mask'))
-        run(instance.initiate_action(msg, gesp.ActionInvite('mask', beta.id)))
+        run(instance.initiate_action(alpha.id, c.id,
+            gesp.ActionInvite('mask', beta.id)))
         self.assertIsNotNone(self.get_proxid(beta, 'mask'))
 
         instance.execute('insert into masks values '
@@ -2028,16 +2028,15 @@ class GestaltTest(unittest.TestCase):
                 (gesp.RulesUnanimous().to_json(),))
         instance.load()
         gesp.ActionJoin('mask2', alpha.id).execute(instance)
-        msg = send(alpha, c, 'dummy command')
-        run(instance.initiate_action(msg,
+        run(instance.initiate_action(beta.id, c.id,
             gesp.ActionJoin('mask2', beta.id)))
         interact(c[-1], alpha, 'abstain')
         self.assertIsNone(self.get_proxid(beta, 'mask2'))
-        run(instance.initiate_action(msg,
+        run(instance.initiate_action(beta.id, c.id,
             gesp.ActionJoin('mask2', beta.id)))
         interact(c[-1], alpha, 'yes')
         self.assertIsNotNone(self.get_proxid(beta, 'mask2'))
-        run(instance.initiate_action(msg,
+        run(instance.initiate_action(gamma.id, c.id,
             gesp.ActionJoin('mask2', gamma.id)))
         interact(c[-1], alpha, 'yes')
         self.assertIsNone(self.get_proxid(gamma, 'mask2'))
@@ -2046,7 +2045,7 @@ class GestaltTest(unittest.TestCase):
 
         gesp.ActionRemove('mask2', gamma.id).execute(instance)
         self.assertIsNone(self.get_proxid(gamma, 'mask2'))
-        run(instance.initiate_action(msg,
+        run(instance.initiate_action(gamma.id, c.id,
             gesp.ActionJoin('mask2', gamma.id)))
         interact(c[-1], alpha, 'yes')
         self.assertIsNone(self.get_proxid(gamma, 'mask2'))
@@ -2058,7 +2057,7 @@ class GestaltTest(unittest.TestCase):
         interact(c[-1], beta, 'yes')
         self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))
 
-        run(instance.initiate_action(send(beta, c, 'mutiny!'),
+        run(instance.initiate_action(beta.id, c.id,
             gesp.ActionRemove('mask2', alpha.id)))
         self.assertIsNotNone(self.get_proxid(alpha, 'mask2'))
         interact(c[-1], beta, 'yes')
@@ -2072,14 +2071,13 @@ class GestaltTest(unittest.TestCase):
                 (gesp.RulesHandsOff(user = alpha.id).to_json(),))
         instance.load()
         gesp.ActionJoin('mask3', alpha.id).execute(instance)
-        msg = send(alpha, c, 'dummy command')
         g._add_member(users[0])
-        run(instance.initiate_action(msg,
+        run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionInvite('mask3', users[0].id)))
         self.assertIsNotNone(self.get_proxid(users[0], 'mask3'))
         for candidate, i in zip(users[1:], range(len(users)-1)):
             g._add_member(candidate)
-            run(instance.initiate_action(send(candidate, c, 'msg'),
+            run(instance.initiate_action(candidate.id, c.id,
                 gesp.ActionJoin('mask3', candidate.id)))
             for j in range(math.ceil(i/2)): # i+1 current voting members
                 interact(c[-1], users[j+1], 'yes')
@@ -2093,7 +2091,7 @@ class GestaltTest(unittest.TestCase):
         instance.load()
         gesp.ActionJoin('mask4', users[0].id).execute(instance)
         for candidate, i in zip(users[1:], range(len(users)-1)):
-            run(instance.initiate_action(send(candidate, c, 'msg'),
+            run(instance.initiate_action(candidate.id, c.id,
                 gesp.ActionJoin('mask4', candidate.id)))
             for j in range(math.ceil(i/2)): # i+1 current voting members
                 interact(c[-1], users[j+1], 'yes')
@@ -2107,10 +2105,10 @@ class GestaltTest(unittest.TestCase):
                 (gesp.RulesMajority().to_json(),))
         instance.load()
         gesp.ActionJoin('mask5', alpha.id).execute(instance)
-        run(instance.initiate_action(send(alpha, c, 'dummy'),
+        run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionInvite('mask5', beta.id)))
         self.assertIsNone(self.get_proxid(beta, 'mask5'))
-        run(instance.initiate_action(send(alpha, c, 'dummy'),
+        run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionRules('mask5', gesp.RulesDictator(user = alpha.id))))
         instance.save()
         (votes, instance.votes) = (instance.votes, None)
@@ -2118,9 +2116,27 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(votes, instance.votes)
         self.assertIsNot(votes, instance.votes)
         interact(c[-1], alpha, 'yes')
-        run(instance.initiate_action(send(alpha, c, 'dummy'),
+        run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionInvite('mask5', beta.id)))
         self.assertIsNotNone(self.get_proxid(beta, 'mask5'))
+
+        instance.execute('insert into masks values '
+                '("mask6", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesDictator(user = alpha.id).to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask6', alpha.id).execute(instance)
+        run(instance.initiate_vote(gesp.VotePreinvite(
+            action = gesp.ActionInvite('mask6', beta.id),
+            state = None,
+            context = gesp.ProgramContext(
+                initiator = alpha.id,
+                channel = c.id
+                ))))
+        self.assertIsNone(self.get_proxid(beta, 'mask6'))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNone(self.get_proxid(beta, 'mask6'))
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(beta, 'mask6'))
 
 
 def main():
