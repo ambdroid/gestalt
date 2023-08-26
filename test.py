@@ -394,6 +394,8 @@ class TestBot(gestalt.Gestalt):
         return Channel.channels.get(id, Thread.threads.get(id))
     def get_guild(self, id):
         return Guild.guilds.get(id)
+    def is_ready(self):
+        return True
 
 # incoming messages have Attachments, outgoing messages have Files
 # but we'll pretend that they're the same for simplicity

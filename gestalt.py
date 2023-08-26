@@ -627,6 +627,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     def delete_invalid_proxy(self, proxy):
+        if not self.is_ready():
+            return proxy
         if proxy['type'] == ProxyType.collective:
             if not (guild := self.get_guild(proxy['guildid'])):
                 return # assume it's temporarily unavailable
