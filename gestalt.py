@@ -25,6 +25,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     def __init__(self, *, dbfile):
         super().__init__(intents = INTENTS)
 
+        sqlite.register_adapter(type(CLEAR), lambda _ : None)
         self.conn = sqlite.connect(dbfile)
         self.conn.row_factory = sqlite.Row
         self.cur = self.conn.cursor()

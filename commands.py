@@ -91,6 +91,16 @@ class CommandReader:
             if chan.guild == self.msg.guild:
                 return chan
 
+    def read_color(self):
+        name = self.read_word()
+        if name == '-clear':
+            return CLEAR
+        try:
+            return str(discord.Color.from_str(
+                NAMED_COLORS.get(name.lower(), name)))
+        except (ValueError, IndexError):
+            pass
+
 
 class GestaltCommands:
     def get_user_proxy(self, message, name):
@@ -734,8 +744,6 @@ class GestaltCommands:
                     raise UserError('That collective belongs to another guild.')
 
                 if action in ['nick', 'name', 'avatar', 'color', 'colour']:
-                    arg = reader.read_remainder()
-
                     role = guild.get_role(row['roleid'])
                     if role == None:
                         raise UserError('That role no longer exists?')
@@ -747,23 +755,19 @@ class GestaltCommands:
                                 'You don\'t have access to that collective!')
 
                     # allow empty avatar URL but not name
-                    if action in ['name', 'nick'] and not arg:
-                        raise UserError('Please provide a new name.')
+                    if action in ['name', 'nick']:
+                        if not (arg := reader.read_remainder()):
+                            raise UserError('Please provide a new name.')
                     if action == 'avatar':
+                        arg = reader.read_remainder()
                         if message.attachments and not arg:
                             arg = message.attachments[0].url
                         elif arg and not LINK_REGEX.fullmatch(arg):
                             raise UserError('Invalid avatar URL!')
                     if action in ['color', 'colour']:
-                        if arg == '-clear':
-                            arg = None
-                        else:
-                            arg = NAMED_COLORS.get(arg.lower(), arg)
-                            try:
-                                arg = str(discord.Color.from_str(arg))
-                            except ValueError:
-                                raise UserError(
-                                        'Please enter a color (e.g. `#012345`)')
+                        if not (arg := reader.read_color()):
+                            raise UserError(
+                                    'Please enter a color (e.g. `#012345`)')
 
                     return await self.cmd_collective_update(message, collid,
                             action, arg)
@@ -799,15 +803,8 @@ class GestaltCommands:
                 return await self.cmd_config_update(message, user, arg, value)
 
             elif arg in ['color', 'colour']:
-                arg = reader.read_word()
-                if arg == '-clear':
-                    arg = None
-                else:
-                    arg = NAMED_COLORS.get(arg.lower(), arg)
-                    try:
-                        arg = str(discord.Color.from_str(arg))
-                    except ValueError:
-                        raise UserError('Please enter a color (e.g. `#012345`)')
+                if not (arg := reader.read_color()):
+                    raise UserError('Please enter a color (e.g. `#012345`)')
 
                 return await self.cmd_account_update(message, arg)
 

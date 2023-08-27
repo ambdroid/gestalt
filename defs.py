@@ -227,6 +227,10 @@ REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
 HELPMSGS = {topic: text.format(p = COMMAND_PREFIX) for topic, text
         in HELPMSGS.items()}
 
+# singleton type representing a meaningfully NULL command argument
+# it is converted to NULL when passed to sqlite but truthy to python
+# (see register_adapter())
+CLEAR = type('Clear', (), {})()
 class UserError(Exception):
     pass
 
