@@ -2127,7 +2127,6 @@ class GestaltTest(unittest.TestCase):
         gesp.ActionJoin('mask6', alpha.id).execute(instance)
         run(instance.initiate_vote(gesp.VotePreinvite(
             action = gesp.ActionInvite('mask6', beta.id),
-            state = None,
             context = gesp.ProgramContext(
                 initiator = alpha.id,
                 channel = c.id
