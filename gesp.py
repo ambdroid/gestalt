@@ -233,9 +233,10 @@ def serializable(name, parents, attrs):
                     default =
                         lambda val : val.to_dict() if dc.is_dataclass(val)
                         else list(val))
-    def init(cls, _type):
-        cls._type = _type.value
-        super(cls, cls).table[_type.value] = cls
+    def init(cls, _type = None):
+        if _type is not None:
+            cls._type = _type.value
+            super(cls, cls).table[_type.value] = cls
     return type(name, (Inner,), attrs | {'__init_subclass__' : init})
 
 
@@ -420,7 +421,6 @@ class ProgramContext:
 @dc.dataclass
 class Vote(metaclass = serializable):
     action: VotableAction
-    state: ProgramState
     # why is ProgramContext stored in the Vote, you might ask
     # (and by you i mean me, because i kept confusing myself about this)
     # well, the context is passed around in function calls
@@ -513,7 +513,21 @@ class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
             return True
 
 
-class VoteApproval(Vote, _type = VoteType.approval):
+@dc.dataclass
+class VoteProgram(Vote):
+    state: ProgramState = None
+    def __post_init__(self):
+        # state needs a default becomes it comes after other defaults
+        # (but it's not actually default)
+        if not self.state:
+            raise ValueError()
+    def from_dict(cls, _dict):
+        return super().from_dict(_dict | {
+            'state': ProgramState(*_dict['state']),
+            })
+
+
+class VoteApproval(VoteProgram, _type = VoteType.approval):
     async def maybe_done(self, bot):
         if len(self.yes) == self.eligible:
             # no other possibility except vote simply expiring
@@ -538,7 +552,7 @@ class VoteApproval(Vote, _type = VoteType.approval):
         return view
 
 
-class VoteConsensus(Vote, _type = VoteType.consensus):
+class VoteConsensus(VoteProgram, _type = VoteType.consensus):
     async def maybe_done(self, bot):
         if (len(self.yes) + len(self.no) == self.eligible
                 if isinstance(self.eligible, int)
@@ -627,7 +641,7 @@ class GestaltVoting:
             if await self.votes[msgid].on_interaction(interaction, self):
                 vote = self.votes[msgid]
                 del self.votes[msgid]
-                if vote.state:
+                if isinstance(vote, VoteProgram):
                     await self.step_program(vote.state, vote.context,
                             vote.action)
 
