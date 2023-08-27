@@ -464,10 +464,9 @@ class Vote(metaclass = serializable):
     def view(self, disabled = False):
         raise NotImplementedError()
     @classmethod
-    def from_dict(cls, _dict):
-        return super().from_dict(_dict | {
+    def class_dict(cls, _dict):
+        return super().class_dict(_dict | {
             'action': VotableAction.from_dict(_dict['action']),
-            'state': ProgramState(*_dict['state']),
             'context': ProgramContext.from_dict(_dict['context']),
             'yes': set(_dict['yes']),
             'no': set(_dict['no']),
@@ -521,8 +520,9 @@ class VoteProgram(Vote):
         # (but it's not actually default)
         if not self.state:
             raise ValueError()
-    def from_dict(cls, _dict):
-        return super().from_dict(_dict | {
+    @classmethod
+    def class_dict(cls, _dict):
+        return super().class_dict(_dict | {
             'state': ProgramState(*_dict['state']),
             })
 
@@ -606,13 +606,13 @@ class GestaltVoting:
                 initiator = userid,
                 channel = chanid,
                 named = rule.named,
-                members = {
+                members = frozenset(
                     row[0] for row in
                     self.fetchall(
                         # TODO index shenanigans
                         'select userid from proxies where maskid = ?',
                         (action.mask,))
-                    }
+                    )
                 )
         await self.step_program(
                 ProgramState(rule.compiled[action.get_type()], 0, []),

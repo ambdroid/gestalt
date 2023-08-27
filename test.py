@@ -2131,6 +2131,11 @@ class GestaltTest(unittest.TestCase):
                 initiator = alpha.id,
                 channel = c.id
                 ))))
+        instance.save()
+        (votes, instance.votes) = (instance.votes, None)
+        instance.load()
+        self.assertEqual(votes, instance.votes)
+        self.assertIsNot(votes, instance.votes)
         self.assertIsNone(self.get_proxid(beta, 'mask6'))
         interact(c[-1], alpha, 'yes')
         self.assertIsNone(self.get_proxid(beta, 'mask6'))
