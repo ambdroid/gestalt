@@ -2116,6 +2116,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(votes, instance.votes)
         self.assertIsNot(votes, instance.votes)
         interact(c[-1], alpha, 'yes')
+        self.assertEqual(type(instance.rules['mask5']), gesp.RulesDictator)
         run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionInvite('mask5', beta.id)))
         self.assertIsNotNone(self.get_proxid(beta, 'mask5'))
@@ -2141,6 +2142,46 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(self.get_proxid(beta, 'mask6'))
         interact(c[-1], beta, 'yes')
         self.assertIsNotNone(self.get_proxid(beta, 'mask6'))
+
+    def test_36_masks(self):
+        g = Guild(name = 'dramatic guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(beta)
+        g._add_member(instance.user)
+
+        # TODO this is why unit tests usually don't have shared state
+        # (i've been putting that off ok)
+        instance.execute('delete from votes')
+        instance.execute('delete from masks')
+        instance.execute('delete from proxies where type = ?',
+                (gestalt.ProxyType.mask,))
+        instance.load()
+
+        self.assertCommand(alpha, c, 'gs;m new mask')
+        maskid = instance.fetchone(
+                'select maskid from proxies where cmdname = "mask"')[0]
+        self.assertCommand(alpha, c, 'gs;p mask tags mask:text')
+        self.assertNotProxied(alpha, c, 'mask:test')
+        self.assertNotCommand(beta, c, 'gs;m %s add' % maskid)
+        self.assertNotProxied(alpha, c, 'mask:test')
+        self.assertCommand(alpha, c, 'gs;m mask add')
+        self.assertProxied(alpha, c, 'mask:test')
+
+        self.assertCommand(alpha, c, 'gs;ap mask')
+        self.assertProxied(alpha, c, 'autoproxy')
+        self.assertEqual(c[-1].author.name, 'mask')
+        send(alpha, c, 'gs;ap')
+        self.assertIn('**mask**', c[-1].embeds[0].description)
+        send(alpha, c, 'gs;proxy list')
+        self.assertIn('**mask**', c[-1].embeds[0].description)
+
+        g = Guild(name = 'other guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(instance.user)
+        send(alpha, c, 'gs;proxy list')
+        self.assertNotIn('**mask**', c[-1].embeds[0].description)
 
 
 def main():

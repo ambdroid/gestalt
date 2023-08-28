@@ -130,6 +130,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'members integer,'
                 'msgcount integer)')
         self.execute(
+                'create trigger if not exists mask_proxy_create '
+                'after insert on proxies when (new.type = %i) begin '
+                    'update masks set members = members + 1 '
+                    'where maskid = new.maskid;'
+                'end' % ProxyType.mask)
+        self.execute(
+                'create trigger if not exists mask_proxy_delete '
+                'after delete on proxies when (old.type = %i) begin '
+                    'update masks set members = members - 1 '
+                    'where maskid = old.maskid;'
+                'end' % ProxyType.mask)
+        self.execute(
                 'create table if not exists votes('
                 'msgid integer primary key,'
                 'state text)')
@@ -142,6 +154,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'create temp trigger delete_proxy '
                 'after delete on proxies begin '
                     'insert into deleted values (old.proxid);'
+                'end')
+        self.execute(
+                'create temp trigger delete_mask '
+                'after delete on masks begin '
+                    'insert into deleted values (old.maskid);'
                 'end')
         # NOTE: this would include masks if masks can be removed from guilds
         self.execute(
@@ -297,9 +314,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             # IDs don't need to be globally unique but it can't hurt
             exists = self.fetchone(
                     'select exists(select 1 from proxies where proxid = ?)'
+                    'or exists(select 1 from masks where maskid = ?)'
                     'or exists(select 1 from guildmasks where maskid = ?)'
                     'or exists(select 1 from deleted where id = ?)',
-                    (id,) * 3)[0]
+                    (id,) * 4)[0]
             if not exists:
                 return id
 
@@ -459,6 +477,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         raise UserError('That proxy has not been synced yet.')
 
 
+    def get_proxy_mask(self, message, proxy, prefs, content):
+        if mask := self.fetchone(
+                'select masks.nick, masks.avatar, masks.color '
+                'from guildmasks left join masks using (maskid) '
+                'where (guildid, maskid) = (?, ?)',
+                (message.guild.id, proxy['maskid'])):
+            return {'username': mask['nick'],
+                    'avatar_url': mask['avatar'],
+                    'color': mask['color'],
+                    'content': content}
+
+
     def maybe_remove_embeds(self, message, content):
         if message.channel.permissions_for(message.author).embed_links:
             return content
@@ -569,6 +599,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             present = self.get_proxy_swap(*args)
         elif proxtype == ProxyType.pkswap:
             present = self.get_proxy_pkswap(*args)
+        elif proxtype == ProxyType.mask:
+            present = self.get_proxy_mask(*args)
         else:
             raise UserError('Unknown proxy type')
         # in case e.g. it's a swap but the other user isn't in the guild
@@ -672,6 +704,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         elif proxy['type'] in (ProxyType.swap, ProxyType.pkswap,
                 ProxyType.pkreceipt):
             return bool(guild.get_member(proxy['otherid']))
+        elif proxy['type'] == ProxyType.mask:
+            return guild.id in self.mask_presence[proxy['maskid']]
         return False
 
 

@@ -1,5 +1,5 @@
+from collections import ChainMap, namedtuple, defaultdict
 from functools import reduce, partial, cached_property
-from collections import ChainMap, namedtuple
 from typing import Union
 import dataclasses as dc
 import json
@@ -249,7 +249,7 @@ class VotableAction(metaclass = serializable):
 
 @dc.dataclass
 class Rules(metaclass = serializable):
-    named: list[int] = dc.field(default_factory = lambda : [])
+    named: list[int] = dc.field(default_factory = list)
     def for_action(self, atype):
         raise NotImplementedError()
     @cached_property
@@ -266,6 +266,8 @@ class ActionJoin(VotableAction, _type = ActionType.join):
         nick = bot.fetchone('select nick from masks where maskid = ?',
                 (self.mask,))
         if nick:
+            if bot.is_member_of(self.mask, self.candidate):
+                return # TODO errors
             bot.mkproxy(self.candidate, ProxyType.mask, cmdname = nick[0],
                     maskid = self.mask)
 
@@ -287,10 +289,12 @@ class ActionRemove(VotableAction, _type = ActionType.remove):
 class ActionServer(VotableAction, _type = ActionType.server):
     server: int
     def execute(self, bot):
-        if bot.get_guild(self.server):
-            bot.execute('insert or ignore into guildmasks values'
+        guilds = bot.mask_presence[self.mask]
+        if bot.get_guild(self.server) and self.server not in guilds:
+            bot.execute('insert into guildmasks values'
                     '(?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL)',
                     (self.mask, self.server, ProxyType.mask, int(time.time())))
+            guilds.add(self.server)
 
 
 @dc.dataclass
@@ -314,6 +318,9 @@ class ActionRules(VotableAction, _type = ActionType.rules):
         return super().class_dict(_dict | {
             'newrules': Rules.from_dict(_dict['newrules'])})
     def execute(self, bot):
+        for user in self.newrules.named:
+            if not bot.is_member_of(self.mask, user):
+                return # TODO errors
         bot.execute('update masks set rules = ? where maskid = ?',
                 (self.newrules.to_json(), self.mask))
         bot.rules[self.mask] = self.newrules
@@ -428,9 +435,10 @@ class Vote(metaclass = serializable):
     # but when it's time for a Vote, the context needs to be at rest
     context: ProgramContext
     eligible: Union[frozenset[int], int] = None
-    yes: set[int] = dc.field(default_factory = lambda : set())
-    no: set[int] = dc.field(default_factory = lambda : set())
+    yes: set[int] = dc.field(default_factory = set)
+    no: set[int] = dc.field(default_factory = set)
     async def on_interaction(self, interaction, bot):
+        # TODO avoid race condition
         if (userid := interaction.user.id) in (
                 self.context.members
                 if isinstance(self.eligible, int)
@@ -592,6 +600,15 @@ class GestaltVoting:
         # so no need to worry about exceptions
         self.rules = {row['maskid']: Rules.from_json(row['rules'])
                 for row in self.fetchall('select maskid, rules from masks')}
+        # paying for past decisions in RAM. sigh.
+        # maybe i'll remove this later but rn i don't care
+        # (we all know i won't)
+        self.mask_presence = defaultdict(set)
+        for row in self.fetchall(
+                # TODO optimize this too maybe? not as important
+                'select maskid, guildid from guildmasks where type = ?',
+                (ProxyType.mask,)):
+            self.mask_presence[row['maskid']].add(row['guildid'])
 
 
     def save(self):
@@ -624,6 +641,21 @@ class GestaltVoting:
                 self.get_channel(vote.context.channel), 'Vote',
                 vote.view()):
             self.votes[msg.id] = vote
+
+
+    def is_member_of(self, maskid, userid):
+        return bool(self.fetchone(
+                'select 1 from proxies where (userid, maskid) = (?, ?)',
+                (userid, maskid)))
+
+
+    # this doesn't get its own Action subclass because it's unconditional
+    def nominate(self, maskid, nominator, nominee):
+        if not is_member_of(maskid, nominee):
+            return # TODO errors
+        rules = self.rules[maskid]
+        rules.named = [nominee if i == nominator else i for i in rules.named]
+        ActionRules(maskid, rules).execute()
 
 
     async def step_program(self, program, context, action):
