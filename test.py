@@ -522,6 +522,16 @@ class GestaltTest(unittest.TestCase):
                 run(message.channel.fetch_message(message.id)).content,
                 content)
 
+    def assertReload(self):
+        attrs = ('votes', 'rules', 'mask_presence')
+        origs = [getattr(instance, attr) for attr in attrs]
+        instance.save()
+        [setattr(instance, attr, None) for attr in attrs]
+        instance.load()
+        for orig, attr in zip(origs, attrs):
+            self.assertEqual(orig, getattr(instance, attr))
+            self.assertIsNot(orig, getattr(instance, attr))
+
 
     # tests run in alphabetical order, so they are numbered to ensure order
     def test_01_swaps(self):
@@ -2049,11 +2059,7 @@ class GestaltTest(unittest.TestCase):
             gesp.ActionJoin('mask2', gamma.id)))
         interact(c[-1], alpha, 'yes')
         self.assertIsNone(self.get_proxid(gamma, 'mask2'))
-        instance.save()
-        (votes, instance.votes) = (instance.votes, None)
-        instance.load()
-        self.assertEqual(votes, instance.votes)
-        self.assertIsNot(votes, instance.votes)
+        self.assertReload()
         interact(c[-1], beta, 'yes')
         self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))
 
@@ -2110,11 +2116,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(self.get_proxid(beta, 'mask5'))
         run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionRules('mask5', gesp.RulesDictator(user = alpha.id))))
-        instance.save()
-        (votes, instance.votes) = (instance.votes, None)
-        instance.load()
-        self.assertEqual(votes, instance.votes)
-        self.assertIsNot(votes, instance.votes)
+        self.assertReload()
         interact(c[-1], alpha, 'yes')
         self.assertEqual(type(instance.rules['mask5']), gesp.RulesDictator)
         run(instance.initiate_action(alpha.id, c.id,
@@ -2132,11 +2134,7 @@ class GestaltTest(unittest.TestCase):
                 initiator = alpha.id,
                 channel = c.id
                 ))))
-        instance.save()
-        (votes, instance.votes) = (instance.votes, None)
-        instance.load()
-        self.assertEqual(votes, instance.votes)
-        self.assertIsNot(votes, instance.votes)
+        self.assertReload()
         self.assertIsNone(self.get_proxid(beta, 'mask6'))
         interact(c[-1], alpha, 'yes')
         self.assertIsNone(self.get_proxid(beta, 'mask6'))
@@ -2182,6 +2180,7 @@ class GestaltTest(unittest.TestCase):
         g._add_member(instance.user)
         send(alpha, c, 'gs;proxy list')
         self.assertNotIn('**mask**', c[-1].embeds[0].description)
+        self.assertNotProxied(alpha, c, 'mask:test')
 
 
 def main():
