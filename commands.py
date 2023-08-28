@@ -194,6 +194,10 @@ class GestaltCommands:
             parens = ''
         elif proxy['type'] == ProxyType.pkreceipt:
             line = SYMBOL_RECEIPT + line
+        elif proxy['type'] == ProxyType.mask:
+            line = SYMBOL_MASK + line
+            parens = '**%s** on [`%s`]' % (escape(proxy['mnick']),
+                    proxy['maskid'].upper())
 
         if proxy['prefix'] is not None:
             parens += ' `%s`' % (
@@ -210,8 +214,10 @@ class GestaltCommands:
 
     async def cmd_proxy_list(self, message, all_):
         rows = sorted(self.fetch_valid_proxies(
-                'select proxies.*, guildmasks.roleid, guildmasks.nick from '
+                'select proxies.*, guildmasks.roleid, guildmasks.nick, '
+                'masks.nick as mnick from '
                     'proxies left join guildmasks using (maskid) '
+                    'left join masks using (maskid) '
                 'where proxies.userid = ?',
                 (message.author.id,)),
                 key = lambda row: (
@@ -269,10 +275,11 @@ class GestaltCommands:
     async def cmd_autoproxy_view(self, message):
         ap = self.fetchone(
                 'select members.latch, members.become, proxies.*, '
-                'guildmasks.roleid, guildmasks.nick from '
+                'guildmasks.roleid, guildmasks.nick, masks.nick as mnick from '
                     'members '
                     'left join proxies using (proxid) '
                     'left join guildmasks using (maskid) '
+                    'left join masks using (maskid) '
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
         # NOTE: valid == False if proxy has been deleted
@@ -447,6 +454,23 @@ class GestaltCommands:
                 'or (otherid, userid) = (?, ?)',
                 (proxy['userid'], proxy['otherid'])*2)
 
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_new(self, message, name):
+        rules = gesp.RulesDictator(user = message.author.id)
+        self.execute('insert into masks values '
+                '(?, ?, NULL, NULL, ?, ?, 0, 0)',
+                ((mid := self.gen_id()), name, rules.to_json(), time.time()))
+        self.rules[mid] = rules
+        gesp.ActionJoin(mid, message.author.id).execute(self)
+
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_add(self, message, maskid):
+        await self.initiate_action(message.author.id, message.channel.id,
+                gesp.ActionServer(maskid, message.guild.id))
         await self.mark_success(message, True)
 
 
@@ -833,6 +857,37 @@ class GestaltCommands:
                     raise UserError('You do not have a swap with that ID.')
 
                 return await self.cmd_swap_close(message, proxy)
+
+        elif arg in ['mask', 'm']:
+            arg = reader.read_quote()
+
+            if arg.lower() == 'new':
+                if not (name := reader.read_remainder()):
+                    raise UserError('Please provide a name.')
+
+                return await self.cmd_mask_new(message, name)
+
+            else: # arg is mask ID/name
+                maskid = arg
+                action = reader.read_word().lower()
+
+                # TODO clean this up. in collectives too
+                try:
+                    # if get_user_proxy succeeds, ['maskid'] must exist
+                    maskid = self.get_user_proxy(message, maskid)['maskid']
+                except UserError:
+                    pass # could save error, but would be confusing
+                row = self.fetchone('select * from masks where maskid = ?',
+                        (maskid,))
+                if not row:
+                    raise UserError('Mask not found.')
+
+                if action == 'add':
+                    if not message.guild:
+                        raise UserError(ERROR_DM)
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    return await self.cmd_mask_add(message, maskid)
 
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()
