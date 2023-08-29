@@ -522,6 +522,10 @@ class GestaltTest(unittest.TestCase):
                 run(message.channel.fetch_message(message.id)).content,
                 content)
 
+    def desc(self, msg):
+        self.assertNotEqual(msg.embeds, [])
+        return msg.embeds[0].description
+
     def assertReload(self):
         attrs = ('votes', 'rules', 'mask_presence')
         origs = [getattr(instance, attr) for attr in attrs]
@@ -1116,13 +1120,13 @@ class GestaltTest(unittest.TestCase):
         reply = self.assertProxied(alpha, chan, 'e: reply',
                 Object(cached_message = msg))
         self.assertEqual(len(reply.embeds), 1)
-        self.assertEqual(reply.embeds[0].description,
+        self.assertEqual(self.desc(reply),
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
         # again, but this time the message isn't in cache
         reply = self.assertProxied(alpha, chan, 'e: reply',
                 Object(cached_message = None, message_id = msg.id))
         self.assertEqual(len(reply.embeds), 1)
-        self.assertEqual(reply.embeds[0].description,
+        self.assertEqual(self.desc(reply),
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
 
     def test_17_edit(self):
@@ -1734,13 +1738,13 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(beta)
         token = discord.utils.escape_markdown(str(beta))
         send(alpha, c1, 'gs;ap')
-        self.assertNotIn(token, c1[-1].embeds[0].description)
+        self.assertNotIn(token, self.desc(c1[-1]))
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         send(alpha, c1, 'gs;ap')
-        self.assertIn(token, c1[-1].embeds[0].description)
+        self.assertIn(token, self.desc(c1[-1]))
         g1._remove_member(beta)
         send(alpha, c1, 'gs;ap')
-        self.assertNotIn(token, c1[-1].embeds[0].description)
+        self.assertNotIn(token, self.desc(c1[-1]))
         g1._add_member(beta)
 
         # check ap's in different guilds not conflicting
@@ -1748,9 +1752,9 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         self.assertCommand(alpha, c2, 'gs;ap "manual guild"')
         send(alpha, c1, 'gs;ap')
-        self.assertIn(token, c1[-1].embeds[0].description)
+        self.assertIn(token, self.desc(c1[-1]))
         send(alpha, c2, 'gs;ap')
-        self.assertIn('manual guild', c2[-1].embeds[0].description)
+        self.assertIn('manual guild', self.desc(c2[-1]))
         self.assertEqual(self.assertProxied(alpha, c1, 'beta').author.name,
                 'test-beta')
         self.assertEqual(self.assertProxied(alpha, c2, 'manual').author.name,
@@ -1795,7 +1799,7 @@ class GestaltTest(unittest.TestCase):
                                 become = become)
                         self.assertCommand(alpha, c2, cmd)
                         send(alpha, c2, 'gs;ap')
-                        return c2[-1].embeds[0].description
+                        return self.desc(c2[-1])
 
                     if not (prox or become == 1.0):
                         with self.assertRaises(gestalt.sqlite.IntegrityError):
@@ -1837,14 +1841,14 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c1, 'b: beta')
         self.assertProxied(alpha, c1, 'beta')
         send(alpha, c1, 'gs;ap')
-        text = c1[-1].embeds[0].description
+        text = self.desc(c1[-1])
         self.assertIn(token, text)
         self.assertIn(' latch', text)
         self.assertNotIn('Become', text)
         self.assertNotProxied(alpha, c1, 'x:nope')
         self.assertNotProxied(alpha, c1, 'nope')
         send(alpha, c1, 'gs;ap')
-        text = c1[-1].embeds[0].description
+        text = self.desc(c1[-1])
         self.assertIn('However,', text)
         self.assertNotIn('Become', text)
         self.assertProxied(alpha, c1, 'b: beta')
@@ -1852,7 +1856,7 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c1, 'beta')
         self.assertNotProxied(alpha, c1, '\\\\unlatch')
         send(alpha, c1, 'gs;ap')
-        text = c1[-1].embeds[0].description
+        text = self.desc(c1[-1])
         self.assertIn('However,', text)
         self.assertNotIn('Become', text)
 
@@ -1860,7 +1864,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         self.assertCommand(alpha, c1, 'gs;swap close test-beta')
         send(alpha, c1, 'gs;ap')
-        self.assertIn('no autoproxy', c1[-1].embeds[0].description)
+        self.assertIn('no autoproxy', self.desc(c1[-1]))
 
     def test_30_proxy_list(self):
         g1 = Guild(name = 'gestalt guild')
@@ -1878,23 +1882,23 @@ class GestaltTest(unittest.TestCase):
         token = discord.utils.escape_markdown(str(beta))
         for cmd in ['gs;proxy list', 'gs;proxy list -all']:
             send(alpha, c1, 'gs;proxy list')
-            text = c1[-1].embeds[0].description
+            text = self.desc(c1[-1])
             self.assertIn('gestalt guild', text)
             self.assertIn(token, text)
 
         send(alpha, c2, 'gs;proxy list')
-        text = c2[-1].embeds[0].description
+        text = self.desc(c2[-1])
         self.assertNotIn('gestalt guild', text)
         self.assertNotIn(token, text)
         send(alpha, c2, 'gs;proxy list -all')
-        text = c2[-1].embeds[0].description
+        text = self.desc(c2[-1])
         self.assertIn('gestalt guild', text)
         self.assertIn(token, text)
 
         send(alpha, alpha.dm_channel, 'gs;proxy list')
         msg = alpha.dm_channel[-1]
         self.assertEqual(msg.author, instance.user)
-        text = msg.embeds[0].description
+        text = self.desc(msg)
         self.assertIn('gestalt guild', text)
         self.assertIn(token, text)
 
@@ -2170,16 +2174,16 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c, 'autoproxy')
         self.assertEqual(c[-1].author.name, 'mask')
         send(alpha, c, 'gs;ap')
-        self.assertIn('**mask**', c[-1].embeds[0].description)
+        self.assertIn('**mask**', self.desc(c[-1]))
         send(alpha, c, 'gs;proxy list')
-        self.assertIn('**mask**', c[-1].embeds[0].description)
+        self.assertIn('**mask**', self.desc(c[-1]))
 
         g = Guild(name = 'other guild')
         c = g._add_channel('main')
         g._add_member(alpha)
         g._add_member(instance.user)
         send(alpha, c, 'gs;proxy list')
-        self.assertNotIn('**mask**', c[-1].embeds[0].description)
+        self.assertNotIn('**mask**', self.desc(c[-1]))
         self.assertNotProxied(alpha, c, 'mask:test')
 
 
