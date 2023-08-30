@@ -49,6 +49,12 @@ class User(Object):
     @property
     def mention(self):
         return '<@!%d>' % self.id
+    @property
+    def mutual_guilds(self):
+        return list(filter(
+            lambda guild : (guild.get_member(self.id)
+                and guild.get_member(instance.user.id)),
+            Guild.guilds.values()))
     def _delete(self):
         self._deleted = True
         del User.users[self.id]
@@ -95,6 +101,9 @@ class Member:
     def name(self): return self.user.name
     @property
     def display_name(self): return self.user.name
+    @property
+    def mutual_guilds(self):
+        return self.user.mutual_guilds
 
 class Message(Object):
     def __init__(self, embed = None, **kwargs):
@@ -364,7 +373,7 @@ class Guild(Object):
         member.roles.append(self.default_role)
         # NOTE: does on_member_update get called here? probably not but idk
         run(instance.on_member_join(member))
-        return member
+        return self # for chaining
     def _remove_member(self, user):
         del self._members[user.id]
         run(instance.on_raw_member_remove(Object(user = user,
@@ -2146,11 +2155,11 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(self.get_proxid(beta, 'mask6'))
 
     def test_36_masks(self):
-        g = Guild(name = 'dramatic guild')
-        c = g._add_channel('main')
-        g._add_member(alpha)
+        mkguild = lambda name : (g := Guild(name = name
+            )._add_member(alpha)._add_member(instance.user),
+            g._add_channel('main'))
+        (g, c) = mkguild('dramatic guild')
         g._add_member(beta)
-        g._add_member(instance.user)
 
         # TODO this is why unit tests usually don't have shared state
         # (i've been putting that off ok)
@@ -2160,7 +2169,15 @@ class GestaltTest(unittest.TestCase):
                 (gestalt.ProxyType.mask,))
         instance.load()
 
-        self.assertCommand(alpha, c, 'gs;m new mask')
+        cmd = self.assertCommand(alpha, c, 'gs;m new mask')
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(cmd, 'mask')
+        interact(c[-1], beta, 'no')
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(cmd, 'mask')
+        self.assertReload()
+        interact(c[-1], alpha, 'no')
+        instance.get_user_proxy(cmd, 'mask')
         maskid = instance.fetchone(
                 'select maskid from proxies where cmdname = "mask"')[0]
         self.assertCommand(alpha, c, 'gs;p mask tags mask:text')
@@ -2177,14 +2194,26 @@ class GestaltTest(unittest.TestCase):
         self.assertIn('**mask**', self.desc(c[-1]))
         send(alpha, c, 'gs;proxy list')
         self.assertIn('**mask**', self.desc(c[-1]))
+        self.assertCommand(alpha, c, 'gs;ap off')
 
-        g = Guild(name = 'other guild')
-        c = g._add_channel('main')
-        g._add_member(alpha)
-        g._add_member(instance.user)
-        send(alpha, c, 'gs;proxy list')
-        self.assertNotIn('**mask**', self.desc(c[-1]))
-        self.assertNotProxied(alpha, c, 'mask:test')
+        (_, c2) = mkguild('other guild')
+        send(alpha, c2, 'gs;proxy list')
+        self.assertNotIn('**mask**', self.desc(c2[-1]))
+        self.assertNotProxied(alpha, c2, 'mask:test')
+
+        self.assertCommand(alpha, c2, 'gs;swap open %s' % alpha.mention)
+        self.assertNotCommand(alpha, c2, 'gs;p test-alpha autoadd on')
+        self.assertCommand(alpha, c2, 'gs;p mask autoadd on')
+        (_, c3) = mkguild('other guild')
+        self.assertProxied(alpha, c3, 'mask:test')
+        self.assertProxied(alpha, c2, 'mask:test')
+
+        self.assertCommand(alpha, c, 'gs;m new maask')
+        interact(c[-1], alpha, 'yes')
+        self.assertCommand(alpha, c, 'gs;p maask tags maask:text')
+        self.assertProxied(alpha, c, 'maask:text')
+        self.assertProxied(alpha, c2, 'maask:text')
+        self.assertProxied(alpha, c3, 'maask:text')
 
 
 def main():
