@@ -458,12 +458,13 @@ class GestaltCommands:
 
 
     async def cmd_mask_new(self, message, name):
-        rules = gesp.RulesDictator(user = message.author.id)
-        self.execute('insert into masks values '
-                '(?, ?, NULL, NULL, ?, ?, 0, 0)',
-                ((mid := self.gen_id()), name, rules.to_json(), time.time()))
-        self.rules[mid] = rules
-        gesp.ActionJoin(mid, message.author.id).execute(self)
+        await self.initiate_vote(gesp.VoteCreate(
+            user = message.author.id,
+            name = name,
+            context = gesp.ProgramContext(
+                initiator = message.author.id,
+                channel = message.channel.id
+                )))
 
         await self.mark_success(message, True)
 
@@ -472,6 +473,13 @@ class GestaltCommands:
         await self.initiate_action(message.author.id, message.channel.id,
                 gesp.ActionServer(maskid, message.guild.id))
         await self.mark_success(message, True)
+
+
+    async def cmd_mask_autoadd(self, message, proxy, value):
+        author = message.author
+        if value:
+            for guild in author.mutual_guilds:
+                await self.try_auto_add(author.id, guild.id, proxy['maskid'])
 
 
     async def cmd_edit(self, message, content):
@@ -714,6 +722,11 @@ class GestaltCommands:
             elif arg in ProxyFlags.__members__.keys():
                 if (value := reader.read_bool_int()) is None:
                     raise UserError('Please specify "on" or "off".')
+                if arg == 'autoadd':
+                    if proxy['type'] != ProxyType.mask:
+                        raise UserError('That only applies to Masks.')
+                    await self.cmd_mask_autoadd(message, proxy, value)
+                    # continue to normal command to actually change the flag
                 return await self.cmd_proxy_flag(message, proxy, arg, value)
 
         elif arg in ['autoproxy', 'ap']:

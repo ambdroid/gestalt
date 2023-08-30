@@ -424,10 +424,20 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 self.on_member_role_remove(after, role)
 
 
-    # add @everyone collective, if necessary
     async def on_member_join(self, member):
-        if not member.bot:
-            self.on_member_role_add(member, member.guild.default_role)
+        if member.bot:
+            return
+
+        # add @everyone collective, if necessary
+        self.on_member_role_add(member, member.guild.default_role)
+
+        for maskid, flags in self.fetchall(
+                'select maskid, flags from proxies '
+                'where (userid, type) = (?, ?)',
+                (member.id, ProxyType.mask)):
+            # NOTE: this may block for a while with lots of masks
+            if flags & ProxyFlags.autoadd:
+                await self.try_auto_add(member.id, member.guild.id, maskid)
 
 
     async def on_raw_member_remove(self, payload):

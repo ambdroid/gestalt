@@ -175,6 +175,7 @@ class ProxyFlags(enum.IntFlag):
 #   auto        = 1 << 0
     keepproxy   = 1 << 1
     echo        = 1 << 2
+    autoadd     = 1 << 3
 
 
 @enum.unique
@@ -199,7 +200,8 @@ class VoteType(enum.IntEnum):
     confirm     = 0
     approval    = 1
     consensus   = 2
-    preinvite   = 3
+    create      = 3
+    preinvite   = 4
 
 
 @enum.unique

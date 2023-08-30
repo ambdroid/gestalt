@@ -262,14 +262,15 @@ class Rules(metaclass = serializable):
 @dc.dataclass
 class ActionJoin(VotableAction, _type = ActionType.join):
     candidate: int
-    def execute(self, bot):
+    def execute(self, bot, autoadd = False):
         nick = bot.fetchone('select nick from masks where maskid = ?',
                 (self.mask,))
         if nick:
             if bot.is_member_of(self.mask, self.candidate):
                 return # TODO errors
             bot.mkproxy(self.candidate, ProxyType.mask, cmdname = nick[0],
-                    maskid = self.mask)
+                    maskid = self.mask,
+                    flags = ProxyFlags.autoadd if autoadd else ProxyFlags(0))
 
 
 class ActionInvite(ActionJoin, _type = ActionType.invite):
@@ -427,13 +428,13 @@ class ProgramContext:
 
 @dc.dataclass
 class Vote(metaclass = serializable):
-    action: VotableAction
     # why is ProgramContext stored in the Vote, you might ask
     # (and by you i mean me, because i kept confusing myself about this)
     # well, the context is passed around in function calls
     # because it doesn't cleanly fit in VotableAction or ProgramState
     # but when it's time for a Vote, the context needs to be at rest
     context: ProgramContext
+    action: VotableAction
     eligible: Union[frozenset[int], int] = None
     yes: set[int] = dc.field(default_factory = set)
     no: set[int] = dc.field(default_factory = set)
@@ -474,12 +475,14 @@ class Vote(metaclass = serializable):
     @classmethod
     def class_dict(cls, _dict):
         return super().class_dict(_dict | {
-            'action': VotableAction.from_dict(_dict['action']),
             'context': ProgramContext.from_dict(_dict['context']),
             'yes': set(_dict['yes']),
             'no': set(_dict['no']),
             } | ({'eligible': frozenset(_dict['eligible'])}
-                if isinstance(_dict['eligible'], list) else {}))
+                if isinstance(_dict['eligible'], list) else {}
+                # subclasses might have no action
+                ) | ({'action': VotableAction.from_dict(_dict['action'])}
+                    if isinstance(_dict['action'], dict) else {}))
 
 
 @dc.dataclass
@@ -507,6 +510,26 @@ class VoteConfirm(Vote, _type = VoteType.confirm):
             disabled = disabled,
             ))
         return view
+
+
+@dc.dataclass
+class VoteCreate(VoteConfirm, _type = VoteType.create):
+    action: VotableAction = None
+    name: str = None
+    async def maybe_done(self, bot):
+        if self.yes or self.no:
+            bot.execute('insert into masks values '
+                    '(?, ?, NULL, NULL, NULL, ?, 0, 0)',
+                    ((maskid := bot.gen_id()), self.name, time.time()))
+            user = list(self.eligible)[0] # only one
+            autoadd = bool(self.yes)
+            ActionJoin(maskid, user).execute(bot, autoadd = autoadd)
+            # this has to be after join or an is_member_of() check fails
+            ActionRules(maskid, RulesDictator(user = user)).execute(bot)
+            if autoadd:
+                for guild in bot.get_user(user).mutual_guilds:
+                    await bot.try_auto_add(user, guild.id, maskid)
+            return True
 
 
 class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
@@ -649,6 +672,16 @@ class GestaltVoting:
                 (userid, maskid)))
 
 
+    async def try_auto_add(self, userid, guildid, maskid):
+        if guildid not in self.mask_presence[maskid]:
+            # there's no chance of anything async actually happening here
+            # (the only async outcome is creating a vote, which can't happen)
+            # but there's also no point in optimizing that away
+            # shrug.
+            await self.initiate_action(userid, None,
+                    ActionServer(maskid, guildid))
+
+
     # this doesn't get its own Action subclass because it's unconditional
     def nominate(self, maskid, nominator, nominee):
         if not is_member_of(maskid, nominee):
@@ -661,7 +694,8 @@ class GestaltVoting:
     async def step_program(self, program, context, action):
         result = run(program, context)
         if isinstance(result, partial):
-            await self.initiate_vote(result(action))
+            if context.channel: # None in case of auto-add (no channel)
+                await self.initiate_vote(result(action = action))
         elif result == True:
             action.execute(self)
 
