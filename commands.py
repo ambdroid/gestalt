@@ -469,9 +469,12 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
-    async def cmd_mask_add(self, message, maskid):
+    async def cmd_mask_add(self, message, maskid, invite):
+        guildid = (invite and invite.guild.id) or message.guild.id
+        if guildid in self.mask_presence[maskid]:
+            raise UserError('That mask is already in that guild.')
         await self.initiate_action(message.author.id, message.channel.id,
-                gesp.ActionServer(maskid, message.guild.id))
+                gesp.ActionServer(maskid, guildid))
         await self.mark_success(message, True)
 
 
@@ -900,7 +903,18 @@ class GestaltCommands:
                         raise UserError(ERROR_DM)
                     if not self.is_member_of(maskid, authid):
                         raise UserError('Only members of the mask can do that.')
-                    return await self.cmd_mask_add(message, maskid)
+                    invite = None
+                    if code := reader.read_word():
+                        # TODO impl invite in harness for better tests
+                        try:
+                            invite = await self.fetch_invite(code,
+                                    with_counts = False,
+                                    with_expiration = False)
+                        except:
+                            raise UserError('That invite is invalid.')
+                        if isinstance(invite.guild, discord.PartialInviteGuild):
+                            raise UserError('I am not a member of that server.')
+                    return await self.cmd_mask_add(message, maskid, invite)
 
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()
