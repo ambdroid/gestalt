@@ -2015,6 +2015,9 @@ class GestaltTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             gesp.eval('(if true 0 false)')
         gesp.eval('(if true 0 0)')
+        self.assertEqual(
+                gesp.check(gesp.parse_full('(in (initiator) (members))')[0]),
+                bool)
 
     def test_35_voting(self):
         for rules in gesp.Rules.table.values():
@@ -2124,17 +2127,20 @@ class GestaltTest(unittest.TestCase):
                 (gesp.RulesMajority().to_json(),))
         instance.load()
         gesp.ActionJoin('mask5', alpha.id).execute(instance)
-        run(instance.initiate_action(alpha.id, c.id,
-            gesp.ActionInvite('mask5', beta.id)))
+        # single user exception
+        run(instance.initiate_action(beta.id, c.id,
+            gesp.ActionJoin('mask5', beta.id)))
         self.assertIsNone(self.get_proxid(beta, 'mask5'))
-        run(instance.initiate_action(alpha.id, c.id,
-            gesp.ActionRules('mask5', gesp.RulesDictator(user = alpha.id))))
-        self.assertReload()
-        interact(c[-1], alpha, 'yes')
-        self.assertEqual(type(instance.rules['mask5']), gesp.RulesDictator)
         run(instance.initiate_action(alpha.id, c.id,
             gesp.ActionInvite('mask5', beta.id)))
         self.assertIsNotNone(self.get_proxid(beta, 'mask5'))
+        run(instance.initiate_action(alpha.id, c.id,
+            gesp.ActionRules('mask5', gesp.RulesDictator(user = alpha.id))))
+        interact(c[-1], alpha, 'yes')
+        self.assertEqual(type(instance.rules['mask5']), gesp.RulesMajority)
+        self.assertReload()
+        interact(c[-1], beta, 'yes')
+        self.assertEqual(type(instance.rules['mask5']), gesp.RulesDictator)
 
         instance.execute('insert into masks values '
                 '("mask6", "", NULL, NULL, ?, 0, 0, 0)',
