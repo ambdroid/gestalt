@@ -88,6 +88,7 @@ types = {
     'named': typecheck(user, int),
     'members': typecheck(set),
     'size-of': typecheck(int, set),
+    'in': typecheck(bool, user, set),
     'vote-approval': typecheck(bool, int),
     }
 
@@ -182,6 +183,9 @@ def run(state, context = None):
             stack.append(context.members)
         elif op == 'size-of':
             stack.append(len(stack.pop()))
+        elif op == 'in':
+            _set = stack.pop()
+            stack.append(stack.pop() in _set)
         elif op == 'vote-approval':
             return partial(VoteApproval,
                     eligible = stack.pop(),
@@ -365,6 +369,21 @@ class RulesHandsOff(RulesDictator, _type = RuleType.handsoff):
                 else Exp('or', (self.rule, self.rule_voting)))
 
 
+rule_solo = parse_full(
+    '(and'
+        '(eq'
+            '(size-of'
+                '(members)'
+            ')'
+        '1)'
+        '(in'
+            '(initiator)'
+            '(members)'
+        ')'
+    ')'
+    )[0]
+
+
 class RulesMajority(Rules, _type = RuleType.majority):
     rule = parse_full(
             '(vote-approval'
@@ -380,7 +399,7 @@ class RulesMajority(Rules, _type = RuleType.majority):
             ')'
             )[0]
     def for_action(self, atype):
-        return self.rule
+        return Exp('or', (rule_solo, self.rule))
 
 
 class RulesUnanimous(Rules, _type = RuleType.unanimous):
@@ -401,7 +420,8 @@ class RulesUnanimous(Rules, _type = RuleType.unanimous):
             ')'
             )[0]
     def for_action(self, atype):
-        return self.rule_remove if atype == ActionType.remove else self.rule
+        return Exp('or', (rule_solo,
+                self.rule_remove if atype == ActionType.remove else self.rule))
 
 
 @dc.dataclass
