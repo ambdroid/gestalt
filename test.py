@@ -385,13 +385,17 @@ class Guild(Object):
 
 # incoming messages have Attachments, outgoing messages have Files
 # but we'll pretend that they're the same for simplicity
-class File:
+class File(Object):
     def __init__(self, size):
         self.size = size
+        super().__init__()
     def is_spoiler(self):
         return False
     async def to_file(self, spoiler):
         return self
+    @property
+    def url(self):
+        return 'https://%i' % self.id
 
 class Interaction:
     def __init__(self, message, user, button):
@@ -1054,8 +1058,11 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, chan, 'gs;c %s avatar foobar' % collid)
         self.assertCommand(alpha, chan, 'gs;c %s avatar <http://avatar.gov>'
                 % collid)
-        self.assertCommand(alpha, chan, 'gs;c %s avatar' % collid)
-        self.assertCommand(alpha, chan, 'gs;c %s avatar ""' % collid)
+        avatar = File(1024)
+        self.assertCommand(alpha, chan, 'gs;c %s avatar' % collid,
+                files = [avatar])
+        self.assertProxied(alpha, chan, 'e:test')
+        self.assertEqual(chan[-1].author.display_avatar, avatar.url)
 
     def test_12_username_change(self):
         chan = g['main']
