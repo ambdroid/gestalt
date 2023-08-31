@@ -102,12 +102,11 @@ def check(ast, context = {}):
 def comp(ast, index):
     if type(ast) in [int, str, bool]:
         return [ast]
-    if ast.op in ('and', 'or'):
-        a = comp(ast.args[0], index)
-        b = comp(ast.args[1], index + len(a) + 2)
-        jmp = [index + len(a) + len(b) + 2 - 1, ast.op]
-        return a + jmp + b
-    if ast.op == 'if':
+    elif ast.op == 'and':
+        return comp(Exp('if', (ast.args[0], ast.args[1], False)), index)
+    elif ast.op == 'or':
+        return comp(Exp('if', (ast.args[0], True, ast.args[1])), index)
+    elif ast.op == 'if':
         a = comp(ast.args[0], index)
         b = comp(ast.args[1], index + len(a) + 2)
         c = comp(ast.args[2], index + len(a) + 2 + len(b) + 2)
@@ -135,16 +134,6 @@ def run(state, context = None):
         elif op == 'jf':
             dest = stack.pop()
             if not stack.pop():
-                pc = dest
-        elif op == 'or':
-            dest = stack.pop()
-            if stack.pop():
-                stack.append(True)
-                pc = dest
-        elif op == 'and':
-            dest = stack.pop()
-            if not stack.pop():
-                stack.append(False)
                 pc = dest
         elif op == 'not':
             stack.append(not stack.pop())
