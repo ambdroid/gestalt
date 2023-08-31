@@ -91,6 +91,13 @@ class CommandReader:
             if chan.guild == self.msg.guild:
                 return chan
 
+    def read_image(self):
+        if m := LINK_REGEX.match(self.cmd):
+            self.cmd = self.cmd.removeprefix(m[0]).strip()
+            return m[1] # excluding <...> if present
+        if self.msg.attachments:
+            return self.msg.attachments[0].url
+
     def read_color(self):
         name = self.read_word()
         if name == '-clear':
@@ -799,11 +806,9 @@ class GestaltCommands:
                         if not (arg := reader.read_remainder()):
                             raise UserError('Please provide a new name.')
                     if action == 'avatar':
-                        arg = reader.read_remainder()
-                        if message.attachments and not arg:
-                            arg = message.attachments[0].url
-                        elif arg and not LINK_REGEX.fullmatch(arg):
-                            raise UserError('Invalid avatar URL!')
+                        if not (arg := reader.read_image()):
+                            raise UserError(
+                                    'Please provide a valid URL or attachment.')
                     if action in ['color', 'colour']:
                         if not (arg := reader.read_color()):
                             raise UserError(
