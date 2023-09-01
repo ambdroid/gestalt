@@ -293,14 +293,23 @@ class ActionServer(VotableAction, _type = ActionType.server):
 
 @dc.dataclass
 class ActionChange(VotableAction, _type = ActionType.change):
+    cols = ('nick', 'avatar', 'color')
     which: str
     value: str
     server: int = 0 # reserved
+    def valid(word):
+        if ((ret := {'name': 'nick', 'colour': 'color'}.get(word, word))
+                in ActionChange.cols):
+            return ret
     def __post_init__(self):
-        if self.which not in ('nick', 'avatar', 'color'):
+        if self.which not in self.cols:
             raise ValueError(self.which)
     def execute(self, bot):
-        bot.execute('update masks set %s = ? where maskid = ?' % self.which,
+        bot.execute({
+                'nick': 'update masks set nick = ? where maskid = ?',
+                'avatar': 'update masks set avatar = ? where maskid = ?',
+                'color': 'update masks set color = ? where maskid = ?',
+                }[self.which],
                 (self.value, self.mask))
 
 
