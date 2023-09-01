@@ -2228,6 +2228,21 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c2, 'maask:text')
         self.assertProxied(alpha, c3, 'maask:text')
 
+        self.assertNotCommand(beta, c, 'gs;m %s name newname' % maskid)
+        self.assertNotCommand(beta, c, 'gs;m %s avatar https://newname'
+                % maskid)
+        self.assertNotCommand(beta, c, 'gs;m %s color #012345' % maskid)
+        self.assertProxied(alpha, c, 'mask:text')
+        self.assertEqual(c[-1].author.display_name, 'mask')
+        self.assertCommand(alpha, c, 'gs;m %s name newname' % maskid)
+        self.assertCommand(alpha, c, 'gs;m %s avatar https://image' % maskid)
+        self.assertCommand(alpha, c, 'gs;m mask colour #012345')
+        self.assertProxied(alpha, c, 'mask:text',
+                Object(cached_message = c[-1]))
+        self.assertEqual(c[-1].author.display_name, 'newname')
+        self.assertEqual(c[-1].author.display_avatar, 'https://image')
+        self.assertEqual(str(c[-1].embeds[0].color), '#012345')
+
 
 def main():
     global alpha, beta, gamma, g, instance
