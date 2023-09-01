@@ -491,6 +491,12 @@ class GestaltCommands:
                 await self.try_auto_add(author.id, guild.id, proxy['maskid'])
 
 
+    async def cmd_mask_update(self, message, maskid, name, value):
+        await self.initiate_action(message.author.id, message.channel.id,
+                gesp.ActionChange(maskid, name, value))
+        await self.mark_success(message, True)
+
+
     async def cmd_edit(self, message, content):
         if not content:
             raise UserError('We need a message here!')
@@ -800,7 +806,6 @@ class GestaltCommands:
                         raise UserError(
                                 'You don\'t have access to that collective!')
 
-                    # allow empty avatar URL but not name
                     if newaction == 'nick':
                         if not (arg := reader.read_remainder()):
                             raise UserError('Please provide a new name.')
@@ -919,6 +924,25 @@ class GestaltCommands:
                         if isinstance(invite.guild, discord.PartialInviteGuild):
                             raise UserError('I am not a member of that server.')
                     return await self.cmd_mask_add(message, maskid, invite)
+
+                if newaction := gesp.ActionChange.valid(action):
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+
+                    if newaction == 'nick':
+                        if not (arg := reader.read_remainder()):
+                            raise UserError('Please provide a new name.')
+                    if newaction == 'avatar':
+                        if not (arg := reader.read_image()):
+                            raise UserError(
+                                    'Please provide a valid URL or attachment.')
+                    if newaction == 'color':
+                        if not (arg := reader.read_color()):
+                            raise UserError(
+                                    'Please enter a color (e.g. `#012345`)')
+
+                    return await self.cmd_mask_update(message, maskid,
+                            newaction, arg)
 
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()
