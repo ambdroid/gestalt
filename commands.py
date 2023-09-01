@@ -376,12 +376,11 @@ class GestaltCommands:
 
 
     async def cmd_collective_update(self, message, collid, name, value):
-        if name not in ['nick', 'name', 'avatar', 'color', 'colour']:
-            return
-        self.execute(
-                'update guildmasks set %s = ? '
-                'where maskid = ?'
-                % {'name': 'nick', 'colour': 'color'}.get(name, name),
+        self.execute({
+                'nick': 'update guildmasks set nick = ? where maskid = ?',
+                'avatar': 'update guildmasks set avatar = ? where maskid = ?',
+                'color': 'update guildmasks set color = ? where maskid = ?',
+                }[name],
                 (value, collid))
         if self.cur.rowcount == 1:
             await self.mark_success(message, True)
@@ -790,7 +789,7 @@ class GestaltCommands:
                 if row['guildid'] != guild.id:
                     raise UserError('That collective belongs to another guild.')
 
-                if action in ['nick', 'name', 'avatar', 'color', 'colour']:
+                if newaction := gesp.ActionChange.valid(action):
                     role = guild.get_role(row['roleid'])
                     if role == None:
                         raise UserError('That role no longer exists?')
@@ -802,20 +801,20 @@ class GestaltCommands:
                                 'You don\'t have access to that collective!')
 
                     # allow empty avatar URL but not name
-                    if action in ['name', 'nick']:
+                    if newaction == 'nick':
                         if not (arg := reader.read_remainder()):
                             raise UserError('Please provide a new name.')
-                    if action == 'avatar':
+                    if newaction == 'avatar':
                         if not (arg := reader.read_image()):
                             raise UserError(
                                     'Please provide a valid URL or attachment.')
-                    if action in ['color', 'colour']:
+                    if newaction == 'color':
                         if not (arg := reader.read_color()):
                             raise UserError(
                                     'Please enter a color (e.g. `#012345`)')
 
                     return await self.cmd_collective_update(message, collid,
-                            action, arg)
+                            newaction, arg)
 
                 elif action == 'delete':
                     if not message.author.guild_permissions.manage_roles:
