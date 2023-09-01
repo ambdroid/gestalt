@@ -2227,6 +2227,28 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c, 'maask:text')
         self.assertProxied(alpha, c2, 'maask:text')
         self.assertProxied(alpha, c3, 'maask:text')
+        # test invite, remove, and that (auto)add fails according to rules
+        maaskid = instance.fetchone(
+                'select maskid from proxies where cmdname = "maask"')[0]
+        self.assertNotCommand(beta, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertCommand(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        interact(c[-1], alpha, 'yes')
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        interact(c[-1], beta, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, beta.id))
+        self.assertNotCommand(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertCommand(beta, c, 'gs;p maask autoadd true')
+        gb = Guild(name = 'beta guild')
+        gb._add_member(instance.user)._add_member(beta)
+        cb = gb._add_channel('main')
+        self.assertCommand(beta, cb, 'gs;p maask tags maask:text')
+        self.assertCommand(beta, cb, 'gs;m maask add')
+        self.assertCommand(beta, cb, 'gs;p maask autoadd true')
+        self.assertNotProxied(beta, cb, 'maask:text')
+        self.assertProxied(beta, c, 'maask:text')
+        self.assertCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        self.assertNotCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
 
         self.assertNotCommand(beta, c, 'gs;m %s name newname' % maskid)
         self.assertNotCommand(beta, c, 'gs;m %s avatar https://newname'

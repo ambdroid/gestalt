@@ -475,6 +475,22 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
+    async def cmd_mask_invite(self, message, maskid, member):
+        await self.initiate_vote(gesp.VotePreinvite(
+            action = gesp.ActionInvite(maskid, member.id),
+            context = gesp.ProgramContext(
+                initiator = message.author.id,
+                channel = message.channel.id
+                )))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_remove(self, message, maskid, member):
+        await self.initiate_action(message.author.id, message.channel.id,
+                gesp.ActionRemove(maskid, member.id))
+        await self.mark_success(message, True)
+
+
     async def cmd_mask_add(self, message, maskid, invite):
         guildid = (invite and invite.guild.id) or message.guild.id
         if guildid in self.mask_presence[maskid]:
@@ -906,6 +922,33 @@ class GestaltCommands:
                         (maskid,))
                 if not row:
                     raise UserError('Mask not found.')
+
+                if action == 'invite':
+                    if not message.guild:
+                        raise UserError(ERROR_DM)
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    if not (member := reader.read_member()):
+                        raise UserError('Please @mention someone.')
+                    if self.is_member_of(maskid, member.id):
+                        raise UserError('That user is already a member.')
+                    # this bit again
+                    if member.id == self.user.id:
+                        raise UserError(ERROR_BLURSED)
+                    if member.bot:
+                        raise UserError(ERROR_CURSED)
+                    return await self.cmd_mask_invite(message, maskid, member)
+
+                if action == 'remove':
+                    if not message.guild:
+                        raise UserError(ERROR_DM)
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    if not (member := reader.read_member()):
+                        raise UserError('Please @mention someone.')
+                    if not self.is_member_of(maskid, member.id):
+                        raise UserError('That user is not a member.')
+                    return await self.cmd_mask_remove(message, maskid, member)
 
                 if action == 'add':
                     if not message.guild:
