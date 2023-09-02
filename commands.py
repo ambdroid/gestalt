@@ -475,6 +475,13 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
+    async def cmd_mask_join(self, message, maskid):
+        authid = message.author.id
+        await self.initiate_action(authid, message.channel.id,
+                gesp.ActionJoin(maskid, authid))
+        await self.mark_success(message, True)
+
+
     async def cmd_mask_invite(self, message, maskid, member):
         await self.initiate_vote(gesp.VotePreinvite(
             action = gesp.ActionInvite(maskid, member.id),
@@ -510,6 +517,13 @@ class GestaltCommands:
     async def cmd_mask_update(self, message, maskid, name, value):
         await self.initiate_action(message.author.id, message.channel.id,
                 gesp.ActionChange(maskid, name, value))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_rules(self, message, maskid, rules):
+        await self.initiate_action(message.author.id, message.channel.id,
+                gesp.ActionRules(maskid,
+                    gesp.Rules.table[RuleType[rules]].from_message(message)))
         await self.mark_success(message, True)
 
 
@@ -923,6 +937,11 @@ class GestaltCommands:
                 if not row:
                     raise UserError('Mask not found.')
 
+                if action == 'join':
+                    if self.is_member_of(maskid, authid):
+                        raise UserError('You are already a member.')
+                    return await self.cmd_mask_join(message, maskid)
+
                 if action == 'invite':
                     if not message.guild:
                         raise UserError(ERROR_DM)
@@ -951,8 +970,6 @@ class GestaltCommands:
                     return await self.cmd_mask_remove(message, maskid, member)
 
                 if action == 'add':
-                    if not message.guild:
-                        raise UserError(ERROR_DM)
                     if not self.is_member_of(maskid, authid):
                         raise UserError('Only members of the mask can do that.')
                     invite = None
@@ -986,6 +1003,15 @@ class GestaltCommands:
 
                     return await self.cmd_mask_update(message, maskid,
                             newaction, arg)
+
+                if action == 'rules':
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    rules = reader.read_remainder()
+                    if rules not in RuleType.__members__.keys():
+                        raise UserError('Unknown rule type.')
+                    return await self.cmd_mask_rules(message, maskid, rules)
+
 
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()

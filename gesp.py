@@ -243,6 +243,9 @@ class VotableAction(metaclass = serializable):
 @dc.dataclass
 class Rules(metaclass = serializable):
     named: list[int] = dc.field(default_factory = list)
+    @classmethod
+    def from_message(cls, message):
+        return cls()
     def for_action(self, atype):
         raise NotImplementedError()
     @cached_property
@@ -341,6 +344,9 @@ class RulesDictator(Rules, _type = RuleType.dictator):
     def __post_init__(self, user = None):
         if user:
             self.named = [user]
+    @classmethod
+    def from_message(cls, message):
+        return cls(user = message.author.id)
     def for_action(self, atype):
         return self.rule
 
