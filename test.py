@@ -2249,6 +2249,27 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         self.assertNotCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
+        # test join, rules
+        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        interact(c[-1], alpha, 'yes') # shouldn't be a vote for this
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        self.assertCommand(alpha, c, 'gs;m maask rules unanimous')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        interact(c[-1], alpha, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, beta.id))
+        self.assertNotCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertCommand(alpha, c, 'gs;m maask rules handsoff')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], alpha, 'yes')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], alpha, 'abstain')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], beta, 'yes')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], alpha, 'yes')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesHandsOff)
 
         self.assertNotCommand(beta, c, 'gs;m %s name newname' % maskid)
         self.assertNotCommand(beta, c, 'gs;m %s avatar https://newname'
