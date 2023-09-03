@@ -2313,6 +2313,11 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(c[-1].author.display_avatar, 'https://image')
         self.assertEqual(str(c[-1].embeds[0].color), '#012345')
 
+        dm = alpha.dm_channel
+        self.assertCommand(alpha, dm, 'gs;m new dm')
+        interact(dm[-1], alpha, 'no')
+        self.assertCommand(alpha, dm, 'gs;m dm leave')
+
 
 def main():
     global alpha, beta, gamma, g, instance
