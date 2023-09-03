@@ -1,6 +1,5 @@
 from collections import ChainMap, namedtuple, defaultdict
 from functools import reduce, partial, cached_property
-from typing import Union
 import dataclasses as dc
 import json
 import math
@@ -90,7 +89,7 @@ types = {
     'members': typecheck(set),
     'size-of': typecheck(int, set),
     'in': typecheck(bool, user, set),
-    'vote-approval': typecheck(bool, int),
+    'vote-approval': typecheck(bool, int, set),
     }
 
 def check(ast, context = {}):
@@ -181,6 +180,7 @@ def run(state, context = None):
         elif op == 'vote-approval':
             return partial(VoteApproval,
                     eligible = stack.pop(),
+                    threshold = stack.pop(),
                     state = ProgramState(state.program, pc + 1, stack),
                     context = context,
                     )
@@ -374,6 +374,7 @@ class RulesHandsOff(RulesDictator, _type = RuleType.handsoff):
                         '2)'
                     ')'
                 '1)'
+                '(members)'
             ')'
             )[0]
     rule_immune = parse_full(
@@ -417,6 +418,7 @@ class RulesMajority(Rules, _type = RuleType.majority):
                         '2)'
                     ')'
                 '1)'
+                '(members)'
             ')'
             )[0]
     def for_action(self, atype):
@@ -429,6 +431,7 @@ class RulesUnanimous(Rules, _type = RuleType.unanimous):
                 '(size-of'
                     '(members)'
                 ')'
+                '(members)'
             ')'
             )[0]
     rule_remove = parse_full(
@@ -438,6 +441,7 @@ class RulesUnanimous(Rules, _type = RuleType.unanimous):
                         '(members)'
                     ')'
                 '1)'
+                '(members)'
             ')'
             )[0]
     def for_action(self, atype):
@@ -476,15 +480,13 @@ class Vote(metaclass = serializable):
     # but when it's time for a Vote, the context needs to be at rest
     context: ProgramContext
     action: VotableAction
-    eligible: Union[frozenset[int], int] = None
+    eligible: frozenset[int] = frozenset()
+    threshold: int = 0
     yes: set[int] = dc.field(default_factory = set)
     no: set[int] = dc.field(default_factory = set)
     async def on_interaction(self, interaction, bot):
         # TODO avoid race condition
-        if (userid := interaction.user.id) in (
-                self.context.members
-                if isinstance(self.eligible, int)
-                else self.eligible):
+        if (userid := interaction.user.id) in self.eligible:
             button = interaction.data['custom_id']
             if button == 'abstain':
                 if userid in self.yes:
@@ -517,21 +519,25 @@ class Vote(metaclass = serializable):
     def class_dict(cls, _dict):
         return super().class_dict(_dict | {
             'context': ProgramContext.from_dict(_dict['context']),
+            'eligible': frozenset(_dict['eligible']),
             'yes': set(_dict['yes']),
             'no': set(_dict['no']),
-            } | ({'eligible': frozenset(_dict['eligible'])}
-                if isinstance(_dict['eligible'], list) else {}
+            } | ({'action': VotableAction.from_dict(_dict['action'])}
                 # subclasses might have no action
-                ) | ({'action': VotableAction.from_dict(_dict['action'])}
-                    if isinstance(_dict['action'], dict) else {}))
+                if isinstance(_dict['action'], dict) else {}))
 
 
 @dc.dataclass
 class VoteConfirm(Vote, _type = VoteType.confirm):
     user: dc.InitVar[int] = None
+    threshold: int = 1
     def __post_init__(self, user = None):
         if user:
             self.eligible = frozenset([user])
+        if not self.eligible:
+            raise ValueError('No user')
+        if self.threshold != 1:
+            raise ValueError('Threshold must be 1')
     async def maybe_done(self, bot):
         if self.yes or self.no:
             self.context.answer = bool(self.yes)
@@ -576,6 +582,7 @@ class VoteCreate(VoteConfirm, _type = VoteType.create):
 class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
     def __post_init__(self, user = None):
         self.eligible = frozenset([self.action.candidate])
+        super().__post_init__()
     async def maybe_done(self, bot):
         if self.yes or self.no:
             if self.yes:
@@ -601,7 +608,7 @@ class VoteProgram(Vote):
 
 class VoteApproval(VoteProgram, _type = VoteType.approval):
     async def maybe_done(self, bot):
-        if len(self.yes) == self.eligible:
+        if len(self.yes) == self.threshold:
             # no other possibility except vote simply expiring
             # however, this might change so that expiry = False
             # therefore still pass it through context for forward compatibility
@@ -626,9 +633,7 @@ class VoteApproval(VoteProgram, _type = VoteType.approval):
 
 class VoteConsensus(VoteProgram, _type = VoteType.consensus):
     async def maybe_done(self, bot):
-        if (len(self.yes) + len(self.no) == self.eligible
-                if isinstance(self.eligible, int)
-                else self.yes | self.no == self.eligible):
+        if len(self.yes) + len(self.no) == self.threshold:
             self.context.yes = frozenset(self.yes)
             self.context.no = frozenset(self.no)
             return True
@@ -646,13 +651,12 @@ class VoteConsensus(VoteProgram, _type = VoteType.consensus):
             label = 'No',
             disabled = disabled,
             ))
-        if isinstance(self.eligible, int):
-            view.add_item(discord.ui.Button(
-                custom_id = 'abstain',
-                style = discord.ButtonStyle.grey,
-                label = 'Abstain',
-                disabled = disabled,
-                ))
+        view.add_item(discord.ui.Button(
+            custom_id = 'abstain',
+            style = discord.ButtonStyle.grey,
+            label = 'Abstain',
+            disabled = disabled,
+            ))
         return view
 
 
