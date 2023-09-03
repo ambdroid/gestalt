@@ -493,6 +493,9 @@ class GestaltCommands:
 
 
     async def cmd_mask_remove(self, message, maskid, member):
+        # TODO: require replacement member when candidate is named
+        # it's irrelevant right now bc only dictator and handsoff name someone
+        # but they can't actually be removed according to the rules
         await self.initiate_action(message.author.id, message.channel.id,
                 gesp.ActionRemove(maskid, member.id))
         await self.mark_success(message, True)

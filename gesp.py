@@ -75,7 +75,7 @@ types = {
     'div': typecheck(int, int, int),
     'floor': typecheck(int, int), # obviously not strictly true but good enough
     'eq': lambda args : len(args) == 2 and args[0] == args[1] and bool,
-    'neq': typecheck(bool, int, int),
+    'neq': lambda args : len(args) == 2 and args[0] == args[1] and bool,
     'lt': typecheck(bool, int, int),
     'gt': typecheck(bool, int, int),
     'lte': typecheck(bool, int, int),
@@ -85,6 +85,7 @@ types = {
     'one': typecheck(int),
     'answer': typecheck(bool),
     'initiator': typecheck(user),
+    'candidate': typecheck(user),
     'named': typecheck(user, int),
     'members': typecheck(set),
     'size-of': typecheck(int, set),
@@ -166,6 +167,8 @@ def run(state, context = None):
             stack.append(context.answer)
         elif op == 'initiator':
             stack.append(context.initiator)
+        elif op == 'candidate':
+            stack.append(context.candidate)
         elif op == 'named':
             stack.append(context.named[stack.pop()])
         elif op == 'members':
@@ -236,6 +239,8 @@ def serializable(name, parents, attrs):
 @dc.dataclass
 class VotableAction(metaclass = serializable):
     mask: str
+    def add_context(self, context):
+        pass
     def execute(self, bot):
         raise NotImplementedError()
 
@@ -258,6 +263,8 @@ class Rules(metaclass = serializable):
 @dc.dataclass
 class ActionJoin(VotableAction, _type = ActionType.join):
     candidate: int
+    def add_context(self, context):
+        context.candidate = self.candidate
     def execute(self, bot, autoadd = False):
         nick = bot.fetchone('select nick from masks where maskid = ?',
                 (self.mask,))
@@ -276,6 +283,8 @@ class ActionInvite(ActionJoin, _type = ActionType.invite):
 @dc.dataclass
 class ActionRemove(VotableAction, _type = ActionType.remove):
     candidate: int
+    def add_context(self, context):
+        context.candidate = self.candidate
     def execute(self, bot):
         bot.execute('delete from proxies '
                 'where (userid, maskid, type) = (?, ?, ?)',
@@ -367,10 +376,18 @@ class RulesHandsOff(RulesDictator, _type = RuleType.handsoff):
                 '1)'
             ')'
             )[0]
+    rule_immune = parse_full(
+            '(neq'
+                '(candidate)'
+                '(named 0)'
+            ')')[0]
     def for_action(self, atype):
-        return (self.rule
-                if atype == ActionType.rules
-                else Exp('or', (self.rule, self.rule_voting)))
+        if atype == ActionType.rules:
+            return self.rule
+        return Exp('or', (self.rule,
+            Exp('and', (self.rule_immune, self.rule_voting))
+            if atype == ActionType.remove
+            else self.rule_voting))
 
 
 rule_solo = parse_full(
@@ -678,6 +695,7 @@ class GestaltVoting:
                         (action.mask,))
                     )
                 )
+        action.add_context(context)
         await self.step_program(
                 ProgramState(rule.compiled[action.get_type()], 0, []),
                 context, action)
