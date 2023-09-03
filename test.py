@@ -2010,8 +2010,10 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(gesp.eval('(if (or (eq 1 1) (eq 2 5)) 1 2)'), 1)
         self.assertEqual(gesp.eval('(if (or (eq 1 5) (eq 2 5)) 1 2)'), 2)
         self.assertEqual(gesp.eval('(add (if (eq 1 1) 2 3) 2)'), 4)
-        self.assertEqual(gesp.eval('(and (eq 1 0) (vote-approval 12))'), False)
-        self.assertEqual(gesp.eval('(or (eq 1 1) (vote-approval 12))'), True)
+        self.assertEqual(gesp.eval(
+            '(and (eq 1 0) (vote-approval 12 (members)))'), False)
+        self.assertEqual(gesp.eval(
+            '(or (eq 1 1) (vote-approval 12 (members)))'), True)
         self.assertEqual(gesp.eval('(eq (eq 1 1) true)'), True)
         self.assertEqual(gesp.eval('(add (one) (one))'), 2)
         self.assertEqual(gesp.eval('(add  (add  1  1)  1 )'), 3)
