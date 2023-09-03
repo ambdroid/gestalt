@@ -2270,6 +2270,13 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
         interact(c[-1], alpha, 'yes')
         self.assertEqual(type(instance.rules[maaskid]), gesp.RulesHandsOff)
+        # test the handsoff clause that the dictator can't be removed
+        # this is the only time that (candidate) is used in the default rules
+        # comment out action.add_context(context) to see this fail
+        self.assertCommand(beta, c, 'gs;m maask remove %s' % alpha.mention)
+        self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        interact(c[-1], beta, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, alpha.id))
 
         self.assertNotCommand(beta, c, 'gs;m %s name newname' % maskid)
         self.assertNotCommand(beta, c, 'gs;m %s avatar https://newname'
