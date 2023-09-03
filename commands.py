@@ -530,6 +530,41 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
+    async def cmd_mask_nominate(self, message, maskid, member):
+        authid = message.author.id
+        if authid not in self.rules[maskid].named:
+            raise UserError('You are not named in the rules.')
+        self.nominate(maskid, authid, member.id)
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_leave(self, message, mask, member):
+        authid = message.author.id
+        maskid = mask['maskid']
+        if mask['members'] == 1:
+            # i doubt this can go wrong with await and stuff but
+            # make sure this operation is atomic, just in case
+            self.execute('delete from masks where (maskid, members) = (?, 1)',
+                    (maskid,))
+            if self.cur.rowcount == 0:
+                self.log('Bad delete for mask %s', maskid)
+                raise UserError(
+                        '...Sorry, I lost a race condition. Don\'t panic, '
+                        'I\'m looking into it. Try again?')
+            del self.rules[maskid]
+            del self.mask_presence[maskid]
+        elif authid in self.rules[maskid].named:
+            if not member:
+                raise UserError(
+                        'You are named in the rules of this mask and must '
+                        'nominate someone to take your place. Please try '
+                        'again with `{p}mask (id/name) leave @member`.'.format(
+                            p = COMMAND_PREFIX))
+            self.nominate(maskid, authid, member.id)
+        gesp.ActionRemove(maskid, authid).execute(self)
+        await self.mark_success(message, True)
+
+
     async def cmd_edit(self, message, content):
         if not content:
             raise UserError('We need a message here!')
@@ -1015,6 +1050,26 @@ class GestaltCommands:
                         raise UserError('Unknown rule type.')
                     return await self.cmd_mask_rules(message, maskid, rules)
 
+                if action == 'nominate':
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    if not (member := reader.read_member()):
+                        raise UserError('You need to nominate someone!')
+                    if not self.is_member_of(maskid, member.id):
+                        raise UserError('That user is not a member.')
+                    if member.id == authid:
+                        raise UserError(ERROR_CURSED)
+                    return await self.cmd_mask_nominate(message, maskid, member)
+
+                if action == 'leave':
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that?')
+                    if member := reader.read_member():
+                        if not self.is_member_of(maskid, member.id):
+                            raise UserError('That user is not a member.')
+                        if member.id == authid:
+                            raise UserError(ERROR_CURSED)
+                    return await self.cmd_mask_leave(message, row, member)
 
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()

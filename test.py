@@ -2277,6 +2277,24 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        # test leave, nominate
+        self.assertNotCommand(alpha, c, 'gs;m maask leave')
+        self.assertNotCommand(alpha, c, 'gs;m maask leave %s' % alpha.mention)
+        self.assertCommand(alpha, c, 'gs;m maask leave %s' % beta.mention)
+        self.assertFalse(instance.is_member_of(maaskid, alpha.id))
+        self.assertNotCommand(beta, c, 'gs;m maask leave %s' % alpha.mention)
+        self.assertCommand(beta, c, 'gs;m maask invite %s' % alpha.mention)
+        vote = c[-1]
+        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
+        interact(vote, alpha, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % beta.mention)
+        self.assertCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
+        self.assertCommand(beta, c, 'gs;m maask leave')
+        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        self.assertCommand(alpha, c, 'gs;m maask leave')
+        self.assertNotCommand(beta, c, 'gs;m %s join' % maaskid)
 
         self.assertNotCommand(beta, c, 'gs;m %s name newname' % maskid)
         self.assertNotCommand(beta, c, 'gs;m %s avatar https://newname'
