@@ -726,11 +726,11 @@ class GestaltVoting:
 
     # this doesn't get its own Action subclass because it's unconditional
     def nominate(self, maskid, nominator, nominee):
-        if not is_member_of(maskid, nominee):
+        if not self.is_member_of(maskid, nominee):
             return # TODO errors
         rules = self.rules[maskid]
         rules.named = [nominee if i == nominator else i for i in rules.named]
-        ActionRules(maskid, rules).execute()
+        ActionRules(maskid, rules).execute(self)
 
 
     async def step_program(self, program, context, action):
