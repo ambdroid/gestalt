@@ -3,12 +3,14 @@
 from asyncio import run
 import datetime
 import unittest
+import math
 import re
 
 import aiohttp
 import discord
 
 import gestalt
+import gesp
 
 
 # this test harness reimplements most relevant parts of the discord API, offline
@@ -42,11 +44,17 @@ class User(Object):
         super().__init__(**kwargs)
         if not self.bot:
             self.dm_channel = Channel(type = discord.ChannelType.private,
-                    members = [self, instance.user])
+                    members = [self, instance.user], recipient = self)
         User.users[self.id] = self
     @property
     def mention(self):
         return '<@!%d>' % self.id
+    @property
+    def mutual_guilds(self):
+        return list(filter(
+            lambda guild : (guild.get_member(self.id)
+                and guild.get_member(instance.user.id)),
+            Guild.guilds.values()))
     def _delete(self):
         self._deleted = True
         del User.users[self.id]
@@ -93,6 +101,9 @@ class Member:
     def name(self): return self.user.name
     @property
     def display_name(self): return self.user.name
+    @property
+    def mutual_guilds(self):
+        return self.user.mutual_guilds
 
 class Message(Object):
     def __init__(self, embed = None, **kwargs):
@@ -122,7 +133,9 @@ class Message(Object):
     @property
     def mentions(self):
         # mentions can also be in the embed but that's irrelevant here
-        if self.content:
+        # also you can always force a link to someone not present
+        # but it isn't included in the actual mentions property
+        if self.guild and self.content:
             mentions = map(int, re.findall('(?<=\<\@\!)[0-9]+(?=\>)',
                 self.content))
             if self.guild:
@@ -146,6 +159,9 @@ class Message(Object):
                 discord.raw_models.RawMessageDeleteEvent(data = {
                     'channel_id': self.channel.id,
                     'id': self.id}))
+    async def edit(self, *args, **kwargs):
+        # TODO currently only used in Votes
+        pass
     def _react(self, emoji, user, _async = False):
         react = discord.Reaction(message = self, emoji = emoji,
                 data = {'count': 1, 'me': None})
@@ -272,7 +288,8 @@ class Channel(Object):
     def permissions_for(self, user):
         # TODO need channel-level permissions
         return self.guild.get_member(user.id).guild_permissions
-    async def send(self, content = None, embed = None, file = None):
+    async def send(self, content = None, embed = None, file = None,
+            view = None, reference = None):
         msg = Message(author = instance.user, content = content, embed = embed)
         await self._add(msg)
         return msg
@@ -361,7 +378,7 @@ class Guild(Object):
         member.roles.append(self.default_role)
         # NOTE: does on_member_update get called here? probably not but idk
         run(instance.on_member_join(member))
-        return member
+        return self # for chaining
     def _remove_member(self, user):
         del self._members[user.id]
         run(instance.on_raw_member_remove(Object(user = user,
@@ -370,6 +387,36 @@ class Guild(Object):
         return self._members.get(user_id)
     def get_role(self, role_id):
         return self._roles[role_id]
+
+# incoming messages have Attachments, outgoing messages have Files
+# but we'll pretend that they're the same for simplicity
+class File(Object):
+    def __init__(self, size):
+        self.size = size
+        super().__init__()
+    def is_spoiler(self):
+        return False
+    async def to_file(self, spoiler):
+        return self
+    @property
+    def url(self):
+        return 'https://%i' % self.id
+
+class Interaction:
+    def __init__(self, message, user, button):
+        (self.message, self.user) = (message, user)
+        self.data = {'custom_id': button}
+        # TODO check that the message actuall has the buttons
+    @property
+    def channel(self):
+        return self.message.channel
+    @property
+    def response(self):
+        return self # lol
+    async def send_message(self, **kwargs):
+        pass # only used for ephemeral messages; bot never sees those
+
+invites = {}
 
 class TestBot(gestalt.Gestalt):
     def __init__(self):
@@ -385,6 +432,10 @@ class TestBot(gestalt.Gestalt):
         return self._user
     def get_user(self, id):
         return User.users.get(id)
+    async def fetch_invite(self, code, **_):
+        if code in invites:
+            return Object(guild = invites[code])
+        raise NotFound()
     async def fetch_user(self, id):
         try:
             return User.users[id]
@@ -396,16 +447,6 @@ class TestBot(gestalt.Gestalt):
         return Guild.guilds.get(id)
     def is_ready(self):
         return True
-
-# incoming messages have Attachments, outgoing messages have Files
-# but we'll pretend that they're the same for simplicity
-class File:
-    def __init__(self, size):
-        self.size = size
-    def is_spoiler(self):
-        return False
-    async def to_file(self, spoiler):
-        return self
 
 class ClientSession:
     class Response:
@@ -430,6 +471,9 @@ def send(user, channel, content, reference = None, files = [], orig = False):
     run(channel._add(msg))
     return channel[-1] if msg._deleted and not orig else msg
 
+def interact(message, user, button):
+    run(instance.on_interaction(Interaction(message, user, button)))
+
 class GestaltTest(unittest.TestCase):
 
     # ugly hack because parsing gs;p output would be uglier
@@ -453,7 +497,7 @@ class GestaltTest(unittest.TestCase):
 
     def get_collid(self, role):
         row = instance.fetchone(
-                'select maskid from masks where roleid = ?',
+                'select maskid from guildmasks where roleid = ?',
                 (role.id,))
         return row[0] if row else None
 
@@ -503,6 +547,20 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(
                 run(message.channel.fetch_message(message.id)).content,
                 content)
+
+    def desc(self, msg):
+        self.assertNotEqual(msg.embeds, [])
+        return msg.embeds[0].description
+
+    def assertReload(self):
+        attrs = ('votes', 'rules', 'mask_presence')
+        origs = [getattr(instance, attr) for attr in attrs]
+        instance.save()
+        [setattr(instance, attr, None) for attr in attrs]
+        instance.load()
+        for orig, attr in zip(origs, attrs):
+            self.assertEqual(orig, getattr(instance, attr))
+            self.assertIsNot(orig, getattr(instance, attr))
 
 
     # tests run in alphabetical order, so they are numbered to ensure order
@@ -1013,8 +1071,11 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, chan, 'gs;c %s avatar foobar' % collid)
         self.assertCommand(alpha, chan, 'gs;c %s avatar <http://avatar.gov>'
                 % collid)
-        self.assertCommand(alpha, chan, 'gs;c %s avatar' % collid)
-        self.assertCommand(alpha, chan, 'gs;c %s avatar ""' % collid)
+        avatar = File(1024)
+        self.assertCommand(alpha, chan, 'gs;c %s avatar' % collid,
+                files = [avatar])
+        self.assertProxied(alpha, chan, 'e:test')
+        self.assertEqual(chan[-1].author.display_avatar, avatar.url)
 
     def test_12_username_change(self):
         chan = g['main']
@@ -1088,13 +1149,13 @@ class GestaltTest(unittest.TestCase):
         reply = self.assertProxied(alpha, chan, 'e: reply',
                 Object(cached_message = msg))
         self.assertEqual(len(reply.embeds), 1)
-        self.assertEqual(reply.embeds[0].description,
+        self.assertEqual(self.desc(reply),
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
         # again, but this time the message isn't in cache
         reply = self.assertProxied(alpha, chan, 'e: reply',
                 Object(cached_message = None, message_id = msg.id))
         self.assertEqual(len(reply.embeds), 1)
-        self.assertEqual(reply.embeds[0].description,
+        self.assertEqual(self.desc(reply),
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
 
     def test_17_edit(self):
@@ -1706,13 +1767,13 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(beta)
         token = discord.utils.escape_markdown(str(beta))
         send(alpha, c1, 'gs;ap')
-        self.assertNotIn(token, c1[-1].embeds[0].description)
+        self.assertNotIn(token, self.desc(c1[-1]))
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         send(alpha, c1, 'gs;ap')
-        self.assertIn(token, c1[-1].embeds[0].description)
+        self.assertIn(token, self.desc(c1[-1]))
         g1._remove_member(beta)
         send(alpha, c1, 'gs;ap')
-        self.assertNotIn(token, c1[-1].embeds[0].description)
+        self.assertNotIn(token, self.desc(c1[-1]))
         g1._add_member(beta)
 
         # check ap's in different guilds not conflicting
@@ -1720,9 +1781,9 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         self.assertCommand(alpha, c2, 'gs;ap "manual guild"')
         send(alpha, c1, 'gs;ap')
-        self.assertIn(token, c1[-1].embeds[0].description)
+        self.assertIn(token, self.desc(c1[-1]))
         send(alpha, c2, 'gs;ap')
-        self.assertIn('manual guild', c2[-1].embeds[0].description)
+        self.assertIn('manual guild', self.desc(c2[-1]))
         self.assertEqual(self.assertProxied(alpha, c1, 'beta').author.name,
                 'test-beta')
         self.assertEqual(self.assertProxied(alpha, c2, 'manual').author.name,
@@ -1767,7 +1828,7 @@ class GestaltTest(unittest.TestCase):
                                 become = become)
                         self.assertCommand(alpha, c2, cmd)
                         send(alpha, c2, 'gs;ap')
-                        return c2[-1].embeds[0].description
+                        return self.desc(c2[-1])
 
                     if not (prox or become == 1.0):
                         with self.assertRaises(gestalt.sqlite.IntegrityError):
@@ -1809,14 +1870,14 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c1, 'b: beta')
         self.assertProxied(alpha, c1, 'beta')
         send(alpha, c1, 'gs;ap')
-        text = c1[-1].embeds[0].description
+        text = self.desc(c1[-1])
         self.assertIn(token, text)
         self.assertIn(' latch', text)
         self.assertNotIn('Become', text)
         self.assertNotProxied(alpha, c1, 'x:nope')
         self.assertNotProxied(alpha, c1, 'nope')
         send(alpha, c1, 'gs;ap')
-        text = c1[-1].embeds[0].description
+        text = self.desc(c1[-1])
         self.assertIn('However,', text)
         self.assertNotIn('Become', text)
         self.assertProxied(alpha, c1, 'b: beta')
@@ -1824,7 +1885,7 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c1, 'beta')
         self.assertNotProxied(alpha, c1, '\\\\unlatch')
         send(alpha, c1, 'gs;ap')
-        text = c1[-1].embeds[0].description
+        text = self.desc(c1[-1])
         self.assertIn('However,', text)
         self.assertNotIn('Become', text)
 
@@ -1832,7 +1893,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         self.assertCommand(alpha, c1, 'gs;swap close test-beta')
         send(alpha, c1, 'gs;ap')
-        self.assertIn('no autoproxy', c1[-1].embeds[0].description)
+        self.assertIn('no autoproxy', self.desc(c1[-1]))
 
     def test_30_proxy_list(self):
         g1 = Guild(name = 'gestalt guild')
@@ -1850,23 +1911,23 @@ class GestaltTest(unittest.TestCase):
         token = discord.utils.escape_markdown(str(beta))
         for cmd in ['gs;proxy list', 'gs;proxy list -all']:
             send(alpha, c1, 'gs;proxy list')
-            text = c1[-1].embeds[0].description
+            text = self.desc(c1[-1])
             self.assertIn('gestalt guild', text)
             self.assertIn(token, text)
 
         send(alpha, c2, 'gs;proxy list')
-        text = c2[-1].embeds[0].description
+        text = self.desc(c2[-1])
         self.assertNotIn('gestalt guild', text)
         self.assertNotIn(token, text)
         send(alpha, c2, 'gs;proxy list -all')
-        text = c2[-1].embeds[0].description
+        text = self.desc(c2[-1])
         self.assertIn('gestalt guild', text)
         self.assertIn(token, text)
 
         send(alpha, alpha.dm_channel, 'gs;proxy list')
         msg = alpha.dm_channel[-1]
         self.assertEqual(msg.author, instance.user)
-        text = msg.embeds[0].description
+        text = self.desc(msg)
         self.assertIn('gestalt guild', text)
         self.assertIn(token, text)
 
@@ -1948,6 +2009,375 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, c, 'gs;p remove tags r:text')
         g._add_member(alpha)
         self.assertNotCommand(alpha, c, 'gs;p remove tags r:text')
+
+    def test_34_gesp(self):
+        self.assertEqual(gesp.eval('(add 1 1)'), 2)
+        self.assertEqual(gesp.eval('(sub 5 10)'), -5)
+        self.assertEqual(gesp.eval('(div 10 5)'), 2)
+        self.assertEqual(gesp.eval('(if (and (eq 1 1) (eq 2 2)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (and (eq 1 5) (eq 2 2)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(if (and (eq 1 1) (eq 2 5)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(if (and (eq 1 5) (eq 2 5)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(if (or (eq 1 1) (eq 2 2)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (or (eq 1 5) (eq 2 2)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (or (eq 1 1) (eq 2 5)) 1 2)'), 1)
+        self.assertEqual(gesp.eval('(if (or (eq 1 5) (eq 2 5)) 1 2)'), 2)
+        self.assertEqual(gesp.eval('(add (if (eq 1 1) 2 3) 2)'), 4)
+        self.assertEqual(gesp.eval(
+            '(and (eq 1 0) (vote-approval 12 (members)))'), False)
+        self.assertEqual(gesp.eval(
+            '(or (eq 1 1) (vote-approval 12 (members)))'), True)
+        self.assertEqual(gesp.eval('(eq (eq 1 1) true)'), True)
+        self.assertEqual(gesp.eval('(add (one) (one))'), 2)
+        self.assertEqual(gesp.eval('(add  (add  1  1)  1 )'), 3)
+        self.assertEqual(gesp.eval('(add (add 1 1)(add 1 1))'), 4)
+        self.assertEqual(gesp.eval('(if true "foo" "bar")'), 'foo')
+        with self.assertRaises(TypeError):
+            gesp.eval('(add 1)')
+        with self.assertRaises(TypeError):
+            gesp.eval('(if true 0 false)')
+        gesp.eval('(if true 0 0)')
+        self.assertEqual(
+                gesp.check(gesp.parse_full('(in (initiator) (members))')[0]),
+                bool)
+
+    def test_35_voting(self):
+        for rules in gesp.Rules.table.values():
+            for atype in gesp.ActionType:
+                self.assertEqual(gesp.check(rules().for_action(atype)), bool)
+
+        gesp.ActionChange('mask', which = 'nick', value = 'newname')
+        with self.assertRaises(ValueError):
+            gesp.ActionChange('mask', which = 'name', value = 'newname')
+
+        g = Guild(name = 'democratic guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(beta)
+        g._add_member(gamma)
+        g._add_member(instance.user)
+
+        instance.execute('insert into masks values '
+                '("mask", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesDictator(user = alpha.id).to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask', alpha.id).execute(instance)
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(alpha, c, 'msg')),
+            gesp.ActionChange('mask', 'nick', 'mask!')))
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(beta, c, 'msg')),
+            gesp.ActionJoin('mask', beta.id)))
+        self.assertIsNone(self.get_proxid(beta, 'mask'))
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(alpha, c, 'msg')),
+            gesp.ActionInvite('mask', beta.id)))
+        self.assertIsNotNone(self.get_proxid(beta, 'mask'))
+
+        instance.execute('insert into masks values '
+                '("mask2", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesUnanimous().to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask2', alpha.id).execute(instance)
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(beta, c, 'msg')),
+            gesp.ActionJoin('mask2', beta.id)))
+        interact(c[-1], alpha, 'abstain')
+        self.assertIsNone(self.get_proxid(beta, 'mask2'))
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(beta, c, 'msg')),
+            gesp.ActionJoin('mask2', beta.id)))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNotNone(self.get_proxid(beta, 'mask2'))
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(gamma, c, 'msg')),
+            gesp.ActionJoin('mask2', gamma.id)))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNone(self.get_proxid(gamma, 'mask2'))
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))
+
+        gesp.ActionRemove('mask2', gamma.id).execute(instance)
+        self.assertIsNone(self.get_proxid(gamma, 'mask2'))
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(gamma, c, 'msg')),
+            gesp.ActionJoin('mask2', gamma.id)))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNone(self.get_proxid(gamma, 'mask2'))
+        self.assertReload()
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))
+
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(beta, c, 'msg')),
+            gesp.ActionRemove('mask2', alpha.id)))
+        self.assertIsNotNone(self.get_proxid(alpha, 'mask2'))
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(alpha, 'mask2'))
+        interact(c[-1], gamma, 'yes')
+        self.assertIsNone(self.get_proxid(alpha, 'mask2'))
+
+        users = [User(name = str(i)) for i in range(6)]
+        instance.execute('insert into masks values '
+                '("mask3", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesHandsOff(user = alpha.id).to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask3', alpha.id).execute(instance)
+        g._add_member(users[0])
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(alpha, c, 'msg')),
+            gesp.ActionInvite('mask3', users[0].id)))
+        self.assertIsNotNone(self.get_proxid(users[0], 'mask3'))
+        for candidate, i in zip(users[1:], range(len(users)-1)):
+            g._add_member(candidate)
+            run(instance.initiate_action(
+                gesp.ProgramContext.from_message(send(candidate, c, 'msg')),
+                gesp.ActionJoin('mask3', candidate.id)))
+            for j in range(math.ceil(i/2)): # i+1 current voting members
+                interact(c[-1], users[j+1], 'yes')
+            self.assertIsNone(self.get_proxid(candidate, 'mask3'))
+            interact(c[-1], users[0], 'yes')
+            self.assertIsNotNone(self.get_proxid(candidate, 'mask3'))
+
+        instance.execute('insert into masks values '
+                '("mask4", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesMajority().to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask4', users[0].id).execute(instance)
+        for candidate, i in zip(users[1:], range(len(users)-1)):
+            run(instance.initiate_action(
+                gesp.ProgramContext.from_message(send(candidate, c, 'msg')),
+                gesp.ActionJoin('mask4', candidate.id)))
+            for j in range(math.ceil(i/2)): # i+1 current voting members
+                interact(c[-1], users[j+1], 'yes')
+            self.assertIsNone(self.get_proxid(candidate, 'mask4'))
+            interact(c[-1], users[0], 'yes')
+            self.assertIsNotNone(self.get_proxid(candidate, 'mask4'))
+
+        # ActionRules has the most complicated serialization
+        instance.execute('insert into masks values '
+                '("mask5", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesMajority().to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask5', alpha.id).execute(instance)
+        # single user exception
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(beta, c, 'msg')),
+            gesp.ActionJoin('mask5', beta.id)))
+        self.assertIsNone(self.get_proxid(beta, 'mask5'))
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(alpha, c, 'msg')),
+            gesp.ActionInvite('mask5', beta.id)))
+        self.assertIsNotNone(self.get_proxid(beta, 'mask5'))
+        run(instance.initiate_action(
+            gesp.ProgramContext.from_message(send(alpha, c, 'msg')),
+            gesp.ActionRules('mask5', gesp.RulesDictator(user = alpha.id))))
+        interact(c[-1], alpha, 'yes')
+        self.assertEqual(type(instance.rules['mask5']), gesp.RulesMajority)
+        self.assertReload()
+        interact(c[-1], beta, 'yes')
+        self.assertEqual(type(instance.rules['mask5']), gesp.RulesDictator)
+
+        instance.execute('insert into masks values '
+                '("mask6", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesDictator(user = alpha.id).to_json(),))
+        instance.load()
+        gesp.ActionJoin('mask6', alpha.id).execute(instance)
+        run(instance.initiate_vote(gesp.VotePreinvite(
+            mask = 'mask6', user = beta.id, context =
+            gesp.ProgramContext.from_message(send(alpha, c, 'msg')))))
+        self.assertReload()
+        self.assertIsNone(self.get_proxid(beta, 'mask6'))
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNone(self.get_proxid(beta, 'mask6'))
+        interact(c[-1], beta, 'yes')
+        self.assertIsNotNone(self.get_proxid(beta, 'mask6'))
+
+    def test_36_masks(self):
+        mkguild = lambda name : (g := Guild(name = name
+            )._add_member(alpha)._add_member(instance.user),
+            g._add_channel('main'))
+        (g, c) = mkguild('dramatic guild')
+        g._add_member(beta)
+
+        # TODO this is why unit tests usually don't have shared state
+        # (i've been putting that off ok)
+        instance.execute('delete from votes')
+        instance.execute('delete from masks')
+        instance.execute('delete from proxies where type = ?',
+                (gestalt.ProxyType.mask,))
+        instance.load()
+
+        cmd = self.assertCommand(alpha, c, 'gs;m new mask')
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(cmd, 'mask')
+        interact(c[-1], beta, 'no')
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(cmd, 'mask')
+        self.assertReload()
+        interact(c[-1], alpha, 'no')
+        instance.get_user_proxy(cmd, 'mask')
+        maskid = instance.fetchone(
+                'select maskid from proxies where cmdname = "mask"')[0]
+        self.assertCommand(alpha, c, 'gs;p mask tags mask:text')
+        self.assertNotProxied(alpha, c, 'mask:test')
+        self.assertNotCommand(beta, c, 'gs;m %s add' % maskid)
+        self.assertNotProxied(alpha, c, 'mask:test')
+        self.assertCommand(alpha, c, 'gs;m mask add')
+        self.assertProxied(alpha, c, 'mask:test')
+
+        self.assertCommand(alpha, c, 'gs;ap mask')
+        self.assertProxied(alpha, c, 'autoproxy')
+        self.assertEqual(c[-1].author.name, 'mask')
+        send(alpha, c, 'gs;ap')
+        self.assertIn('**mask**', self.desc(c[-1]))
+        send(alpha, c, 'gs;proxy list')
+        self.assertIn('**mask**', self.desc(c[-1]))
+        self.assertCommand(alpha, c, 'gs;ap off')
+
+        (_, c2) = mkguild('other guild')
+        send(alpha, c2, 'gs;proxy list')
+        self.assertNotIn('**mask**', self.desc(c2[-1]))
+        self.assertNotProxied(alpha, c2, 'mask:test')
+
+        self.assertCommand(alpha, c2, 'gs;swap open %s' % alpha.mention)
+        self.assertNotCommand(alpha, c2, 'gs;p test-alpha autoadd on')
+        self.assertCommand(alpha, c2, 'gs;p mask autoadd on')
+        (_, c3) = mkguild('other guild')
+        self.assertProxied(alpha, c3, 'mask:test')
+        self.assertProxied(alpha, c2, 'mask:test')
+
+        self.assertCommand(alpha, c, 'gs;m new maask')
+        interact(c[-1], alpha, 'yes')
+        self.assertCommand(alpha, c, 'gs;p maask tags maask:text')
+        self.assertProxied(alpha, c, 'maask:text')
+        self.assertProxied(alpha, c2, 'maask:text')
+        self.assertProxied(alpha, c3, 'maask:text')
+        # test invite, remove, and that (auto)add fails according to rules
+        maaskid = instance.fetchone(
+                'select maskid from proxies where cmdname = "maask"')[0]
+        self.assertNotCommand(beta, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertCommand(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        interact(c[-1], alpha, 'yes')
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        interact(c[-1], beta, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, beta.id))
+        self.assertNotCommand(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertCommand(beta, c, 'gs;p maask autoadd true')
+        gb = Guild(name = 'beta guild')
+        gb._add_member(instance.user)._add_member(beta)
+        cb = gb._add_channel('main')
+        self.assertCommand(beta, cb, 'gs;p maask tags maask:text')
+        self.assertCommand(beta, cb, 'gs;m maask add')
+        self.assertCommand(beta, cb, 'gs;p maask autoadd true')
+        self.assertNotProxied(beta, cb, 'maask:text')
+        self.assertProxied(beta, c, 'maask:text')
+        self.assertCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        self.assertNotCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
+        # test join, rules
+        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        interact(c[-1], alpha, 'yes') # shouldn't be a vote for this
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        self.assertCommand(alpha, c, 'gs;m maask rules unanimous')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        interact(c[-1], alpha, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, beta.id))
+        self.assertNotCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertCommand(alpha, c, 'gs;m maask rules handsoff')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], alpha, 'yes')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], alpha, 'abstain')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], beta, 'yes')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        interact(c[-1], alpha, 'yes')
+        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesHandsOff)
+        # test the handsoff clause that the dictator can't be removed
+        # this is the only time that (candidate) is used in the default rules
+        # comment out action.add_context(context) to see this fail
+        self.assertCommand(beta, c, 'gs;m maask remove %s' % alpha.mention)
+        self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        interact(c[-1], beta, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        # test leave, nominate
+        self.assertNotCommand(alpha, c, 'gs;m maask leave')
+        self.assertNotCommand(alpha, c, 'gs;m maask leave %s' % alpha.mention)
+        self.assertCommand(alpha, c, 'gs;m maask leave %s' % beta.mention)
+        self.assertFalse(instance.is_member_of(maaskid, alpha.id))
+        self.assertNotCommand(beta, c, 'gs;m maask leave %s' % alpha.mention)
+        self.assertCommand(beta, c, 'gs;m maask invite %s' % alpha.mention)
+        vote = c[-1]
+        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
+        interact(vote, alpha, 'yes')
+        self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % beta.mention)
+        self.assertCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
+        self.assertCommand(beta, c, 'gs;m maask leave')
+        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertFalse(instance.is_member_of(maaskid, beta.id))
+        self.assertCommand(alpha, c, 'gs;m maask leave')
+        self.assertNotCommand(beta, c, 'gs;m %s join' % maaskid)
+
+        self.assertNotCommand(beta, c, 'gs;m %s name newname' % maskid)
+        self.assertNotCommand(beta, c, 'gs;m %s avatar https://newname'
+                % maskid)
+        self.assertNotCommand(beta, c, 'gs;m %s color #012345' % maskid)
+        self.assertProxied(alpha, c, 'mask:text')
+        self.assertEqual(c[-1].author.display_name, 'mask')
+        self.assertCommand(alpha, c, 'gs;m %s name newname' % maskid)
+        self.assertCommand(alpha, c, 'gs;m %s avatar https://image' % maskid)
+        self.assertCommand(alpha, c, 'gs;m mask colour #012345')
+        self.assertProxied(alpha, c, 'mask:text',
+                Object(cached_message = c[-1]))
+        self.assertEqual(c[-1].author.display_name, 'newname')
+        self.assertEqual(c[-1].author.display_avatar, 'https://image')
+        self.assertEqual(str(c[-1].embeds[0].color), '#012345')
+
+        dm = alpha.dm_channel
+        self.assertCommand(alpha, dm, 'gs;m new dm')
+        interact(dm[-1], alpha, 'no')
+        self.assertCommand(alpha, dm, 'gs;m dm leave')
+        self.assertCommand(alpha, dm, 'gs;m new dm')
+        interact(dm[-1], alpha, 'no')
+        maskid = instance.fetchone(
+                'select maskid from proxies where cmdname = "dm"')[0]
+        self.assertCommand(beta, beta.dm_channel, 'gs;m %s join' % maskid)
+        self.assertNotIn(beta.dm_channel[-1].id, instance.votes)
+        self.assertFalse(instance.is_member_of(maskid, beta.id))
+        self.assertNotCommand(alpha, dm, 'gs;m dm invite %s' % beta.mention)
+        self.assertCommand(alpha, c, 'gs;m dm invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertTrue(instance.is_member_of(maskid, beta.id))
+        self.assertNotCommand(alpha, dm, 'gs;m dm remove %s' % beta.mention)
+        invites['1nv1t3'] = g
+        self.assertNotCommand(alpha, dm, 'gs;m dm add')
+        self.assertNotCommand(alpha, dm, 'gs;m dm add not_an_invite')
+        self.assertCommand(alpha, dm, 'gs;m dm add 1nv1t3')
+        self.assertCommand(alpha, dm, 'gs;m dm nick dmmask')
+        self.assertCommand(alpha, dm, 'gs;m dm avatar http://dmmask.png')
+        self.assertCommand(alpha, dm, 'gs;m dm color #999999')
+        self.assertNotCommand(alpha, dm, 'gs;m dm nominate %s' % beta.mention)
+        self.assertNotCommand(alpha, dm, 'gs;m dm leave %s' % beta.mention)
+
+        # test that votes in dms are an error
+        self.assertCommand(alpha, dm, 'gs;m dm rules unanimous')
+        self.assertTrue(instance.is_member_of(maskid, beta.id))
+        invites['1nv1t3_2'] = mkguild('another guild')[0]
+        self.assertCommand(alpha, dm, 'gs;m dm add 1nv1t3_2')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertNotIn(invites['1nv1t3_2'].id, instance.mask_presence[maskid])
+        self.assertCommand(alpha, dm, 'gs;m dm nick badname')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertCommand(alpha, dm, 'gs;m dm avatar http://badavatar.png')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertCommand(alpha, dm, 'gs;m dm color #666666')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertCommand(alpha, c, 'gs;m dm nick newname')
+        self.assertIn(c[-1].id, instance.votes)
 
 
 def main():

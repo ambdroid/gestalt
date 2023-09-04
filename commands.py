@@ -7,6 +7,7 @@ import aiohttp
 import discord
 
 from defs import *
+import gesp
 
 
 def escape(text):
@@ -90,6 +91,23 @@ class CommandReader:
             if chan.guild == self.msg.guild:
                 return chan
 
+    def read_image(self):
+        if m := LINK_REGEX.match(self.cmd):
+            self.cmd = self.cmd.removeprefix(m[0]).strip()
+            return m[1] # excluding <...> if present
+        if self.msg.attachments:
+            return self.msg.attachments[0].url
+
+    def read_color(self):
+        name = self.read_word()
+        if name == '-clear':
+            return CLEAR
+        try:
+            return str(discord.Color.from_str(
+                NAMED_COLORS.get(name.lower(), name)))
+        except (ValueError, IndexError):
+            pass
+
 
 class GestaltCommands:
     def get_user_proxy(self, message, name):
@@ -112,12 +130,12 @@ class GestaltCommands:
 
 
     async def cmd_help(self, message, topic):
-        await self.send_embed(message, HELPMSGS.get(topic, HELPMSGS['']))
+        await self.reply(message, HELPMSGS.get(topic, HELPMSGS['']))
 
 
     async def cmd_invite(self, message):
         if (await self.application_info()).bot_public:
-            await self.send_embed(message,
+            await self.reply(message,
                     discord.utils.oauth_url(self.user.id, permissions = PERMS))
 
 
@@ -149,7 +167,7 @@ class GestaltCommands:
             errors = REACT_CONFIRM if errors == [] else ', '.join(errors)
             lines.append('%s: %s' % (chan.mention, errors))
 
-        await self.send_embed(message, '\n'.join(lines))
+        await self.reply(message, '\n'.join(lines))
 
 
     def proxy_string(self, proxy):
@@ -183,6 +201,10 @@ class GestaltCommands:
             parens = ''
         elif proxy['type'] == ProxyType.pkreceipt:
             line = SYMBOL_RECEIPT + line
+        elif proxy['type'] == ProxyType.mask:
+            line = SYMBOL_MASK + line
+            parens = '**%s** on [`%s`]' % (escape(proxy['mnick']),
+                    proxy['maskid'].upper())
 
         if proxy['prefix'] is not None:
             parens += ' `%s`' % (
@@ -199,8 +221,10 @@ class GestaltCommands:
 
     async def cmd_proxy_list(self, message, all_):
         rows = sorted(self.fetch_valid_proxies(
-                'select proxies.*, masks.roleid, masks.nick from '
-                    'proxies left join masks using (maskid) '
+                'select proxies.*, guildmasks.roleid, guildmasks.nick, '
+                'masks.nick as mnick from '
+                    'proxies left join guildmasks using (maskid) '
+                    'left join masks using (maskid) '
                 'where proxies.userid = ?',
                 (message.author.id,)),
                 key = lambda row: (
@@ -223,7 +247,7 @@ class GestaltCommands:
         if omit:
             lines.append('Proxies in other servers have been omitted.')
             lines.append('To view all proxies, use `proxy list -all`.')
-        await self.send_embed(message, '\n'.join(lines))
+        await self.reply(message, '\n'.join(lines))
 
 
     async def cmd_proxy_tags(self, message, proxy, tags):
@@ -258,9 +282,10 @@ class GestaltCommands:
     async def cmd_autoproxy_view(self, message):
         ap = self.fetchone(
                 'select members.latch, members.become, proxies.*, '
-                'masks.roleid, masks.nick from '
+                'guildmasks.roleid, guildmasks.nick, masks.nick as mnick from '
                     'members '
                     'left join proxies using (proxid) '
+                    'left join guildmasks using (maskid) '
                     'left join masks using (maskid) '
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
@@ -291,7 +316,7 @@ class GestaltCommands:
         lines.append('For more information, please see `%shelp proxy`.'
                 % COMMAND_PREFIX)
 
-        await self.send_embed(message, '\n'.join(lines))
+        await self.reply(message, '\n'.join(lines))
 
 
     async def cmd_autoproxy_set(self, message, arg):
@@ -311,7 +336,7 @@ class GestaltCommands:
 
     async def cmd_collective_list(self, message):
         rows = self.fetchall(
-                'select * from masks where (guildid, type) = (?, ?)',
+                'select * from guildmasks where (guildid, type) = (?, ?)',
                 (message.guild.id, ProxyType.collective))
 
         if len(rows) == 0:
@@ -327,7 +352,7 @@ class GestaltCommands:
                             else guild.get_role(row['roleid']).mention))
                     for row in rows])
 
-        await self.send_embed(message, text)
+        await self.reply(message, text)
 
 
     async def cmd_collective_new(self, message, role):
@@ -335,7 +360,7 @@ class GestaltCommands:
         collid = self.gen_id()
         # '@everyone' is awkward and more likely to cause collisions as cmdname
         name = role.guild.name if role == role.guild.default_role else role.name
-        self.execute('insert or ignore into masks values'
+        self.execute('insert or ignore into guildmasks values'
                 '(?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)',
                 (collid, role.guild.id, role.id, name, ProxyType.collective,
                     int(time.time())))
@@ -351,12 +376,11 @@ class GestaltCommands:
 
 
     async def cmd_collective_update(self, message, collid, name, value):
-        if name not in ['nick', 'name', 'avatar', 'color', 'colour']:
-            return
-        self.execute(
-                'update masks set %s = ? '
-                'where maskid = ?'
-                % {'name': 'nick', 'colour': 'color'}.get(name, name),
+        self.execute({
+                'nick': 'update guildmasks set nick = ? where maskid = ?',
+                'avatar': 'update guildmasks set avatar = ? where maskid = ?',
+                'color': 'update guildmasks set color = ? where maskid = ?',
+                }[name],
                 (value, collid))
         if self.cur.rowcount == 1:
             await self.mark_success(message, True)
@@ -364,7 +388,8 @@ class GestaltCommands:
 
     async def cmd_collective_delete(self, message, coll):
         self.execute('delete from proxies where maskid = ?', (coll['maskid'],))
-        self.execute('delete from masks where maskid = ?', (coll['maskid'],))
+        self.execute('delete from guildmasks where maskid = ?',
+                (coll['maskid'],))
         if self.cur.rowcount == 1:
             await self.mark_success(message, True)
 
@@ -374,7 +399,7 @@ class GestaltCommands:
         text = '\n'.join(['%s: **%s**' %
                 (pref.name, 'on' if user['prefs'] & pref else 'off')
                 for pref in Prefs])
-        await self.send_embed(message, text)
+        await self.reply(message, text)
 
 
     async def cmd_config_default(self, message):
@@ -435,6 +460,106 @@ class GestaltCommands:
                 'or (otherid, userid) = (?, ?)',
                 (proxy['userid'], proxy['otherid'])*2)
 
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_new(self, message, name):
+        await self.initiate_vote(gesp.VoteCreate(
+            user = message.author.id,
+            name = name,
+            context = gesp.ProgramContext.from_message(message)))
+
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_join(self, message, maskid):
+        authid = message.author.id
+        await self.initiate_action(gesp.ProgramContext.from_message(message),
+                gesp.ActionJoin(maskid, authid))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_invite(self, message, maskid, member):
+        await self.initiate_vote(gesp.VotePreinvite(
+            mask = maskid, user = member.id,
+            context = gesp.ProgramContext.from_message(message)))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_remove(self, message, maskid, member):
+        # TODO: require replacement member when candidate is named
+        # it's irrelevant right now bc only dictator and handsoff name someone
+        # but they can't actually be removed according to the rules
+        await self.initiate_action(gesp.ProgramContext.from_message(message),
+                gesp.ActionRemove(maskid, member.id))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_add(self, message, maskid, invite):
+        authid = message.author.id
+        guild = (invite and invite.guild) or message.guild
+        if not guild.get_member(authid):
+            raise UserError('You are not a member of that server.')
+        if guild.id in self.mask_presence[maskid]:
+            raise UserError('That mask is already in that guild.')
+        await self.initiate_action(gesp.ProgramContext.from_message(message),
+                gesp.ActionServer(maskid, guild.id))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_autoadd(self, message, proxy, value):
+        author = message.author
+        if value:
+            for guild in author.mutual_guilds:
+                await self.try_auto_add(author.id, guild.id, proxy['maskid'])
+
+
+    async def cmd_mask_update(self, message, maskid, name, value):
+        await self.initiate_action(gesp.ProgramContext.from_message(message),
+                gesp.ActionChange(maskid, name, value))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_rules(self, message, maskid, rules):
+        await self.initiate_action(gesp.ProgramContext.from_message(message),
+                gesp.ActionRules(maskid,
+                    gesp.Rules.table[RuleType[rules]].from_message(message)))
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_nominate(self, message, maskid, member):
+        authid = message.author.id
+        if authid not in self.rules[maskid].named:
+            raise UserError('You are not named in the rules.')
+        self.nominate(maskid, authid, member.id)
+        await self.mark_success(message, True)
+
+
+    async def cmd_mask_leave(self, message, mask, member):
+        authid = message.author.id
+        maskid = mask['maskid']
+        if mask['members'] == 1:
+            # i doubt this can go wrong with await and stuff but
+            # make sure this operation is atomic, just in case
+            self.execute('delete from masks where (maskid, members) = (?, 1)',
+                    (maskid,))
+            if self.cur.rowcount == 0:
+                self.log('Bad delete for mask %s', maskid)
+                raise UserError(
+                        '...Sorry, I lost a race condition. Don\'t panic, '
+                        'I\'m looking into it. Try again?')
+            del self.rules[maskid]
+            if maskid in self.mask_presence:
+                del self.mask_presence[maskid]
+        elif authid in self.rules[maskid].named:
+            if not member:
+                raise UserError(
+                        'You are named in the rules of this mask and must '
+                        'nominate someone to take your place. Please try '
+                        'again with `{p}mask (id/name) leave @member`.'.format(
+                            p = COMMAND_PREFIX))
+            self.nominate(maskid, authid, member.id)
+        gesp.ActionRemove(maskid, authid).execute(self)
         await self.mark_success(message, True)
 
 
@@ -602,14 +727,14 @@ class GestaltCommands:
             raise UserError('That member has no Gestalt proxies.')
 
         mask = self.fetchone(
-                'select color, updated from masks '
+                'select color, updated from guildmasks '
                 'where (maskid, guildid) = (?, ?)',
                 ('pk-' + pkuuid, message.guild.id))
         if mask and mask['updated'] > ref.id:
             raise UserError('Please use a more recent proxied message.')
 
         self.execute(
-                'insert or replace into masks values '
+                'insert or replace into guildmasks values '
                 '(?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)',
                 ('pk-' + pkuuid, message.guild.id, ref.author.display_name,
                     str(ref.author.display_avatar),
@@ -623,7 +748,7 @@ class GestaltCommands:
             if not mask or mask['color'] != color:
                 # colors aren't set per-server, so set it everywhere
                 # (even if the message is older, pk returns the current color)
-                self.execute('update masks set color = ? where maskid = ?',
+                self.execute('update guildmasks set color = ? where maskid = ?',
                         (color, 'pk-' + pkuuid))
         except (KeyError, ValueError, TypeError):
             pass
@@ -678,6 +803,11 @@ class GestaltCommands:
             elif arg in ProxyFlags.__members__.keys():
                 if (value := reader.read_bool_int()) is None:
                     raise UserError('Please specify "on" or "off".')
+                if arg == 'autoadd':
+                    if proxy['type'] != ProxyType.mask:
+                        raise UserError('That only applies to Masks.')
+                    await self.cmd_mask_autoadd(message, proxy, value)
+                    # continue to normal command to actually change the flag
                 return await self.cmd_proxy_flag(message, proxy, arg, value)
 
         elif arg in ['autoproxy', 'ap']:
@@ -722,18 +852,16 @@ class GestaltCommands:
                     collid = self.get_user_proxy(message, collid)['maskid']
                 except UserError:
                     pass # could save error, but would be confusing
-                row = self.fetchone('select * from masks where maskid = ?',
+                row = self.fetchone('select * from guildmasks where maskid = ?',
                         (collid,))
-                # non-collective masks shouldn't have visible ids
+                # non-collective guildmasks shouldn't have visible ids
                 # but check just to be safe
                 if row == None or row['type'] != ProxyType.collective:
                     raise UserError('Collective not found.')
                 if row['guildid'] != guild.id:
                     raise UserError('That collective belongs to another guild.')
 
-                if action in ['nick', 'name', 'avatar', 'color', 'colour']:
-                    arg = reader.read_remainder()
-
+                if newaction := gesp.ActionChange.valid(action):
                     role = guild.get_role(row['roleid'])
                     if role == None:
                         raise UserError('That role no longer exists?')
@@ -744,27 +872,20 @@ class GestaltCommands:
                         raise UserError(
                                 'You don\'t have access to that collective!')
 
-                    # allow empty avatar URL but not name
-                    if action in ['name', 'nick'] and not arg:
-                        raise UserError('Please provide a new name.')
-                    if action == 'avatar':
-                        if message.attachments and not arg:
-                            arg = message.attachments[0].url
-                        elif arg and not LINK_REGEX.fullmatch(arg):
-                            raise UserError('Invalid avatar URL!')
-                    if action in ['color', 'colour']:
-                        if arg == '-clear':
-                            arg = None
-                        else:
-                            arg = NAMED_COLORS.get(arg.lower(), arg)
-                            try:
-                                arg = str(discord.Color.from_str(arg))
-                            except ValueError:
-                                raise UserError(
-                                        'Please enter a color (e.g. `#012345`)')
+                    if newaction == 'nick':
+                        if not (arg := reader.read_remainder()):
+                            raise UserError('Please provide a new name.')
+                    if newaction == 'avatar':
+                        if not (arg := reader.read_image()):
+                            raise UserError(
+                                    'Please provide a valid URL or attachment.')
+                    if newaction == 'color':
+                        if not (arg := reader.read_color()):
+                            raise UserError(
+                                    'Please enter a color (e.g. `#012345`)')
 
                     return await self.cmd_collective_update(message, collid,
-                            action, arg)
+                            newaction, arg)
 
                 elif action == 'delete':
                     if not message.author.guild_permissions.manage_roles:
@@ -797,15 +918,8 @@ class GestaltCommands:
                 return await self.cmd_config_update(message, user, arg, value)
 
             elif arg in ['color', 'colour']:
-                arg = reader.read_word()
-                if arg == '-clear':
-                    arg = None
-                else:
-                    arg = NAMED_COLORS.get(arg.lower(), arg)
-                    try:
-                        arg = str(discord.Color.from_str(arg))
-                    except ValueError:
-                        raise UserError('Please enter a color (e.g. `#012345`)')
+                if not (arg := reader.read_color()):
+                    raise UserError('Please enter a color (e.g. `#012345`)')
 
                 return await self.cmd_account_update(message, arg)
 
@@ -834,6 +948,130 @@ class GestaltCommands:
                     raise UserError('You do not have a swap with that ID.')
 
                 return await self.cmd_swap_close(message, proxy)
+
+        elif arg in ['mask', 'm']:
+            arg = reader.read_quote()
+
+            if arg.lower() == 'new':
+                if not (name := reader.read_remainder()):
+                    raise UserError('Please provide a name.')
+
+                return await self.cmd_mask_new(message, name)
+
+            else: # arg is mask ID/name
+                maskid = arg
+                action = reader.read_word().lower()
+
+                # TODO clean this up. in collectives too
+                try:
+                    # if get_user_proxy succeeds, ['maskid'] must exist
+                    maskid = self.get_user_proxy(message, maskid)['maskid']
+                except UserError:
+                    pass # could save error, but would be confusing
+                row = self.fetchone('select * from masks where maskid = ?',
+                        (maskid,))
+                if not row:
+                    raise UserError('Mask not found.')
+
+                if action == 'join':
+                    if self.is_member_of(maskid, authid):
+                        raise UserError('You are already a member.')
+                    return await self.cmd_mask_join(message, maskid)
+
+                if action == 'invite':
+                    if not message.guild:
+                        raise UserError(ERROR_DM)
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    if not (member := reader.read_member()):
+                        raise UserError('Please @mention someone.')
+                    if self.is_member_of(maskid, member.id):
+                        raise UserError('That user is already a member.')
+                    # this bit again
+                    if member.id == self.user.id:
+                        raise UserError(ERROR_BLURSED)
+                    if member.bot:
+                        raise UserError(ERROR_CURSED)
+                    return await self.cmd_mask_invite(message, maskid, member)
+
+                if action == 'remove':
+                    if not message.guild:
+                        raise UserError(ERROR_DM)
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    if not (member := reader.read_member()):
+                        raise UserError('Please @mention someone.')
+                    if not self.is_member_of(maskid, member.id):
+                        raise UserError('That user is not a member.')
+                    return await self.cmd_mask_remove(message, maskid, member)
+
+                if action == 'add':
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    invite = None
+                    if code := reader.read_word():
+                        # TODO better invite in harness for better tests
+                        try:
+                            invite = await self.fetch_invite(code,
+                                    with_counts = False,
+                                    with_expiration = False)
+                        except:
+                            raise UserError('That invite is invalid.')
+                        if isinstance(invite.guild, discord.PartialInviteGuild):
+                            raise UserError('I am not a member of that server.')
+                    elif not message.guild:
+                        raise UserError('Please provide an invite.')
+                    return await self.cmd_mask_add(message, maskid, invite)
+
+                if newaction := gesp.ActionChange.valid(action):
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+
+                    if newaction == 'nick':
+                        if not (arg := reader.read_remainder()):
+                            raise UserError('Please provide a new name.')
+                    if newaction == 'avatar':
+                        if not (arg := reader.read_image()):
+                            raise UserError(
+                                    'Please provide a valid URL or attachment.')
+                    if newaction == 'color':
+                        if not (arg := reader.read_color()):
+                            raise UserError(
+                                    'Please enter a color (e.g. `#012345`)')
+
+                    return await self.cmd_mask_update(message, maskid,
+                            newaction, arg)
+
+                if action == 'rules':
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    rules = reader.read_remainder()
+                    if rules not in RuleType.__members__.keys():
+                        raise UserError('Unknown rule type.')
+                    return await self.cmd_mask_rules(message, maskid, rules)
+
+                if action == 'nominate':
+                    if not message.guild:
+                        raise UserError(ERROR_DM)
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that.')
+                    if not (member := reader.read_member()):
+                        raise UserError('You need to nominate someone!')
+                    if not self.is_member_of(maskid, member.id):
+                        raise UserError('That user is not a member.')
+                    if member.id == authid:
+                        raise UserError(ERROR_CURSED)
+                    return await self.cmd_mask_nominate(message, maskid, member)
+
+                if action == 'leave':
+                    if not self.is_member_of(maskid, authid):
+                        raise UserError('Only members of the mask can do that?')
+                    if member := reader.read_member():
+                        if not self.is_member_of(maskid, member.id):
+                            raise UserError('That user is not a member.')
+                        if member.id == authid:
+                            raise UserError(ERROR_CURSED)
+                    return await self.cmd_mask_leave(message, row, member)
 
         elif arg in ['edit', 'e']:
             content = reader.read_remainder()
@@ -913,7 +1151,7 @@ class GestaltCommands:
                 return await self.cmd_channel_mode(message, channel, mode)
 
         elif arg == 'explain':
-            if self.has_perm(message, send_messages = True):
+            if self.has_perm(message.channel, send_messages = True):
                 reply = await message.channel.send(EXPLAIN)
                 self.mkhistory(reply, message.author)
                 return
@@ -924,4 +1162,12 @@ class GestaltCommands:
                         (reader.read_remainder(),))
                 await self.update_status()
                 await self.mark_success(message, True)
+
+        elif arg == 'eval':
+            program = reader.read_remainder()
+            try:
+                result = gesp.eval(program)
+            except Exception as e:
+                raise UserError(e.args[0])
+            await self.program_finished(message.channel, result)
 

@@ -167,6 +167,7 @@ class ProxyType(enum.IntEnum):
     swap        = 2
     pkswap      = 3
     pkreceipt   = 4
+    mask        = 5
 
 
 @enum.unique
@@ -174,6 +175,7 @@ class ProxyFlags(enum.IntFlag):
 #   auto        = 1 << 0
     keepproxy   = 1 << 1
     echo        = 1 << 2
+    autoadd     = 1 << 3
 
 
 @enum.unique
@@ -181,6 +183,35 @@ class ProxyState(enum.IntEnum):
     hidden      = 0
     inactive    = 1
     active      = 2
+
+
+@enum.unique
+class ActionType(enum.IntEnum):
+    join    = 0
+    invite  = 1
+    remove  = 2
+    server  = 3
+    change  = 4
+    rules   = 5
+
+
+@enum.unique
+class VoteType(enum.IntEnum):
+#   confirm     = 0
+    approval    = 1
+    consensus   = 2
+    create      = 3
+    preinvite   = 4
+
+
+@enum.unique
+class RuleType(enum.IntEnum):
+#   custom          = 0 not yet!
+    dictator        = 1
+    handsoff        = 2
+    majority        = 3
+#   supermajority   = 4 ?
+    unanimous       = 5
 
 
 COMMAND_REGEX = re.compile('%s(.*)' % re.escape(COMMAND_PREFIX), re.IGNORECASE)
@@ -200,6 +231,10 @@ REPLACEMENTS = [(re.compile(x, re.IGNORECASE), y) for x, y in REPLACEMENTS]
 HELPMSGS = {topic: text.format(p = COMMAND_PREFIX) for topic, text
         in HELPMSGS.items()}
 
+# singleton type representing a meaningfully NULL command argument
+# it is converted to NULL when passed to sqlite but truthy to python
+# (see register_adapter())
+CLEAR = type('Clear', (), {})()
 class UserError(Exception):
     pass
 
