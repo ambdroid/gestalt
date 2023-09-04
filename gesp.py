@@ -708,9 +708,16 @@ class GestaltVoting:
                 'select maskid, guildid from guildmasks where type = ?',
                 (ProxyType.mask,)):
             self.mask_presence[row['maskid']].add(row['guildid'])
+        # TODO this slows startup a ton
+        # it better REALLY be temporary
+        # if this is still here in a year just throw out the whole project
+        self.execute(
+                'create index if not exists mask_members '
+                'on proxies(maskid)')
 
 
     def save(self):
+        self.execute('drop index mask_members')
         self.execute('delete from votes')
         self.cur.executemany('insert into votes values (?, ?)',
                 ((msgid, vote.to_json()) for msgid, vote in self.votes.items()))
