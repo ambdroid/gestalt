@@ -18,12 +18,14 @@ import discord
 from defs import *
 import commands
 import auth
+import gesp
 
 
-class Gestalt(discord.Client, commands.GestaltCommands):
+class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     def __init__(self, *, dbfile):
         super().__init__(intents = INTENTS)
 
+        sqlite.register_adapter(type(CLEAR), lambda _ : None)
         self.conn = sqlite.connect(dbfile)
         self.conn.row_factory = sqlite.Row
         self.cur = self.conn.cursor()
@@ -104,7 +106,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'create index if not exists proxies_userid_otherid '
                 'on proxies(userid, otherid)')
         self.execute(
-                'create table if not exists masks('
+                'create table if not exists guildmasks('
                 'maskid text collate nocase,'
                 'guildid integer,'
                 'roleid integer,'
@@ -117,6 +119,32 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'msgcount integer,' # reserved
                 'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
+        self.execute(
+                'create table if not exists masks('
+                'maskid text primary key collate nocase,'
+                'nick text,'
+                'avatar text,'
+                'color text,'
+                'rules text,'
+                'created integer,'
+                'members integer,'
+                'msgcount integer)')
+        self.execute(
+                'create trigger if not exists mask_proxy_create '
+                'after insert on proxies when (new.type = %i) begin '
+                    'update masks set members = members + 1 '
+                    'where maskid = new.maskid;'
+                'end' % ProxyType.mask)
+        self.execute(
+                'create trigger if not exists mask_proxy_delete '
+                'after delete on proxies when (old.type = %i) begin '
+                    'update masks set members = members - 1 '
+                    'where maskid = old.maskid;'
+                'end' % ProxyType.mask)
+        self.execute(
+                'create table if not exists votes('
+                'msgid integer primary key,'
+                'state text)')
         self.execute(
                 'create table if not exists deleted('
                 'id text unique collate nocase'
@@ -132,11 +160,19 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 'after delete on masks begin '
                     'insert into deleted values (old.maskid);'
                 'end')
+        # NOTE: this would include masks if masks can be removed from guilds
+        self.execute(
+                'create temp trigger delete_guildmask '
+                'after delete on guildmasks begin '
+                    'insert into deleted values (old.maskid);'
+                'end')
 
         self.ignore_delete_cache = set()
+        self.load()
 
 
     def __del__(self):
+        self.save()
         self.log('Closing database.')
         self.conn.commit()
         self.conn.close()
@@ -164,12 +200,12 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 if self.delete_invalid_proxy(proxy)]
 
 
-    def has_perm(self, message, **kwargs):
-        if not message.guild:
+    def has_perm(self, channel, **kwargs):
+        if not channel.guild:
             return True
-        member = message.guild.get_member(self.user.id)
+        member = channel.guild.get_member(self.user.id)
         return discord.Permissions(**kwargs).is_subset(
-                message.channel.permissions_for(member))
+                channel.permissions_for(member))
 
 
     async def setup_hook(self):
@@ -212,7 +248,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def try_delete(self, message, delay = None):
-        if self.has_perm(message, manage_messages = True):
+        if self.has_perm(message.channel, manage_messages = True):
             try:
                 await message.delete(delay = delay)
             except discord.errors.NotFound:
@@ -226,7 +262,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
 
     async def try_add_reaction(self, message, reaction):
-        if self.has_perm(message, add_reactions = True,
+        if self.has_perm(message.channel, add_reactions = True,
                 read_message_history = True):
             try:
                 await message.add_reaction(reaction)
@@ -256,15 +292,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         return self.InProgress(self, message)
 
 
-    async def send_embed(self, replyto, text):
-        if not self.has_perm(replyto, send_messages = True):
-            return
-        msg = await replyto.channel.send(
-                embed = discord.Embed(description = text))
+    async def send_embed(self, channel, text, view = None, reference = None):
+        if self.has_perm(channel, send_messages = True):
+            return await channel.send(
+                    embed = discord.Embed(description = text), view = view,
+                    reference = reference)
+
+
+    async def reply(self, replyto, text):
+        msg = await self.send_embed(replyto.channel, text)
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
             self.mkhistory(msg, replyto.author)
+        return msg
 
 
     def gen_id(self):
@@ -275,8 +316,9 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             exists = self.fetchone(
                     'select exists(select 1 from proxies where proxid = ?)'
                     'or exists(select 1 from masks where maskid = ?)'
+                    'or exists(select 1 from guildmasks where maskid = ?)'
                     'or exists(select 1 from deleted where id = ?)',
-                    (id,) * 3)[0]
+                    (id,) * 4)[0]
             if not exists:
                 return id
 
@@ -350,7 +392,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     def on_member_role_add(self, member, role):
         mask = self.fetchone(
-                'select maskid, nick from masks where roleid = ?',
+                'select maskid, nick from guildmasks where roleid = ?',
                 (role.id,))
         if mask:
             try:
@@ -368,7 +410,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
 
     async def on_guild_role_delete(self, role):
         # no need to delete proxies; on_member_update takes care of that
-        self.execute('delete from masks where roleid = ?', (role.id,))
+        self.execute('delete from guildmasks where roleid = ?', (role.id,))
 
 
     async def on_member_update(self, before, after):
@@ -383,10 +425,20 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 self.on_member_role_remove(after, role)
 
 
-    # add @everyone collective, if necessary
     async def on_member_join(self, member):
-        if not member.bot:
-            self.on_member_role_add(member, member.guild.default_role)
+        if member.bot:
+            return
+
+        # add @everyone collective, if necessary
+        self.on_member_role_add(member, member.guild.default_role)
+
+        for maskid, flags in self.fetchall(
+                'select maskid, flags from proxies '
+                'where (userid, type) = (?, ?)',
+                (member.id, ProxyType.mask)):
+            # NOTE: this may block for a while with lots of masks
+            if flags & ProxyFlags.autoadd:
+                await self.try_auto_add(member.id, member.guild.id, maskid)
 
 
     async def on_raw_member_remove(self, payload):
@@ -402,7 +454,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             for x, y in REPLACEMENTS:
                 content = x.sub(y, content)
 
-        mask = self.fetchone('select * from masks where maskid = ?',
+        mask = self.fetchone('select * from guildmasks where maskid = ?',
                 (proxy['maskid'],))
         return {'username': mask['nick'],
                 'avatar_url': mask['avatar'],
@@ -426,7 +478,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         if not message.guild.get_member(proxy['otherid']):
             return
         mask = self.fetchone(
-                'select * from masks where (guildid, maskid) = (?, ?)',
+                'select * from guildmasks where (guildid, maskid) = (?, ?)',
                 (message.guild.id, 'pk-' + proxy['maskid']))
         if mask:
             return {'username': mask['nick'],
@@ -434,6 +486,18 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                     'color': mask['color'],
                     'content': content}
         raise UserError('That proxy has not been synced yet.')
+
+
+    def get_proxy_mask(self, message, proxy, prefs, content):
+        if mask := self.fetchone(
+                'select masks.nick, masks.avatar, masks.color '
+                'from guildmasks left join masks using (maskid) '
+                'where (guildid, maskid) = (?, ?)',
+                (message.guild.id, proxy['maskid'])):
+            return {'username': mask['nick'],
+                    'avatar_url': mask['avatar'],
+                    'color': mask['color'],
+                    'content': content}
 
 
     def maybe_remove_embeds(self, message, content):
@@ -546,6 +610,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             present = self.get_proxy_swap(*args)
         elif proxtype == ProxyType.pkswap:
             present = self.get_proxy_pkswap(*args)
+        elif proxtype == ProxyType.mask:
+            present = self.get_proxy_mask(*args)
         else:
             raise UserError('Unknown proxy type')
         # in case e.g. it's a swap but the other user isn't in the guild
@@ -651,6 +717,8 @@ class Gestalt(discord.Client, commands.GestaltCommands):
         elif proxy['type'] in (ProxyType.swap, ProxyType.pkswap,
                 ProxyType.pkreceipt):
             return bool(guild.get_member(proxy['otherid']))
+        elif proxy['type'] == ProxyType.mask:
+            return guild.id in self.mask_presence[proxy['maskid']]
         return False
 
 
@@ -742,7 +810,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
                 if latch:
                     self.set_autoproxy(message.author, None)
                 return
-            if not self.has_perm(message, manage_messages = True):
+            if not self.has_perm(message.channel, manage_messages = True):
                 raise UserError('I need `Manage Messages` permission to proxy.')
             msg = await self.do_proxy(message, match, prefs)
             if msg and latch:
@@ -775,7 +843,7 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             except UserError as e:
                 # an uninit'd user shouldn't ever get errors, but just in case
                 if ((user and user['prefs']) or DEFAULT_PREFS) & Prefs.errors:
-                    await self.send_embed(message, e.args[0])
+                    await self.reply(message, e.args[0])
             # do this after because it's less important than proxying
             if user and user['username'] != str(message.author):
                 self.execute('update users set username = ? where userid = ?',
@@ -848,10 +916,10 @@ class Gestalt(discord.Client, commands.GestaltCommands):
             # sender or swapee may delete proxied message
             if payload.user_id in (row['authid'], row['otherid']):
                 if not await self.try_delete(message):
-                    await self.send_embed(message,
+                    await self.reply(message,
                             'I can\'t delete messages here.')
             else:
-                if self.has_perm(message, manage_messages = True):
+                if self.has_perm(message.channel, manage_messages = True):
                     await message.remove_reaction(emoji, reactor)
 
 
