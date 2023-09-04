@@ -159,6 +159,9 @@ class Message(Object):
                 discord.raw_models.RawMessageDeleteEvent(data = {
                     'channel_id': self.channel.id,
                     'id': self.id}))
+    async def edit(self, *args, **kwargs):
+        # TODO currently only used in Votes
+        pass
     def _react(self, emoji, user, _async = False):
         react = discord.Reaction(message = self, emoji = emoji,
                 data = {'count': 1, 'me': None})
