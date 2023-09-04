@@ -197,7 +197,7 @@ class ActionType(enum.IntEnum):
 
 @enum.unique
 class VoteType(enum.IntEnum):
-    confirm     = 0
+#   confirm     = 0
     approval    = 1
     consensus   = 2
     create      = 3
@@ -206,11 +206,12 @@ class VoteType(enum.IntEnum):
 
 @enum.unique
 class RuleType(enum.IntEnum):
-#   custom      = 0 not yet!
-    dictator    = 1
-    handsoff    = 2
-    majority    = 3
-    unanimous   = 4
+#   custom          = 0 not yet!
+    dictator        = 1
+    handsoff        = 2
+    majority        = 3
+#   supermajority   = 4 ?
+    unanimous       = 5
 
 
 # convert into dict of single opening char : regex matching all ending chars

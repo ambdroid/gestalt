@@ -547,7 +547,7 @@ class Vote(metaclass = serializable):
 
 
 @dc.dataclass
-class VoteConfirm(Vote, _type = VoteType.confirm):
+class VoteConfirm(Vote):
     user: dc.InitVar[int] = None
     threshold: int = 1
     def __post_init__(self, user = None):
