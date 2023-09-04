@@ -487,7 +487,6 @@ class Vote(metaclass = serializable):
     # because it doesn't cleanly fit in VotableAction or ProgramState
     # but when it's time for a Vote, the context needs to be at rest
     context: ProgramContext
-    action: VotableAction
     eligible: frozenset[int] = frozenset()
     threshold: int = 0
     yes: set[int] = dc.field(default_factory = set)
@@ -544,9 +543,7 @@ class Vote(metaclass = serializable):
             'eligible': frozenset(_dict['eligible']),
             'yes': set(_dict['yes']),
             'no': set(_dict['no']),
-            } | ({'action': VotableAction.from_dict(_dict['action'])}
-                # subclasses might have no action
-                if isinstance(_dict['action'], dict) else {}))
+            })
 
 
 @dc.dataclass
@@ -583,7 +580,6 @@ class VoteConfirm(Vote, _type = VoteType.confirm):
 
 @dc.dataclass
 class VoteCreate(VoteConfirm, _type = VoteType.create):
-    action: VotableAction = None
     name: str = None
     async def on_done(self, bot):
         bot.execute('insert into masks values '
@@ -610,29 +606,35 @@ class VoteCreate(VoteConfirm, _type = VoteType.create):
         return None if disabled else super().view(False)
 
 
+@dc.dataclass
 class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
+    mask: str = None
     def __post_init__(self, user = None):
-        self.eligible = frozenset([self.action.candidate])
-        super().__post_init__()
+        if not self.mask:
+            raise ValueError('Mask is required')
+        super().__post_init__(user = user)
     async def on_done(self, bot):
         if self.yes:
-            await bot.initiate_action(self.context, self.action)
+            await bot.initiate_action(self.context,
+                    ActionInvite(self.mask, list(self.eligible)[0]))
     def description(self):
-        return '<@%i>, do you want to join this mask?' % self.action.candidate
+        return '<@%i>, do you want to join this mask?' % list(self.eligible)[0]
 
 
 @dc.dataclass
 class VoteProgram(Vote):
+    action: VotableAction = None
     state: ProgramState = None
     def __post_init__(self):
-        # state needs a default becomes it comes after other defaults
+        # state and action need a default because they follow other defaults
         # (but it's not actually default)
-        if not self.state:
+        if not (self.state and self.action):
             raise ValueError()
     @classmethod
     def class_dict(cls, _dict):
         return super().class_dict(_dict | {
             'state': ProgramState(*_dict['state']),
+            'action': VotableAction.from_dict(_dict['action'])
             })
 
 
