@@ -485,7 +485,11 @@ class Vote(metaclass = serializable):
     yes: set[int] = dc.field(default_factory = set)
     no: set[int] = dc.field(default_factory = set)
     async def on_interaction(self, interaction, bot):
-        # TODO avoid race condition
+        if self.is_done():
+            return await interaction.response.send_message(
+                    embed = discord.Embed(description =
+                        'This vote has already concluded.'),
+                    ephemeral = True)
         if (userid := interaction.user.id) in self.eligible:
             button = interaction.data['custom_id']
             if button == 'abstain':
@@ -510,8 +514,12 @@ class Vote(metaclass = serializable):
                 embed = discord.Embed(description = desc),
                 ephemeral = True)
         # TODO update message w/tally
-        return await self.maybe_done(bot)
-    async def maybe_done(self, bot):
+        if self.is_done():
+            await self.on_done(bot)
+            return True
+    def is_done(self):
+        raise NotImplementedError()
+    async def on_done(self, bot):
         raise NotImplementedError()
     def view(self, disabled = False):
         raise NotImplementedError()
@@ -538,10 +546,10 @@ class VoteConfirm(Vote, _type = VoteType.confirm):
             raise ValueError('No user')
         if self.threshold != 1:
             raise ValueError('Threshold must be 1')
-    async def maybe_done(self, bot):
-        if self.yes or self.no:
-            self.context.answer = bool(self.yes)
-            return True
+    def is_done(self):
+        return bool(self.yes or self.no)
+    async def on_done(self, bot):
+        self.context.answer = bool(self.yes)
     def view(self, disabled = False):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
@@ -563,32 +571,28 @@ class VoteConfirm(Vote, _type = VoteType.confirm):
 class VoteCreate(VoteConfirm, _type = VoteType.create):
     action: VotableAction = None
     name: str = None
-    async def maybe_done(self, bot):
-        if self.yes or self.no:
-            bot.execute('insert into masks values '
-                    '(?, ?, NULL, NULL, NULL, ?, 0, 0)',
-                    ((maskid := bot.gen_id()), self.name, time.time()))
-            user = list(self.eligible)[0] # only one
-            autoadd = bool(self.yes)
-            ActionJoin(maskid, user).execute(bot, autoadd = autoadd)
-            # this has to be after join or an is_member_of() check fails
-            ActionRules(maskid, RulesDictator(user = user)).execute(bot)
-            if autoadd:
-                for guild in bot.get_user(user).mutual_guilds:
-                    await bot.try_auto_add(user, guild.id, maskid)
-            return True
+    async def on_done(self, bot):
+        bot.execute('insert into masks values '
+                '(?, ?, NULL, NULL, NULL, ?, 0, 0)',
+                ((maskid := bot.gen_id()), self.name, time.time()))
+        user = list(self.eligible)[0] # only one
+        autoadd = bool(self.yes)
+        ActionJoin(maskid, user).execute(bot, autoadd = autoadd)
+        # this has to be after join or an is_member_of() check fails
+        ActionRules(maskid, RulesDictator(user = user)).execute(bot)
+        if autoadd:
+            for guild in bot.get_user(user).mutual_guilds:
+                await bot.try_auto_add(user, guild.id, maskid)
 
 
 class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
     def __post_init__(self, user = None):
         self.eligible = frozenset([self.action.candidate])
         super().__post_init__()
-    async def maybe_done(self, bot):
-        if self.yes or self.no:
-            if self.yes:
-                await bot.initiate_action(self.context.initiator,
-                        self.context.channel, self.action)
-            return True
+    async def on_done(self, bot):
+        if self.yes:
+            await bot.initiate_action(self.context.initiator,
+                    self.context.channel, self.action)
 
 
 @dc.dataclass
@@ -607,13 +611,13 @@ class VoteProgram(Vote):
 
 
 class VoteApproval(VoteProgram, _type = VoteType.approval):
-    async def maybe_done(self, bot):
-        if len(self.yes) == self.threshold:
-            # no other possibility except vote simply expiring
-            # however, this might change so that expiry = False
-            # therefore still pass it through context for forward compatibility
-            self.context.answer = True
-            return True
+    def is_done(self):
+        return len(self.yes) >= self.threshold
+    async def on_done(self, bot):
+        # no other possibility except vote simply expiring
+        # however, this might change so that expiry = False
+        # therefore still pass it through context for forward compatibility
+        self.context.answer = True
     def view(self, disabled = False):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
@@ -632,11 +636,11 @@ class VoteApproval(VoteProgram, _type = VoteType.approval):
 
 
 class VoteConsensus(VoteProgram, _type = VoteType.consensus):
-    async def maybe_done(self, bot):
-        if len(self.yes) + len(self.no) == self.threshold:
-            self.context.yes = frozenset(self.yes)
-            self.context.no = frozenset(self.no)
-            return True
+    def is_done(self):
+        return len(self.yes) + len(self.no) >= self.threshold
+    async def on_done(self, bot):
+        self.context.yes = frozenset(self.yes)
+        self.context.no = frozenset(self.no)
     def view(self, disabled = False):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
