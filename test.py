@@ -44,7 +44,7 @@ class User(Object):
         super().__init__(**kwargs)
         if not self.bot:
             self.dm_channel = Channel(type = discord.ChannelType.private,
-                    members = [self, instance.user])
+                    members = [self, instance.user], recipient = self)
         User.users[self.id] = self
     @property
     def mention(self):
@@ -133,7 +133,9 @@ class Message(Object):
     @property
     def mentions(self):
         # mentions can also be in the embed but that's irrelevant here
-        if self.content:
+        # also you can always force a link to someone not present
+        # but it isn't included in the actual mentions property
+        if self.guild and self.content:
             mentions = map(int, re.findall('(?<=\<\@\!)[0-9]+(?=\>)',
                 self.content))
             if self.guild:
@@ -411,6 +413,8 @@ class Interaction:
     async def send_message(self, **kwargs):
         pass # only used for ephemeral messages; bot never sees those
 
+invites = {}
+
 class TestBot(gestalt.Gestalt):
     def __init__(self):
         self._user = User(name = 'Gestalt', bot = True)
@@ -425,6 +429,10 @@ class TestBot(gestalt.Gestalt):
         return self._user
     def get_user(self, id):
         return User.users.get(id)
+    async def fetch_invite(self, code, **_):
+        if code in invites:
+            return Object(guild = invites[code])
+        raise NotFound()
     async def fetch_user(self, id):
         try:
             return User.users[id]
@@ -2317,6 +2325,43 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, dm, 'gs;m new dm')
         interact(dm[-1], alpha, 'no')
         self.assertCommand(alpha, dm, 'gs;m dm leave')
+        self.assertCommand(alpha, dm, 'gs;m new dm')
+        interact(dm[-1], alpha, 'no')
+        maskid = instance.fetchone(
+                'select maskid from proxies where cmdname = "dm"')[0]
+        self.assertCommand(beta, beta.dm_channel, 'gs;m %s join' % maskid)
+        self.assertNotIn(beta.dm_channel[-1].id, instance.votes)
+        self.assertFalse(instance.is_member_of(maskid, beta.id))
+        self.assertNotCommand(alpha, dm, 'gs;m dm invite %s' % beta.mention)
+        self.assertCommand(alpha, c, 'gs;m dm invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertTrue(instance.is_member_of(maskid, beta.id))
+        self.assertNotCommand(alpha, dm, 'gs;m dm remove %s' % beta.mention)
+        invites['1nv1t3'] = g
+        self.assertNotCommand(alpha, dm, 'gs;m dm add')
+        self.assertNotCommand(alpha, dm, 'gs;m dm add not_an_invite')
+        self.assertCommand(alpha, dm, 'gs;m dm add 1nv1t3')
+        self.assertCommand(alpha, dm, 'gs;m dm nick dmmask')
+        self.assertCommand(alpha, dm, 'gs;m dm avatar http://dmmask.png')
+        self.assertCommand(alpha, dm, 'gs;m dm color #999999')
+        self.assertNotCommand(alpha, dm, 'gs;m dm nominate %s' % beta.mention)
+        self.assertNotCommand(alpha, dm, 'gs;m dm leave %s' % beta.mention)
+
+        # test that votes in dms are an error
+        self.assertCommand(alpha, dm, 'gs;m dm rules unanimous')
+        self.assertTrue(instance.is_member_of(maskid, beta.id))
+        invites['1nv1t3_2'] = mkguild('another guild')[0]
+        self.assertCommand(alpha, dm, 'gs;m dm add 1nv1t3_2')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertNotIn(invites['1nv1t3_2'].id, instance.mask_presence[maskid])
+        self.assertCommand(alpha, dm, 'gs;m dm nick badname')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertCommand(alpha, dm, 'gs;m dm avatar http://badavatar.png')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertCommand(alpha, dm, 'gs;m dm color #666666')
+        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertCommand(alpha, c, 'gs;m dm nick newname')
+        self.assertIn(c[-1].id, instance.votes)
 
 
 def main():

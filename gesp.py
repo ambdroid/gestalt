@@ -706,9 +706,19 @@ class GestaltVoting:
 
 
     async def initiate_vote(self, vote):
-        if msg := await self.send_embed(
-                self.get_channel(vote.context.channel), 'Vote',
-                vote.view()):
+        chanid = vote.context.channel
+        # i don't know why this is a problem with dm channels
+        channel = self.get_channel(chanid) or await self.fetch_channel(chanid)
+        if not channel.guild:
+            # docs say recipient may not always be available
+            # yes this means two different chances to call fetch_(). i hate it
+            recipient = channel.recipient or (await self.fetch_channel(
+                channel.id)).recipient
+            if (vote.eligible, vote.threshold) != (frozenset([recipient.id]),
+                    1):
+                return await self.send_embed(channel,
+                        'A vote was called for, but it must be run in a guild.')
+        if msg := await self.send_embed(channel, 'Vote', vote.view()):
             self.votes[msg.id] = vote
 
 
