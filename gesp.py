@@ -523,6 +523,7 @@ class Vote(metaclass = serializable):
         # TODO update message w/tally
         if self.is_done():
             await self.on_done(bot)
+            await interaction.message.edit(view = self.view(True))
             return True
     def is_done(self):
         raise NotImplementedError()
