@@ -292,10 +292,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         return self.InProgress(self, message)
 
 
-    async def send_embed(self, channel, text, view = None):
+    async def send_embed(self, channel, text, view = None, reference = None):
         if self.has_perm(channel, send_messages = True):
             return await channel.send(
-                    embed = discord.Embed(description = text), view = view)
+                    embed = discord.Embed(description = text), view = view,
+                    reference = reference)
 
 
     async def reply(self, replyto, text):

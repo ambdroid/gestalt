@@ -452,13 +452,20 @@ class RulesUnanimous(Rules, _type = RuleType.unanimous):
 @dc.dataclass
 class ProgramContext:
     initiator: int
-    channel: int
+    message: int = None
+    channel: int = None
     named: list[int] = None
     members: frozenset[int] = None
     candidate: int = None
     answer: bool = None
     yes: frozenset[int] = None
     no: frozenset[int] = None
+    def from_message(msg):
+        return ProgramContext(
+                initiator = msg.author.id,
+                message = msg.id,
+                channel = msg.channel.id
+                )
     def from_dict(_dict):
         return ProgramContext(**(_dict | ({
             'members': frozenset(_dict['members']),
@@ -591,8 +598,7 @@ class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
         super().__post_init__()
     async def on_done(self, bot):
         if self.yes:
-            await bot.initiate_action(self.context.initiator,
-                    self.context.channel, self.action)
+            await bot.initiate_action(self.context, self.action)
 
 
 @dc.dataclass
@@ -689,19 +695,15 @@ class GestaltVoting:
                 ((msgid, vote.to_json()) for msgid, vote in self.votes.items()))
 
 
-    async def initiate_action(self, userid, chanid, action):
+    async def initiate_action(self, context, action):
         rule = self.rules[action.mask]
-        context = ProgramContext(
-                initiator = userid,
-                channel = chanid,
-                named = rule.named,
-                members = frozenset(
-                    row[0] for row in
-                    self.fetchall(
-                        # TODO index shenanigans
-                        'select userid from proxies where maskid = ?',
-                        (action.mask,))
-                    )
+        context.named = rule.named
+        context.members = frozenset(
+                row[0] for row in
+                self.fetchall(
+                    # TODO index shenanigans
+                    'select userid from proxies where maskid = ?',
+                    (action.mask,))
                 )
         action.add_context(context)
         await self.step_program(
@@ -722,7 +724,8 @@ class GestaltVoting:
                     1):
                 return await self.send_embed(channel,
                         'A vote was called for, but it must be run in a guild.')
-        if msg := await self.send_embed(channel, 'Vote', vote.view()):
+        if msg := await self.send_embed(channel, 'Vote', view = vote.view(),
+                reference = channel.get_partial_message(vote.context.message)):
             self.votes[msg.id] = vote
 
 
@@ -738,7 +741,7 @@ class GestaltVoting:
             # (the only async outcome is creating a vote, which can't happen)
             # but there's also no point in optimizing that away
             # shrug.
-            await self.initiate_action(userid, None,
+            await self.initiate_action(ProgramContext(initiator = userid),
                     ActionServer(maskid, guildid))
 
 
