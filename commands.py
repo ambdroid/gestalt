@@ -502,11 +502,14 @@ class GestaltCommands:
 
 
     async def cmd_mask_add(self, message, maskid, invite):
-        guildid = (invite and invite.guild.id) or message.guild.id
-        if guildid in self.mask_presence[maskid]:
+        authid = message.author.id
+        guild = (invite and invite.guild) or message.guild
+        if not guild.get_member(authid):
+            raise UserError('You are not a member of that server.')
+        if guild.id in self.mask_presence[maskid]:
             raise UserError('That mask is already in that guild.')
-        await self.initiate_action(message.author.id, message.channel.id,
-                gesp.ActionServer(maskid, guildid))
+        await self.initiate_action(authid, message.channel.id,
+                gesp.ActionServer(maskid, guild.id))
         await self.mark_success(message, True)
 
 
@@ -1013,7 +1016,7 @@ class GestaltCommands:
                         raise UserError('Only members of the mask can do that.')
                     invite = None
                     if code := reader.read_word():
-                        # TODO impl invite in harness for better tests
+                        # TODO better invite in harness for better tests
                         try:
                             invite = await self.fetch_invite(code,
                                     with_counts = False,
@@ -1022,6 +1025,8 @@ class GestaltCommands:
                             raise UserError('That invite is invalid.')
                         if isinstance(invite.guild, discord.PartialInviteGuild):
                             raise UserError('I am not a member of that server.')
+                    elif not message.guild:
+                        raise UserError('Please provide an invite.')
                     return await self.cmd_mask_add(message, maskid, invite)
 
                 if newaction := gesp.ActionChange.valid(action):
@@ -1052,6 +1057,8 @@ class GestaltCommands:
                     return await self.cmd_mask_rules(message, maskid, rules)
 
                 if action == 'nominate':
+                    if not message.guild:
+                        raise UserError(ERROR_DM)
                     if not self.is_member_of(maskid, authid):
                         raise UserError('Only members of the mask can do that.')
                     if not (member := reader.read_member()):
