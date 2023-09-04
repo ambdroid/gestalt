@@ -220,9 +220,12 @@ class GestaltCommands:
 
 
     async def cmd_proxy_list(self, message, all_):
+        # TODO this will start listing proxies multiple times again
+        # if server nicknames are added
+        # probably just fetch masks in a different query
         rows = sorted(self.fetch_valid_proxies(
-                'select proxies.*, guildmasks.roleid, guildmasks.nick, '
-                'masks.nick as mnick from '
+                'select distinct proxies.*, guildmasks.roleid, '
+                'guildmasks.nick, masks.nick as mnick from '
                     'proxies left join guildmasks using (maskid) '
                     'left join masks using (maskid) '
                 'where proxies.userid = ?',
