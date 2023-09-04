@@ -481,7 +481,7 @@ class GestaltCommands:
 
     async def cmd_mask_invite(self, message, maskid, member):
         await self.initiate_vote(gesp.VotePreinvite(
-            action = gesp.ActionInvite(maskid, member.id),
+            mask = maskid, user = member.id,
             context = gesp.ProgramContext.from_message(message)))
         await self.mark_success(message, True)
 

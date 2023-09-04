@@ -2182,11 +2182,8 @@ class GestaltTest(unittest.TestCase):
         instance.load()
         gesp.ActionJoin('mask6', alpha.id).execute(instance)
         run(instance.initiate_vote(gesp.VotePreinvite(
-            action = gesp.ActionInvite('mask6', beta.id),
-            context = gesp.ProgramContext(
-                initiator = alpha.id,
-                channel = c.id
-                ))))
+            mask = 'mask6', user = beta.id, context =
+            gesp.ProgramContext.from_message(send(alpha, c, 'msg')))))
         self.assertReload()
         self.assertIsNone(self.get_proxid(beta, 'mask6'))
         interact(c[-1], alpha, 'yes')
