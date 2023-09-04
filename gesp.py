@@ -520,6 +520,9 @@ class Vote(metaclass = serializable):
         await interaction.response.send_message(
                 embed = discord.Embed(description = desc),
                 ephemeral = True)
+        if interaction.message.embeds[0].description != self.description():
+            await interaction.message.edit(
+                embed = discord.Embed(description = self.description()))
         # TODO update message w/tally
         if self.is_done():
             await self.on_done(bot)
@@ -528,6 +531,8 @@ class Vote(metaclass = serializable):
     def is_done(self):
         raise NotImplementedError()
     async def on_done(self, bot):
+        raise NotImplementedError()
+    def description(self):
         raise NotImplementedError()
     def view(self, disabled = False):
         raise NotImplementedError()
@@ -591,6 +596,17 @@ class VoteCreate(VoteConfirm, _type = VoteType.create):
         if autoadd:
             for guild in bot.get_user(user).mutual_guilds:
                 await bot.try_auto_add(user, guild.id, maskid)
+    def description(self):
+        if self.is_done():
+            return 'Mask **%s** created!' % discord.utils.escape_markdown(
+                    self.name)
+        else:
+            return ('Do you want to automatically try to add this mask to all '
+                    'your current and future guilds? Other members can enable '
+                    'this for themselves with `{p}p (name/id) autoadd on`.'
+                    ).format(p = COMMAND_PREFIX)
+    def view(self, disabled = False):
+        return None if disabled else super().view(False)
 
 
 class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
@@ -600,6 +616,8 @@ class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
     async def on_done(self, bot):
         if self.yes:
             await bot.initiate_action(self.context, self.action)
+    def description(self):
+        return '<@%i>, do you want to join this mask?' % self.action.candidate
 
 
 @dc.dataclass
@@ -625,6 +643,8 @@ class VoteApproval(VoteProgram, _type = VoteType.approval):
         # however, this might change so that expiry = False
         # therefore still pass it through context for forward compatibility
         self.context.answer = True
+    def description(self):
+        return '**%i**/**%i** votes needed' % (len(self.yes), self.threshold)
     def view(self, disabled = False):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
@@ -725,7 +745,8 @@ class GestaltVoting:
                     1):
                 return await self.send_embed(channel,
                         'A vote was called for, but it must be run in a guild.')
-        if msg := await self.send_embed(channel, 'Vote', view = vote.view(),
+        if msg := await self.send_embed(channel, vote.description(),
+                view = vote.view(),
                 reference = channel.get_partial_message(vote.context.message)):
             self.votes[msg.id] = vote
 
