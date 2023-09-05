@@ -975,6 +975,7 @@ class GestaltCommands:
                         (maskid,))
                 if not row:
                     raise UserError('Mask not found.')
+                maskid = maskid.lower() # TODO rules cache requires this...
 
                 if action == 'join':
                     if self.is_member_of(maskid, authid):
