@@ -765,6 +765,8 @@ class GestaltVoting:
         if msg := await self.send_embed(channel, vote.description(),
                 view = vote.view(),
                 reference = channel.get_partial_message(vote.context.message)):
+            if channel.guild:
+                self.mkhistory(msg, vote.context.initiator)
             self.votes[msg.id] = vote
 
 
