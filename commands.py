@@ -1157,7 +1157,7 @@ class GestaltCommands:
         elif arg == 'explain':
             if self.has_perm(message.channel, send_messages = True):
                 reply = await message.channel.send(EXPLAIN)
-                self.mkhistory(reply, message.author)
+                self.mkhistory(reply, message.author.id)
                 return
 
         elif arg == 'motd':

@@ -2393,6 +2393,14 @@ class GestaltTest(unittest.TestCase):
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maskid, gamma.id))
 
+        # test message deletion
+        self.assertCommand(alpha, c, 'gs;m new delete')
+        msg = c[-1]
+        self.assertIn(msg.id, instance.votes)
+        msg._react(gestalt.REACT_DELETE, alpha)
+        self.assertTrue(msg._deleted)
+        self.assertNotIn(msg.id, instance.votes)
+
 
 def main():
     global alpha, beta, gamma, g, instance

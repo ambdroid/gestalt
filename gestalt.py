@@ -304,7 +304,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         # insert into history to allow initiator to delete message if desired
         if replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
-            self.mkhistory(msg, replyto.author)
+            self.mkhistory(msg, replyto.author.id)
         return msg
 
 
@@ -338,7 +338,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         return proxid
 
 
-    def mkhistory(self, message, author, channel = None, orig = None,
+    def mkhistory(self, message, authid, channel = None, orig = None,
             proxy = {'otherid': None, 'proxid': None, 'maskid': None}):
         if channel:
             (threadid, chanid) = ((channel.id, channel.parent.id)
@@ -348,7 +348,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         else:
             (threadid, chanid, guildid) = (0, 0, 0)
         self.execute('insert into history values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (message.id, orig, threadid, chanid, guildid, author.id,
+                (message.id, orig, threadid, chanid, guildid, authid,
                     proxy['otherid'], proxy['proxid'], proxy['maskid']))
 
 
@@ -661,7 +661,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         except discord.errors.Forbidden:
             raise UserError('I need `Manage Webhooks` permission to proxy.')
 
-        self.mkhistory(new, message.author, channel = message.channel,
+        self.mkhistory(new, message.author.id, channel = message.channel,
                 orig = message.id, proxy = proxy)
 
         if not proxy['flags'] & ProxyFlags.echo:
@@ -830,9 +830,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         # but we do know that any non-webhook message definitely isn't
         # so if it is deleted, save a db call in on_raw_message_delete
         # (this could be significant with other delete-heavy bots like PK)
-        if not message.webhook_id:
+        authid = message.author.id # if webhook then webhook id
+        if authid != self.user.id and not message.webhook_id:
             self.ignore_delete_cache.add(message.id)
-        authid = message.author.id
         if (message.type in (discord.MessageType.default,
             discord.MessageType.reply)
             and not message.author.bot):
@@ -855,6 +855,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if (msgid := payload.message_id) in self.ignore_delete_cache:
             self.ignore_delete_cache.remove(msgid)
             return
+        if msgid in self.votes:
+            del self.votes[msgid]
         self.execute('delete from history where msgid = ?', (msgid,))
 
 
