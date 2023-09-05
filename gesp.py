@@ -509,11 +509,14 @@ class Vote(metaclass = serializable):
                 else:
                     desc = 'You were already abstaining.'
             else:
-                which = self.yes if button == 'yes' else self.no
-                if userid in which:
+                (dest, src) = ((self.yes, self.no) if button == 'yes'
+                        else (self.no, self.yes))
+                if userid in dest:
                     desc = 'You were already voting %s.' % button
                 else:
-                    which.add(userid)
+                    if userid in src:
+                        src.remove(userid)
+                    dest.add(userid)
                     desc = 'You voted %s.' % button
         else:
             desc = 'You are not eligible for this vote.'
