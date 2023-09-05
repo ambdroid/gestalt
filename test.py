@@ -2379,6 +2379,20 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;m dm nick newname')
         self.assertIn(c[-1].id, instance.votes)
 
+        # test different case maskid
+        g._add_member(gamma)
+        self.assertFalse(instance.is_member_of(maskid, gamma.id))
+        self.assertCommand(alpha, c, 'gs;m %s invite %s' % (maskid.upper(),
+            gamma.mention))
+        preinvite = c[-1]
+        interact(preinvite, gamma, 'yes')
+        # now the vote is happening
+        self.assertNotEqual(c[-1], preinvite)
+        interact(c[-1], alpha, 'yes')
+        self.assertFalse(instance.is_member_of(maskid, gamma.id))
+        interact(c[-1], beta, 'yes')
+        self.assertTrue(instance.is_member_of(maskid, gamma.id))
+
 
 def main():
     global alpha, beta, gamma, g, instance
