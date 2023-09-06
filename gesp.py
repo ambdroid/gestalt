@@ -198,16 +198,12 @@ def eval(program):
     return run(ProgramState(comp(exp, 0), 0, []))
 
 
-# this comes up a lot
-def excluding(_dict, key):
-    return {k: v for k, v in _dict.items() if k != key}
-
-
 # there is probably a better way to do this
 # but i can't get __init_subclass__ to work otherwise
 def serializable(name, parents, attrs):
     class Inner:
         _type = None
+        excluded = ()
         table = {}
         def get_type(self):
             return self._type
@@ -216,15 +212,18 @@ def serializable(name, parents, attrs):
             return cls(**_dict)
         @classmethod
         def from_dict(cls, _dict):
-            return cls.table[_dict['_type']].class_dict(
-                    excluding(_dict, '_type'))
+            return cls.table[_dict['type']].class_dict(_dict['data'])
         @classmethod
         def from_json(cls, js):
             return cls.from_dict(json.loads(js))
         def to_dict(self):
             # dc.asdict() converts child dc's to dicts too, unwanted
             # (that wouldn't include the type)
-            return vars(self) | {'_type': self._type}
+            return {
+                    'type': self._type,
+                    'data': {k: v for k, v in vars(self).items()
+                        if k not in self.excluded}
+                    }
         def to_json(self):
             return json.dumps(self.to_dict(),
                     default =
@@ -248,6 +247,7 @@ class VotableAction(metaclass = serializable):
 
 @dc.dataclass
 class Rules(metaclass = serializable):
+    excluded = ('compiled',)
     named: list[int] = dc.field(default_factory = list)
     @classmethod
     def from_message(cls, message):
@@ -257,8 +257,6 @@ class Rules(metaclass = serializable):
     @cached_property
     def compiled(self):
         return {atype: comp(self.for_action(atype), 0) for atype in ActionType}
-    def to_dict(self):
-        return excluding(super().to_dict(), 'compiled')
 
 
 @dc.dataclass
@@ -514,8 +512,7 @@ class Vote(metaclass = serializable):
                 if userid in dest:
                     desc = 'You were already voting %s.' % button
                 else:
-                    if userid in src:
-                        src.remove(userid)
+                    src.discard(userid)
                     dest.add(userid)
                     desc = 'You voted %s.' % button
         else:
