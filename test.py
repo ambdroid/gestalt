@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
+from datetime import timedelta
 from asyncio import run
-import datetime
 import unittest
 import math
 import re
@@ -20,11 +20,13 @@ import gesp
 # i wish it didn't have to be this way but i promise this is the best solution
 
 
-class warptime(datetime.datetime):
+class warptime:
+    real = discord.utils.utcnow
     warp = 0
-    def now(_ = None):
-        return (super(warptime, warptime).now(datetime.timezone.utc)
-                + datetime.timedelta(seconds = warptime.warp))
+    @classmethod
+    def now(cls):
+        return cls.real() + timedelta(seconds = cls.warp)
+
 
 class Object:
     nextid = gestalt.discord.utils.time_snowflake(warptime.now())
@@ -2426,7 +2428,7 @@ def main():
 
 
 # monkey patch. this probably violates the Geneva Conventions
-datetime.datetime = warptime
+discord.utils.utcnow = warptime.now
 discord.Webhook.partial = Webhook.partial
 discord.Thread = Thread
 # don't spam the channel with error messages

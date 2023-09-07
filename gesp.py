@@ -1,7 +1,7 @@
 from collections import ChainMap, namedtuple, defaultdict
 from functools import reduce, partial, cached_property
+from datetime import timedelta
 import dataclasses as dc
-import datetime
 import json
 import math
 import time
@@ -716,11 +716,10 @@ class GestaltVoting:
     def save(self):
         self.execute('delete from votes')
         # TODO clear old votes more often than this
-        now = datetime.datetime.now(datetime.timezone.utc)
+        cutoff = discord.utils.utcnow() - timedelta(days = 1)
         self.cur.executemany('insert into votes values (?, ?)',
                 ((msgid, vote.to_json()) for msgid, vote in self.votes.items()
-                    if (discord.utils.snowflake_time(msgid)
-                        + datetime.timedelta(days = 1) > now)))
+                    if discord.utils.snowflake_time(msgid) > cutoff))
 
 
     async def initiate_action(self, context, action):
