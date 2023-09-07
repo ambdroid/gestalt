@@ -100,7 +100,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'state integer,'                # see enum ProxyState
                 'created integer,'              # unix timestamp
                 'msgcount integer,'             # reserved
-                'unique(userid, maskid))')
+                'unique(maskid, userid))')
         # for fast proxy deletion on role removal
         self.execute(
                 'create index if not exists proxies_userid_otherid '
@@ -119,6 +119,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'msgcount integer,' # reserved
                 'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
+        self.execute(
+                'create index if not exists guildmasks_roleid '
+                'on guildmasks(roleid) where type = %i;'
+                % ProxyType.collective)
         self.execute(
                 'create table if not exists masks('
                 'maskid text primary key collate nocase,'
@@ -392,8 +396,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     def on_member_role_add(self, member, role):
         mask = self.fetchone(
-                'select maskid, nick from guildmasks where roleid = ?',
-                (role.id,))
+                'select maskid, nick from guildmasks '
+                'where (roleid, type) = (?, ?)',
+                (role.id, ProxyType.collective)) # uses index
         if mask:
             try:
                 self.mkproxy(member.id, ProxyType.collective,
@@ -410,7 +415,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     async def on_guild_role_delete(self, role):
         # no need to delete proxies; on_member_update takes care of that
-        self.execute('delete from guildmasks where roleid = ?', (role.id,))
+        self.execute('delete from guildmasks where (roleid, type) = (?, ?)',
+                (role.id, ProxyType.collective))
 
 
     async def on_member_update(self, before, after):
