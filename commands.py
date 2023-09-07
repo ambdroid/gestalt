@@ -1,7 +1,6 @@
 import json
 import time
 import asyncio
-import datetime
 
 import aiohttp
 import discord
@@ -588,7 +587,7 @@ class GestaltCommands:
             if not proxied['msgid']:
                 return await self.mark_success(message, False)
             then = discord.utils.snowflake_time(proxied['msgid'])
-            now = datetime.datetime.now(datetime.timezone.utc)
+            now = discord.utils.utcnow()
             if then <= now and (now - then).seconds > TIMEOUT_EDIT:
                 raise UserError('Could not find a recent message to edit.')
         try:
