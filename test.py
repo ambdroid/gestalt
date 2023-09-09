@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from datetime import timedelta
+from functools import reduce
 from asyncio import run
 import unittest
 import math
@@ -379,7 +380,10 @@ class Guild(Object):
         member = self._members[user.id] = Member(user, self, perms)
         member.roles.append(self.default_role)
         # NOTE: does on_member_update get called here? probably not but idk
-        run(instance.on_member_join(member))
+        if user.id == instance.user.id:
+            run(instance.on_guild_join(self))
+        elif self.get_member(instance.user.id):
+            run(instance.on_member_join(member))
         return self # for chaining
     def _remove_member(self, user):
         del self._members[user.id]
@@ -2198,10 +2202,10 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNotNone(self.get_proxid(beta, 'mask6'))
 
     def test_36_masks(self):
-        mkguild = lambda name : (g := Guild(name = name
-            )._add_member(alpha)._add_member(instance.user),
-            g._add_channel('main'))
-        (g, c) = mkguild('dramatic guild')
+        mkguild = lambda name, *members : (g :=
+                reduce(Guild._add_member, members, Guild(name = name)),
+                g._add_channel('main'))
+        (g, c) = mkguild('dramatic guild', instance.user, alpha)
         g._add_member(beta)
 
         # TODO this is why unit tests usually don't have shared state
@@ -2239,7 +2243,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIn('**mask**', self.desc(c[-1]))
         self.assertCommand(alpha, c, 'gs;ap off')
 
-        (_, c2) = mkguild('other guild')
+        (_, c2) = mkguild('other guild', instance.user, alpha)
         send(alpha, c2, 'gs;proxy list')
         self.assertNotIn('**mask**', self.desc(c2[-1]))
         self.assertNotProxied(alpha, c2, 'mask:test')
@@ -2247,9 +2251,18 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c2, 'gs;swap open %s' % alpha.mention)
         self.assertNotCommand(alpha, c2, 'gs;p test-alpha autoadd on')
         self.assertCommand(alpha, c2, 'gs;p mask autoadd on')
-        (_, c3) = mkguild('other guild')
+        self.assertCommand(alpha, c2, 'gs;m new nowhere')
+        interact(c2[-1], alpha, 'no')
+        self.assertCommand(alpha, c2, 'gs;p nowhere tags nowhere:text')
+        # test both user and gestalt joining a guild
+        (_, c3) = mkguild('other guild', instance.user, alpha)
+        (_, c4) = mkguild('late guild', alpha, instance.user)
         self.assertProxied(alpha, c3, 'mask:test')
         self.assertProxied(alpha, c2, 'mask:test')
+        self.assertProxied(alpha, c4, 'mask:test')
+        self.assertNotProxied(alpha, c3, 'nowhere:test')
+        self.assertNotProxied(alpha, c2, 'nowhere:test')
+        self.assertNotProxied(alpha, c4, 'nowhere:test')
 
         self.assertCommand(alpha, c, 'gs;m new maask')
         interact(c[-1], alpha, 'yes')
@@ -2370,7 +2383,7 @@ class GestaltTest(unittest.TestCase):
         # test that votes in dms are an error
         self.assertCommand(alpha, dm, 'gs;m dm rules unanimous')
         self.assertTrue(instance.is_member_of(maskid, beta.id))
-        invites['1nv1t3_2'] = mkguild('another guild')[0]
+        invites['1nv1t3_2'] = mkguild('another guild', instance.user, alpha)[0]
         self.assertCommand(alpha, dm, 'gs;m dm add 1nv1t3_2')
         self.assertNotIn(dm[-1].id, instance.votes)
         self.assertNotIn(invites['1nv1t3_2'].id, instance.mask_presence[maskid])
