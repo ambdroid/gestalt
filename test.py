@@ -1180,6 +1180,8 @@ class GestaltTest(unittest.TestCase):
         self.assertDeleted(alpha, chan, 'gs;edit first',
                 Object(message_id = first.id))
         self.assertEditedContent(first, 'first')
+        self.assertDeleted(alpha, chan, 'gs;edit\nnewline')
+        self.assertEditedContent(second, 'newline')
 
         # make sure that the correct most recent msgid is pulled from db
         self.assertCommand(beta, chan,
