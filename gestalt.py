@@ -389,6 +389,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     and proxy['postfix'].endswith(postfix)))]
 
 
+    async def on_guild_join(self, guild):
+        for member in guild.members:
+            if not member.bot:
+                await self.try_auto_add_member(member)
+
+
     async def on_webhooks_update(self, channel):
         if hook := await self.get_webhook(channel):
             await self.confirm_webhook_deletion(hook)
@@ -437,14 +443,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
         # add @everyone collective, if necessary
         self.on_member_role_add(member, member.guild.default_role)
-
-        for maskid, flags in self.fetchall(
-                'select maskid, flags from proxies '
-                'where (userid, type) = (?, ?)',
-                (member.id, ProxyType.mask)):
-            # NOTE: this may block for a while with lots of masks
-            if flags & ProxyFlags.autoadd:
-                await self.try_auto_add(member.id, member.guild.id, maskid)
+        await self.try_auto_add_member(member)
 
 
     async def on_raw_member_remove(self, payload):

@@ -765,6 +765,16 @@ class GestaltVoting:
                 (userid, maskid)))
 
 
+    async def try_auto_add_member(self, member):
+        for maskid, flags in self.fetchall(
+                'select maskid, flags from proxies '
+                'where (userid, type) = (?, ?)',
+                (member.id, ProxyType.mask)):
+            # NOTE: this may block for a while with lots of masks
+            if flags & ProxyFlags.autoadd:
+                await self.try_auto_add(member.id, member.guild.id, maskid)
+
+
     async def try_auto_add(self, userid, guildid, maskid):
         if guildid not in self.mask_presence[maskid]:
             # there's no chance of anything async actually happening here
