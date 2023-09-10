@@ -109,7 +109,7 @@ class Member:
         return self.user.mutual_guilds
 
 class Message(Object):
-    def __init__(self, embed = None, **kwargs):
+    def __init__(self, embed = None, view = None, **kwargs):
         self._deleted = False
         self._prev = None
         self.webhook_id = None
@@ -118,6 +118,7 @@ class Message(Object):
         self.reference = None
         self.edited_at = None
         self.embeds = [embed] if embed else []
+        self.components = view.children if view else []
         self.guild = None
         super().__init__(**kwargs)
     @property
@@ -293,7 +294,8 @@ class Channel(Object):
         return self.guild.get_member(user.id).guild_permissions
     async def send(self, content = None, embed = None, file = None,
             view = None, reference = None):
-        msg = Message(author = instance.user, content = content, embed = embed)
+        msg = Message(author = instance.user, content = content, embed = embed,
+                view = view)
         await self._add(msg)
         return msg
 
