@@ -532,6 +532,20 @@ class GestaltTest(unittest.TestCase):
         self.assertNotReacted(msg)
         return msg
 
+    def assertVote(self, *args, **kwargs):
+        msg = self.assertNotCommand(*args, **kwargs)
+        last = msg.channel[-1]
+        self.assertTrue(bool(last.components))
+        self.assertIn(last.id, instance.votes)
+        return msg
+
+    def assertNotVote(self, *args, **kwargs):
+        msg = self.assertNotCommand(*args, **kwargs)
+        last = msg.channel[-1]
+        self.assertFalse(bool(last.components))
+        self.assertNotIn(last.id, instance.votes)
+        return msg
+
     def assertProxied(self, *args, **kwargs):
         msg = send(*args, **kwargs, orig = True)
         self.assertTrue(msg._deleted)
@@ -2218,7 +2232,7 @@ class GestaltTest(unittest.TestCase):
                 (gestalt.ProxyType.mask,))
         instance.load()
 
-        cmd = self.assertCommand(alpha, c, 'gs;m new mask')
+        cmd = self.assertVote(alpha, c, 'gs;m new mask')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(cmd, 'mask')
         interact(c[-1], beta, 'no')
@@ -2231,7 +2245,7 @@ class GestaltTest(unittest.TestCase):
                 'select maskid from proxies where cmdname = "mask"')[0]
         self.assertCommand(alpha, c, 'gs;p mask tags mask:text')
         self.assertNotProxied(alpha, c, 'mask:test')
-        self.assertNotCommand(beta, c, 'gs;m %s add' % maskid)
+        self.assertNotVote(beta, c, 'gs;m %s add' % maskid)
         self.assertNotProxied(alpha, c, 'mask:test')
         self.assertCommand(alpha, c, 'gs;m mask add')
         self.assertProxied(alpha, c, 'mask:test')
@@ -2253,7 +2267,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c2, 'gs;swap open %s' % alpha.mention)
         self.assertNotCommand(alpha, c2, 'gs;p test-alpha autoadd on')
         self.assertCommand(alpha, c2, 'gs;p mask autoadd on')
-        self.assertCommand(alpha, c2, 'gs;m new nowhere')
+        self.assertVote(alpha, c2, 'gs;m new nowhere')
         interact(c2[-1], alpha, 'no')
         self.assertCommand(alpha, c2, 'gs;p nowhere tags nowhere:text')
         # test both user and gestalt joining a guild
@@ -2266,7 +2280,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotProxied(alpha, c2, 'nowhere:test')
         self.assertNotProxied(alpha, c4, 'nowhere:test')
 
-        self.assertCommand(alpha, c, 'gs;m new maask')
+        self.assertVote(alpha, c, 'gs;m new maask')
         interact(c[-1], alpha, 'yes')
         self.assertCommand(alpha, c, 'gs;p maask tags maask:text')
         self.assertProxied(alpha, c, 'maask:text')
@@ -2275,37 +2289,36 @@ class GestaltTest(unittest.TestCase):
         # test invite, remove, and that (auto)add fails according to rules
         maaskid = instance.fetchone(
                 'select maskid from proxies where cmdname = "maask"')[0]
-        self.assertNotCommand(beta, c, 'gs;m maask invite %s' % beta.mention)
-        self.assertCommand(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertNotVote(beta, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertNotVote(beta, c, 'gs;m %s invite %s'
+                % (maaskid, beta.mention))
+        self.assertVote(alpha, c, 'gs;m maask invite %s' % beta.mention)
         interact(c[-1], alpha, 'yes')
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, beta.id))
-        self.assertNotCommand(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertNotVote(alpha, c, 'gs;m maask invite %s' % beta.mention)
         self.assertCommand(beta, c, 'gs;p maask autoadd true')
-        gb = Guild(name = 'beta guild')
-        gb._add_member(instance.user)._add_member(beta)
-        cb = gb._add_channel('main')
+        (gb, cb) = mkguild('beta guild', instance.user, beta)
         self.assertCommand(beta, cb, 'gs;p maask tags maask:text')
-        self.assertCommand(beta, cb, 'gs;m maask add')
+        self.assertNotVote(beta, cb, 'gs;m maask add')
         self.assertCommand(beta, cb, 'gs;p maask autoadd true')
         self.assertNotProxied(beta, cb, 'maask:text')
         self.assertProxied(beta, c, 'maask:text')
         self.assertCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
-        self.assertNotCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
+        self.assertNotVote(alpha, c, 'gs;m maask remove %s' % beta.mention)
         # test join, rules
-        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
-        interact(c[-1], alpha, 'yes') # shouldn't be a vote for this
+        self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         self.assertCommand(alpha, c, 'gs;m maask rules unanimous')
         self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
-        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertVote(beta, c, 'gs;m %s join' % maaskid)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         interact(c[-1], alpha, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, beta.id))
-        self.assertNotCommand(beta, c, 'gs;m %s join' % maaskid)
-        self.assertCommand(alpha, c, 'gs;m maask rules handsoff')
+        self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
+        self.assertVote(alpha, c, 'gs;m maask rules handsoff')
         self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
         interact(c[-1], alpha, 'yes')
         self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
@@ -2318,7 +2331,7 @@ class GestaltTest(unittest.TestCase):
         # test the handsoff clause that the dictator can't be removed
         # this is the only time that (candidate) is used in the default rules
         # comment out action.add_context(context) to see this fail
-        self.assertCommand(beta, c, 'gs;m maask remove %s' % alpha.mention)
+        self.assertNotVote(beta, c, 'gs;m maask remove %s' % alpha.mention)
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
@@ -2328,7 +2341,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;m maask leave %s' % beta.mention)
         self.assertFalse(instance.is_member_of(maaskid, alpha.id))
         self.assertNotCommand(beta, c, 'gs;m maask leave %s' % alpha.mention)
-        self.assertCommand(beta, c, 'gs;m maask invite %s' % alpha.mention)
+        self.assertVote(beta, c, 'gs;m maask invite %s' % alpha.mention)
         vote = c[-1]
         self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
         interact(vote, alpha, 'yes')
@@ -2336,15 +2349,16 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % beta.mention)
         self.assertCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
         self.assertCommand(beta, c, 'gs;m maask leave')
-        self.assertCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertVote(beta, c, 'gs;m %s join' % maaskid)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         self.assertCommand(alpha, c, 'gs;m maask leave')
-        self.assertNotCommand(beta, c, 'gs;m %s join' % maaskid)
+        self.assertNotVote(alpha, c, 'gs;m %s join' % maaskid)
+        self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
 
-        self.assertNotCommand(beta, c, 'gs;m %s name newname' % maskid)
-        self.assertNotCommand(beta, c, 'gs;m %s avatar https://newname'
+        self.assertNotVote(beta, c, 'gs;m %s name newname' % maskid)
+        self.assertNotVote(beta, c, 'gs;m %s avatar https://newname'
                 % maskid)
-        self.assertNotCommand(beta, c, 'gs;m %s color #012345' % maskid)
+        self.assertNotVote(beta, c, 'gs;m %s color #012345' % maskid)
         self.assertProxied(alpha, c, 'mask:text')
         self.assertEqual(c[-1].author.display_name, 'mask')
         self.assertCommand(alpha, c, 'gs;m %s name newname' % maskid)
@@ -2357,24 +2371,23 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(str(c[-1].embeds[0].color), '#012345')
 
         dm = alpha.dm_channel
-        self.assertCommand(alpha, dm, 'gs;m new dm')
+        self.assertVote(alpha, dm, 'gs;m new dm')
         interact(dm[-1], alpha, 'no')
         self.assertCommand(alpha, dm, 'gs;m dm leave')
-        self.assertCommand(alpha, dm, 'gs;m new dm')
+        self.assertVote(alpha, dm, 'gs;m new dm')
         interact(dm[-1], alpha, 'no')
         maskid = instance.fetchone(
                 'select maskid from proxies where cmdname = "dm"')[0]
-        self.assertCommand(beta, beta.dm_channel, 'gs;m %s join' % maskid)
-        self.assertNotIn(beta.dm_channel[-1].id, instance.votes)
+        self.assertNotVote(beta, beta.dm_channel, 'gs;m %s join' % maskid)
         self.assertFalse(instance.is_member_of(maskid, beta.id))
-        self.assertNotCommand(alpha, dm, 'gs;m dm invite %s' % beta.mention)
-        self.assertCommand(alpha, c, 'gs;m dm invite %s' % beta.mention)
+        self.assertNotVote(alpha, dm, 'gs;m dm invite %s' % beta.mention)
+        self.assertVote(alpha, c, 'gs;m dm invite %s' % beta.mention)
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maskid, beta.id))
-        self.assertNotCommand(alpha, dm, 'gs;m dm remove %s' % beta.mention)
+        self.assertNotVote(alpha, dm, 'gs;m dm remove %s' % beta.mention)
         invites['1nv1t3'] = g
-        self.assertNotCommand(alpha, dm, 'gs;m dm add')
-        self.assertNotCommand(alpha, dm, 'gs;m dm add not_an_invite')
+        self.assertNotVote(alpha, dm, 'gs;m dm add')
+        self.assertNotVote(alpha, dm, 'gs;m dm add not_an_invite')
         self.assertCommand(alpha, dm, 'gs;m dm add 1nv1t3')
         self.assertCommand(alpha, dm, 'gs;m dm nick dmmask')
         self.assertCommand(alpha, dm, 'gs;m dm avatar http://dmmask.png')
@@ -2386,22 +2399,17 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, dm, 'gs;m dm rules unanimous')
         self.assertTrue(instance.is_member_of(maskid, beta.id))
         invites['1nv1t3_2'] = mkguild('another guild', instance.user, alpha)[0]
-        self.assertCommand(alpha, dm, 'gs;m dm add 1nv1t3_2')
-        self.assertNotIn(dm[-1].id, instance.votes)
+        self.assertNotVote(alpha, dm, 'gs;m dm add 1nv1t3_2')
         self.assertNotIn(invites['1nv1t3_2'].id, instance.mask_presence[maskid])
-        self.assertCommand(alpha, dm, 'gs;m dm nick badname')
-        self.assertNotIn(dm[-1].id, instance.votes)
-        self.assertCommand(alpha, dm, 'gs;m dm avatar http://badavatar.png')
-        self.assertNotIn(dm[-1].id, instance.votes)
-        self.assertCommand(alpha, dm, 'gs;m dm color #666666')
-        self.assertNotIn(dm[-1].id, instance.votes)
-        self.assertCommand(alpha, c, 'gs;m dm nick newname')
-        self.assertIn(c[-1].id, instance.votes)
+        self.assertNotVote(alpha, dm, 'gs;m dm nick badname')
+        self.assertNotVote(alpha, dm, 'gs;m dm avatar http://badavatar.png')
+        self.assertNotVote(alpha, dm, 'gs;m dm color #666666')
+        self.assertVote(alpha, c, 'gs;m dm nick newname')
 
         # test different case maskid
         g._add_member(gamma)
         self.assertFalse(instance.is_member_of(maskid, gamma.id))
-        self.assertCommand(alpha, c, 'gs;m %s invite %s' % (maskid.upper(),
+        self.assertVote(alpha, c, 'gs;m %s invite %s' % (maskid.upper(),
             gamma.mention))
         preinvite = c[-1]
         interact(preinvite, gamma, 'yes')
@@ -2413,9 +2421,8 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(instance.is_member_of(maskid, gamma.id))
 
         # test message deletion
-        self.assertCommand(alpha, c, 'gs;m new delete')
+        self.assertVote(alpha, c, 'gs;m new delete')
         msg = c[-1]
-        self.assertIn(msg.id, instance.votes)
         msg._react(gestalt.REACT_DELETE, alpha)
         self.assertTrue(msg._deleted)
         self.assertNotIn(msg.id, instance.votes)

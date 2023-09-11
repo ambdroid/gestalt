@@ -733,7 +733,7 @@ class GestaltVoting:
                     (action.mask,))
                 )
         action.add_context(context)
-        await self.step_program(
+        return await self.step_program(
                 ProgramState(rule.compiled[action.get_type()], 0, []),
                 context, action)
 
@@ -801,6 +801,7 @@ class GestaltVoting:
                 await self.initiate_vote(result(action = action))
         elif result == True:
             action.execute(self)
+            return True
 
 
     # the docs discourage using this

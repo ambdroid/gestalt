@@ -471,30 +471,28 @@ class GestaltCommands:
             name = name,
             context = gesp.ProgramContext.from_message(message)))
 
-        await self.mark_success(message, True)
-
 
     async def cmd_mask_join(self, message, maskid):
-        authid = message.author.id
-        await self.initiate_action(gesp.ProgramContext.from_message(message),
-                gesp.ActionJoin(maskid, authid))
-        await self.mark_success(message, True)
+        if await self.initiate_action(
+                gesp.ProgramContext.from_message(message),
+                gesp.ActionJoin(maskid, message.author.id)):
+            await self.mark_success(message, True)
 
 
     async def cmd_mask_invite(self, message, maskid, member):
         await self.initiate_vote(gesp.VotePreinvite(
             mask = maskid, user = member.id,
             context = gesp.ProgramContext.from_message(message)))
-        await self.mark_success(message, True)
 
 
     async def cmd_mask_remove(self, message, maskid, member):
         # TODO: require replacement member when candidate is named
         # it's irrelevant right now bc only dictator and handsoff name someone
         # but they can't actually be removed according to the rules
-        await self.initiate_action(gesp.ProgramContext.from_message(message),
-                gesp.ActionRemove(maskid, member.id))
-        await self.mark_success(message, True)
+        if await self.initiate_action(
+                gesp.ProgramContext.from_message(message),
+                gesp.ActionRemove(maskid, member.id)):
+            await self.mark_success(message, True)
 
 
     async def cmd_mask_add(self, message, maskid, invite):
@@ -504,9 +502,10 @@ class GestaltCommands:
             raise UserError('You are not a member of that server.')
         if guild.id in self.mask_presence[maskid]:
             raise UserError('That mask is already in that guild.')
-        await self.initiate_action(gesp.ProgramContext.from_message(message),
-                gesp.ActionServer(maskid, guild.id))
-        await self.mark_success(message, True)
+        if await self.initiate_action(
+                gesp.ProgramContext.from_message(message),
+                gesp.ActionServer(maskid, guild.id)):
+            await self.mark_success(message, True)
 
 
     async def cmd_mask_autoadd(self, message, proxy, value):
@@ -517,16 +516,18 @@ class GestaltCommands:
 
 
     async def cmd_mask_update(self, message, maskid, name, value):
-        await self.initiate_action(gesp.ProgramContext.from_message(message),
-                gesp.ActionChange(maskid, name, value))
-        await self.mark_success(message, True)
+        if await self.initiate_action(
+                gesp.ProgramContext.from_message(message),
+                gesp.ActionChange(maskid, name, value)):
+            await self.mark_success(message, True)
 
 
     async def cmd_mask_rules(self, message, maskid, rules):
-        await self.initiate_action(gesp.ProgramContext.from_message(message),
+        if await self.initiate_action(
+                gesp.ProgramContext.from_message(message),
                 gesp.ActionRules(maskid,
-                    gesp.Rules.table[RuleType[rules]].from_message(message)))
-        await self.mark_success(message, True)
+                    gesp.Rules.table[RuleType[rules]].from_message(message))):
+            await self.mark_success(message, True)
 
 
     async def cmd_mask_nominate(self, message, maskid, member):
