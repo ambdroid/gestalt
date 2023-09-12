@@ -2427,6 +2427,33 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(msg._deleted)
         self.assertNotIn(msg.id, instance.votes)
 
+        # test conflicts
+        self.assertVote(alpha, c, 'gs;m new rugpull')
+        interact(c[-1], alpha, 'yes')
+        send(alpha, c, 'gs;m rugpull invite %s' % beta.mention)
+        vote = c[-1]
+        self.assertCommand(alpha, c, 'gs;m rugpull leave')
+        interact(vote, beta, 'yes')
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(send(beta, c, 'msg'), 'rugpull')
+
+        self.assertVote(alpha, c, 'gs;m new rugpull')
+        interact(c[-1], alpha, 'yes')
+        self.assertVote(alpha, c, 'gs;m rugpull invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertVote(alpha, c, 'gs;m rugpull invite %s' % gamma.mention)
+        interact(c[-1], gamma, 'yes')
+        self.assertCommand(alpha, c, 'gs;m rugpull rules majority')
+        self.assertVote(alpha, c, 'gs;m rugpull rules dictator')
+        vote = c[-1]
+        maskid = instance.votes[vote.id].action.mask
+        self.assertCommand(alpha, c, 'gs;m rugpull leave')
+        interact(vote, beta, 'yes')
+        self.assertIn(vote.id, instance.votes)
+        interact(vote, gamma, 'yes')
+        self.assertNotIn(vote.id, instance.votes)
+        self.assertEqual(type(instance.rules[maskid]), gesp.RulesMajority)
+
 
 def main():
     global alpha, beta, gamma, g, instance

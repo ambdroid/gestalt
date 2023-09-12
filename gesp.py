@@ -723,12 +723,12 @@ class GestaltVoting:
 
 
     async def initiate_action(self, context, action):
-        rule = self.rules[action.mask]
+        if not (rule := self.rules.get(action.mask)):
+            return # TODO errors?
         context.named = rule.named
         context.members = frozenset(
                 row[0] for row in
                 self.fetchall(
-                    # TODO index shenanigans
                     'select userid from proxies where maskid = ?',
                     (action.mask,))
                 )
