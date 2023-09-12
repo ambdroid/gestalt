@@ -490,11 +490,6 @@ class Vote(metaclass = serializable):
     yes: set[int] = dc.field(default_factory = set)
     no: set[int] = dc.field(default_factory = set)
     async def on_interaction(self, interaction, bot):
-        if self.is_done():
-            return await interaction.response.send_message(
-                    embed = discord.Embed(description =
-                        'This vote has already concluded.'),
-                    ephemeral = True)
         if (userid := interaction.user.id) in self.eligible:
             button = interaction.data['custom_id']
             if button == 'abstain':
@@ -807,11 +802,15 @@ class GestaltVoting:
     # the docs discourage using this
     # but it's easier than using the callbacks across reboots
     async def on_interaction(self, interaction):
-        if (msgid := interaction.message.id) in self.votes:
-            if await self.votes[msgid].on_interaction(interaction, self):
-                vote = self.votes[msgid]
-                del self.votes[msgid]
-                if isinstance(vote, VoteProgram):
-                    await self.step_program(vote.state, vote.context,
-                            vote.action)
+        vote = self.votes.get(msgid := interaction.message.id)
+        if vote is None or vote.is_done(): # hehe
+            return await interaction.response.send_message(
+                    embed = discord.Embed(description =
+                        'That vote has already concluded.'),
+                    ephemeral = True)
+        if await vote.on_interaction(interaction, self):
+            del self.votes[msgid]
+            if isinstance(vote, VoteProgram):
+                await self.step_program(vote.state, vote.context,
+                        vote.action)
 
