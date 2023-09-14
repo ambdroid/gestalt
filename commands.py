@@ -905,7 +905,7 @@ class GestaltCommands:
                 user = self.fetchone(
                         'select * from users where userid = ?',
                         (authid,))
-                arg = reader.read_word()
+                arg = reader.read_word().lower()
                 if len(arg) == 0:
                     return await self.cmd_config_list(message, user)
 

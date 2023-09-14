@@ -831,6 +831,15 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(send(alpha, chan, 'auto').author.name, 'no tags')
         self.assertEqual(send(alpha, chan, 'e: tags').author.name, 'test')
 
+        self.assertCommand(alpha, chan, 'gs;ap off')
+        self.assertCommand(alpha, chan, 'gs;account config errors on')
+        self.assertNotCommand(alpha, chan, '> Be default guild.')
+        self.assertEqual(chan[-1].author.id, alpha.id) # no message on error
+        self.assertCommand(alpha, chan, 'gs;account config errors off')
+        self.assertCommand(alpha, chan, 'gs;account config Homestuck on')
+        self.assertCommand(alpha, chan, '> Be default guild.')
+        self.assertProxied(alpha, chan, '==>')
+
     def test_06_query_delete(self):
         g._add_member(deleteme := User(name = 'deleteme'))
         chan = g['main']
@@ -2463,7 +2472,7 @@ def main():
     alpha = User(name = 'test-alpha')
     beta = User(name = 'test-beta')
     gamma = User(name = 'test-gamma')
-    g = Guild()
+    g = Guild(name = 'default guild')
     g._add_channel('main')
     g._add_member(instance.user)
     g._add_member(alpha)

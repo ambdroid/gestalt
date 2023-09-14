@@ -212,6 +212,8 @@ HELPMSGS = {
         '- `delay`: if on, Gestalt will wait a fraction of a second before '
         'deleting original messages. This may resolve some client issues. '
         '(default: **off**)\n'
+        '- `homestuck`: let `> Be (name)` be an alias for '
+        '`{p}autoproxy (name)`. (default: **off**)\n'
         '\n'
         '`{p}account color (color)`: change your color in swaps.',
 
