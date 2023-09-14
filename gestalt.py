@@ -790,6 +790,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if not user:
             return # if user isn't init'd, they can't have any proxies
 
+        if message.guild and user['prefs'] & Prefs.homestuck and (match :=
+                BE_REGEX.fullmatch(content)):
+            try:
+                return await self.cmd_autoproxy_set(message, match[1])
+            except UserError:
+                pass
+
         match = self.get_proxy_match(message)
 
         # note: pkswaps with own account are intentionally allowed

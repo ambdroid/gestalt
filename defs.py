@@ -157,7 +157,7 @@ class Prefs(enum.IntFlag):
 #   autoswap    = 1 << 2
     errors      = 1 << 3
     delay       = 1 << 4
-#   latch       = 1 << 5
+    homestuck   = 1 << 5
 
 
 @enum.unique
@@ -216,6 +216,7 @@ class RuleType(enum.IntEnum):
 
 COMMAND_REGEX = re.compile('%s(.*)' % re.escape(COMMAND_PREFIX),
         re.DOTALL | re.IGNORECASE)
+BE_REGEX = re.compile(r'\\?> ?Be (.*?)\.?', re.IGNORECASE)
 # convert into dict of single opening char : regex matching all ending chars
 QUOTE_REGEXES = reduce(dict.__or__, map(
     lambda tup : {
