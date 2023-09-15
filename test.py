@@ -833,11 +833,11 @@ class GestaltTest(unittest.TestCase):
 
         self.assertCommand(alpha, chan, 'gs;ap off')
         self.assertCommand(alpha, chan, 'gs;account config errors on')
-        self.assertNotCommand(alpha, chan, '> Be default guild.')
+        self.assertNotProxied(alpha, chan, '> Be default guild.')
         self.assertEqual(chan[-1].author.id, alpha.id) # no message on error
         self.assertCommand(alpha, chan, 'gs;account config errors off')
         self.assertCommand(alpha, chan, 'gs;account config Homestuck on')
-        self.assertCommand(alpha, chan, '> Be default guild.')
+        self.assertProxied(alpha, chan, '> Be default guild.')
         self.assertProxied(alpha, chan, '==>')
 
     def test_06_query_delete(self):

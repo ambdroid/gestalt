@@ -321,7 +321,7 @@ class GestaltCommands:
         await self.reply(message, '\n'.join(lines))
 
 
-    async def cmd_autoproxy_set(self, message, arg):
+    async def cmd_autoproxy_set(self, message, arg, and_proxy = False):
         member = message.author
         if arg in ['off', 'latch', 'l']:
             self.set_autoproxy(member, None, latch = -1 * int(arg != 'off'))
@@ -332,6 +332,12 @@ class GestaltCommands:
             if not self.proxy_usable_in(proxy, message.guild):
                 raise UserError('You can\'t use that proxy in this guild.')
             self.set_autoproxy(member, proxy['proxid'], latch = 0)
+            if and_proxy:
+                return await self.do_proxy(message, dict(proxy) | {
+                    'become': 1.0, 'matchTags': False
+                    }, self.fetchone(
+                        'select prefs from users where userid = ?',
+                        (member.id,))[0])
 
         await self.mark_success(message, True)
 
