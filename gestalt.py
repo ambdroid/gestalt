@@ -793,8 +793,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if message.guild and user['prefs'] & Prefs.homestuck and (match :=
                 BE_REGEX.fullmatch(content)):
             try:
-                return await self.cmd_autoproxy_set(message, match[1])
-            except UserError:
+                return await self.cmd_autoproxy_set(message, match[1], True)
+            except:
                 pass
 
         match = self.get_proxy_match(message)
