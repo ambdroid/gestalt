@@ -35,7 +35,7 @@ class Object:
         # don't call now() each time
         self.id = ((warptime.warp * 1000) << 22) + Object.nextid
         Object.nextid += 1
-        self.__dict__.update(kwargs)
+        vars(self).update(kwargs)
 
 class User(Object):
     users = {}
@@ -224,7 +224,7 @@ class Webhook(Object):
         if self._deleted or msg.webhook_id != self.id or (thread and
                 thread.parent != self._channel):
             raise NotFound()
-        newmsg = Message(**msg.__dict__)
+        newmsg = Message(**vars(msg))
         newmsg.content = content
         newmsg.edited_at = warptime.now()
         newmsg._prev = msg
