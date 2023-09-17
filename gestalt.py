@@ -813,7 +813,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             msg = None
             prefs = user['prefs']
             if content.startswith('\\') and not match['matchTags']:
-                if content.startswith('\\\\') and match['latch']:
+                if content.startswith('\\\\\\'):
+                    self.set_autoproxy(message.author, None, latch = 0)
+                elif content.startswith('\\\\') and match['latch']:
                     self.set_autoproxy(message.author, None)
                 return
 

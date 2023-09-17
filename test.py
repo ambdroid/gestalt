@@ -1158,7 +1158,8 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, chan, 'no proxy, auto')
         self.assertNotProxied(alpha, chan, '\\\\unlatch')
         self.assertProxied(alpha, chan, 'no proxy, auto')
-        self.assertCommand(alpha, chan, 'gs;ap off')
+        self.assertNotProxied(alpha, chan, '\\\\\\unautoproxy')
+        self.assertNotProxied(alpha, chan, 'no proxy, no auto')
 
     # test member joining when the guild has an @everyone collective
     def test_14_member_join(self):
