@@ -586,15 +586,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             pass
 
 
-    async def do_proxy(self, message, proxy, prefs):
+    async def do_proxy(self, message, content, proxy, prefs):
         authid = message.author.id
         channel = message.channel
         msgfiles = []
-
-        content = (message.content[
-            len(proxy['prefix']) : -len(proxy['postfix']) or None].strip()
-            if proxy['matchTags'] and proxy['flags'] & ProxyFlags.keepproxy == 0
-            else message.content)
 
         if message.attachments:
             totalsize = sum((x.size for x in message.attachments))
@@ -762,7 +757,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 self.set_autoproxy(message.author, None)
                 return
         if match:
-            return dict(match) | dict(member) | {'matchTags': tags}
+            return (dict(match) | dict(member),
+                    (message.content[
+                        len(match['prefix']) : -len(match['postfix']) or None
+                        ].strip()
+                        if tags and match['flags'] & ProxyFlags.keepproxy == 0
+                        else message.content),
+                    tags)
 
 
     async def on_user_message(self, message, user):
@@ -797,7 +798,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             except:
                 pass
 
-        match = self.get_proxy_match(message)
+        (match, stripped, tags) = (self.get_proxy_match(message)
+                or (None, None, None))
 
         # note: pkswaps with own account are intentionally allowed
         if mandatory and (not match or match['state'] != ProxyState.active
@@ -812,7 +814,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         try:
             msg = None
             prefs = user['prefs']
-            if content.startswith('\\') and not match['matchTags']:
+            if content.startswith('\\') and not tags:
                 if content.startswith('\\\\\\'):
                     self.set_autoproxy(message.author, None, latch = 0)
                 elif content.startswith('\\\\') and match['latch']:
@@ -826,7 +828,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 return
             if not self.has_perm(message.channel, manage_messages = True):
                 raise UserError('I need `Manage Messages` permission to proxy.')
-            msg = await self.do_proxy(message, match, prefs)
+            msg = await self.do_proxy(message, stripped, match, prefs)
             if msg and latch:
                 self.set_autoproxy(message.author, match['proxid'])
         finally:
