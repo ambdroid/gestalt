@@ -333,7 +333,9 @@ class GestaltCommands:
                 raise UserError('You can\'t use that proxy in this guild.')
             self.set_autoproxy(member, proxy['proxid'], latch = 0)
             if and_proxy:
-                return await self.do_proxy(message, '\\> Be %s.' % arg,
+                return await self.do_proxy(message,
+                        '\\> [__Be %s.__](%s)' % (arg,
+                            message.channel.jump_url),
                         dict(proxy) | {'become': 1.0},
                         self.fetchone(
                             'select prefs from users where userid = ?',
