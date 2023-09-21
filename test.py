@@ -133,7 +133,7 @@ class Message(Object):
         return self.content # only used in reply embeds
     @property
     def jump_url(self):
-        return 'http://%i/%i/%i' % (self.guild.id, self.channel.id, self.id)
+        return '%s/%i' % (self.channel.jump_url, self.id)
     @property
     def mentions(self):
         # mentions can also be in the embed but that's irrelevant here
@@ -263,6 +263,9 @@ class Channel(Object):
         Channel.channels[self.id] = self
     def __getitem__(self, key):
         return self._messages[key]
+    @property
+    def jump_url(self):
+        return 'http://%i/%i' % (self.guild.id, self.id)
     @property
     def members(self):
         return self.guild.members
@@ -838,7 +841,8 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, chan, 'gs;account config errors off')
         self.assertCommand(alpha, chan, 'gs;account config Homestuck on')
         self.assertProxied(alpha, chan, '>be default guild.')
-        self.assertEqual(chan[-1].content, '\\> Be default guild.')
+        self.assertTrue(
+                chan[-1].content.startswith('\\> [__Be default guild.__]('))
         self.assertProxied(alpha, chan, '==>')
 
     def test_06_query_delete(self):
