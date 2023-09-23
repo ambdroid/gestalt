@@ -1086,8 +1086,7 @@ class GestaltCommands:
                     return await self.cmd_mask_leave(message, row, member)
 
         elif arg in ['edit', 'e']:
-            content = reader.read_remainder()
-            return await self.cmd_edit(message, content)
+            return await self.cmd_edit(message, reader.cmd) # no parsing
 
         elif arg in ['become', 'bc']:
             proxy = self.get_user_proxy(message, reader.read_quote())
