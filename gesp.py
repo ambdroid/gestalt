@@ -453,6 +453,7 @@ class ProgramContext:
     initiator: int
     message: int = None
     channel: int = None
+    guild: int = None
     named: list[int] = None
     members: frozenset[int] = None
     candidate: int = None
@@ -463,7 +464,8 @@ class ProgramContext:
         return ProgramContext(
                 initiator = msg.author.id,
                 message = msg.id,
-                channel = msg.channel.id
+                channel = msg.channel.id,
+                guild = (msg.guild and msg.guild.id) or 0
                 )
     def from_dict(_dict):
         return ProgramContext(**(_dict | ({
@@ -588,6 +590,8 @@ class VoteCreate(VoteConfirm, _type = VoteType.create):
         if autoadd:
             for guild in bot.get_user(user).mutual_guilds:
                 await bot.try_auto_add(user, guild.id, maskid)
+        elif self.context.guild:
+            ActionServer(maskid, self.context.guild).execute(bot)
     def description(self):
         if self.is_done():
             return 'Mask **%s** created!' % discord.utils.escape_markdown(
