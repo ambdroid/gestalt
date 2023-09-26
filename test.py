@@ -2249,14 +2249,14 @@ class GestaltTest(unittest.TestCase):
                 (gestalt.ProxyType.mask,))
         instance.load()
 
-        cmd = self.assertVote(alpha, c, 'gs;m new mask')
+        cmd = self.assertVote(alpha, alpha.dm_channel, 'gs;m new mask')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(cmd, 'mask')
-        interact(c[-1], beta, 'no')
+        interact(alpha.dm_channel[-1], beta, 'no')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(cmd, 'mask')
         self.assertReload()
-        interact(c[-1], alpha, 'no')
+        interact(alpha.dm_channel[-1], alpha, 'no')
         instance.get_user_proxy(cmd, 'mask')
         maskid = instance.fetchone(
                 'select maskid from proxies where cmdname = "mask"')[0]
@@ -2284,8 +2284,11 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c2, 'gs;swap open %s' % alpha.mention)
         self.assertNotCommand(alpha, c2, 'gs;p test-alpha autoadd on')
         self.assertCommand(alpha, c2, 'gs;p mask autoadd on')
-        self.assertVote(alpha, c2, 'gs;m new nowhere')
+        self.assertVote(alpha, c2, 'gs;m new onlyhere')
         interact(c2[-1], alpha, 'no')
+        self.assertCommand(alpha, c2, 'gs;p onlyhere tags onlyhere:text')
+        self.assertVote(alpha, alpha.dm_channel, 'gs;m new nowhere')
+        interact(alpha.dm_channel[-1], alpha, 'no')
         self.assertCommand(alpha, c2, 'gs;p nowhere tags nowhere:text')
         # test both user and gestalt joining a guild
         (_, c3) = mkguild('other guild', instance.user, alpha)
@@ -2293,6 +2296,9 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c3, 'mask:test')
         self.assertProxied(alpha, c2, 'mask:test')
         self.assertProxied(alpha, c4, 'mask:test')
+        self.assertNotProxied(alpha, c3, 'onlyhere:test')
+        self.assertProxied(alpha, c2, 'onlyhere:test')
+        self.assertNotProxied(alpha, c4, 'onlyhere:test')
         self.assertNotProxied(alpha, c3, 'nowhere:test')
         self.assertNotProxied(alpha, c2, 'nowhere:test')
         self.assertNotProxied(alpha, c4, 'nowhere:test')
