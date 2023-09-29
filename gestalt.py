@@ -306,7 +306,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     async def reply(self, replyto, text):
         msg = await self.send_embed(replyto.channel, text)
         # insert into history to allow initiator to delete message if desired
-        if replyto.guild:
+        if msg and replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
             self.mkhistory(msg, replyto.author.id)
         return msg
