@@ -176,6 +176,7 @@ class ProxyFlags(enum.IntFlag):
     keepproxy   = 1 << 1
     echo        = 1 << 2
     autoadd     = 1 << 3
+    nomerge     = 1 << 4
 
 
 @enum.unique

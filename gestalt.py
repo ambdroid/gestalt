@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from collections import defaultdict
 from functools import reduce
 import sqlite3 as sqlite
 import asyncio
@@ -171,6 +172,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     'insert into deleted values (old.maskid);'
                 'end')
 
+        self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()
         self.load()
 
@@ -290,6 +292,21 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 await self.message.remove_reaction(REACT_WAIT, self.client.user)
             except discord.errors.NotFound:
                 pass
+
+
+    class LastMessageCache(defaultdict):
+        def __init__(self):
+            super().__init__(dict)
+        def insert(self, message, proxy):
+            channel = self[message.channel.id]
+            if len(channel) >= LAST_MESSAGE_CACHE_SIZE:
+                channel.pop(next(iter(channel)))
+            channel[message.id] = (message, proxy)
+        def delete(self, event):
+            self[event.channel_id].pop(event.message_id, None)
+        def last(self, channel):
+            if (cache := self[channel.id]):
+                return cache[next(reversed(cache))]
 
 
     def in_progress(self, message):
@@ -562,7 +579,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 timestamp = discord.utils.snowflake_time(orig.id))
         embed.set_author(name = '%s#%s: %s' %
                 ('[Edited] ' if old else '', orig.channel.name,
-                    message.author.display_name),
+                    message.author.display_name.removesuffix(MERGE_PADDING)),
                 icon_url = message.author.display_avatar)
         if old:
             embed.add_field(name = 'Old message', value = old.content,
@@ -584,6 +601,20 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     embed = embed)
         except:
             pass
+
+
+    def should_pad(self, channel, proxy, present):
+        if not (last := self.last_message_cache.last(channel)):
+            return False
+        (lastmsg, lastproxy) = last
+        nick = lastmsg.author.display_name
+        if (pad := nick.endswith(MERGE_PADDING)):
+            nick = nick.removesuffix(MERGE_PADDING)
+        if lastproxy['proxid'] == proxy['proxid']:
+            return pad
+        if (lastproxy['flags'] | proxy['flags']) & ProxyFlags.nomerge:
+            return (nick == present['username']) and not pad
+        return False
 
 
     async def do_proxy(self, message, content, proxy, prefs):
@@ -625,6 +656,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             if random.random() > proxy['become']:
                 return
 
+        if self.should_pad(message.channel, proxy, present):
+            present['username'] += MERGE_PADDING
+
         embed = None
         if message.reference:
             try:
@@ -663,6 +697,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
         self.mkhistory(new, message.author.id, channel = message.channel,
                 orig = message.id, proxy = proxy)
+        self.last_message_cache.insert(new, proxy)
 
         if not proxy['flags'] & ProxyFlags.echo:
             await self.try_delete(message, delay = DELETE_DELAY
@@ -874,6 +909,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if msgid in self.votes:
             del self.votes[msgid]
         self.execute('delete from history where msgid = ?', (msgid,))
+        self.last_message_cache.delete(payload)
 
 
     async def on_raw_bulk_message_delete(self, payload):

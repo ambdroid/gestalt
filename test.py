@@ -2477,6 +2477,43 @@ class GestaltTest(unittest.TestCase):
         self.assertNotIn(vote.id, instance.votes)
         self.assertEqual(type(instance.rules[maskid]), gesp.RulesMajority)
 
+    def test_37_nomerge(self):
+        g = Guild(name = 'merge guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(beta)
+        g._add_member(instance.user)
+
+        self.assertVote(alpha, c, 'gs;m new nomerge')
+        interact(c[-1], alpha, 'no')
+        self.assertVote(alpha, c, 'gs;m nomerge invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertVote(alpha, c, 'gs;m new other')
+        interact(c[-1], alpha, 'no')
+        self.assertCommand(alpha, c, 'gs;p other tags other:text')
+
+        pad = lambda msg : msg.author.display_name.endswith(
+                gestalt.MERGE_PADDING)
+
+        self.assertCommand(alpha, c, 'gs;ap nomerge')
+        self.assertCommand(beta, c, 'gs;ap nomerge')
+        self.assertFalse(pad(self.assertProxied(alpha, c, 'test')))
+        self.assertFalse(pad(self.assertProxied(beta, c, 'test')))
+        self.assertCommand(alpha, c, 'gs;p nomerge nomerge on')
+        self.assertTrue(pad(self.assertProxied(alpha, c, 'test')))
+        self.assertTrue(pad(self.assertProxied(alpha, c, 'test')))
+        self.assertFalse(pad(self.assertProxied(beta, c, 'test')))
+        self.assertTrue(pad(self.assertProxied(alpha, c, 'test')))
+        self.assertFalse(pad(self.assertProxied(alpha, c, 'other:test')))
+        self.assertFalse(pad(self.assertProxied(alpha, c, 'test')))
+        self.assertTrue(pad(self.assertProxied(beta, c, 'test')))
+        self.assertTrue(pad(self.assertProxied(beta, c, 'test')))
+        self.assertFalse(pad(self.assertProxied(alpha, c, 'other:test')))
+        self.assertFalse(pad(self.assertProxied(beta, c, 'test')))
+        c[-1]._react(gestalt.REACT_DELETE, beta)
+        c[-1]._react(gestalt.REACT_DELETE, alpha)
+        self.assertTrue(pad(self.assertProxied(beta, c, 'test')))
+
 
 def main():
     global alpha, beta, gamma, g, instance

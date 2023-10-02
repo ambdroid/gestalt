@@ -52,6 +52,9 @@ BECOME_MAX = 50
 
 SYNC_TIMEOUT = 3600 # in seconds
 
+LAST_MESSAGE_CACHE_SIZE = 20
+MERGE_PADDING = '\N{HAIR SPACE}\N{KHMER VOWEL INHERENT AA}'
+
 WEBHOOK_NAME = 'Gestalt webhook'
 
 HELPMSGS = {
@@ -101,7 +104,9 @@ HELPMSGS = {
         '`{p}proxy (id/name) keepproxy (on/off)`: don\'t remove tags from '
         'proxied messages\n'
         '`{p}proxy (id/name) echo (on/off)`: don\'t delete the original '
-        'message',
+        'message\n'
+        '`{p}proxy (id/name) nomerge (on/off)`: don\'t merge with other '
+        'instances of this proxy',
 
         'swap':
         '**Swaps**: (shortcut `{p}s`)\n'
