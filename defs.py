@@ -203,6 +203,8 @@ class VoteType(enum.IntEnum):
     consensus   = 2
     create      = 3
     preinvite   = 4
+#   swap        = 5
+    pkswap      = 6
 
 
 @enum.unique

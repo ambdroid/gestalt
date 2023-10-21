@@ -466,9 +466,10 @@ class GestaltCommands:
     async def cmd_swap_close(self, message, proxy):
         self.execute(
                 'delete from proxies '
-                'where (userid, otherid) = (?, ?)'
-                'or (otherid, userid) = (?, ?)',
-                (proxy['userid'], proxy['otherid'])*2)
+                'where ('
+                    '(userid, otherid) = (?, ?) or (otherid, userid) = (?, ?)'
+                ') and type = ?',
+                (proxy['userid'], proxy['otherid'])*2 + (ProxyType.swap,))
 
         await self.mark_success(message, True)
 
@@ -666,9 +667,10 @@ class GestaltCommands:
             raise UserError('Could not reach PluralKit API.')
 
 
-    async def cmd_pk_swap(self, message, swap, pkhid):
+    async def cmd_pk_swap(self, message, user, pkhid):
+        authid = message.author.id
         async with self.in_progress(message):
-            system = await self.pk_api_get('/systems/' + str(swap['userid']))
+            system = await self.pk_api_get('/systems/' + str(authid))
             member = await self.pk_api_get('/members/' + pkhid)
         try:
             if system['id'] != member['system']:
@@ -676,32 +678,19 @@ class GestaltCommands:
             # in the unlikely that PK goes rogue and tries to mess with us
             if len(member['uuid']) == 5:
                 raise UserError(ERROR_PKAPI)
-            # it would be really nice to just check the pkhid in the command
-            # that way we could check if the proxy exists as the first step
-            # unfortunately, pkhids are NOT guaranteed to be constant!
-            # therefore, we're forced to use the pkuuid...
-            # NB: a pk system may be attached to multiple accounts
-            if self.fetchone(
-                    'select 1 from proxies '
-                    'where (userid, maskid, type, state) = (?, ?, ?, ?)',
-                    (swap['otherid'], member['uuid'], ProxyType.pkswap,
-                        ProxyState.active)):
+            vote = gesp.VotePkswap(user = user.id, name = member['name'],
+                    uuid = member['uuid'],
+                    receipt = '%s\'s %s' % (user.name, member['name']),
+                    context = gesp.ProgramContext.from_message(message))
+            if vote.is_redundant(self):
                 return
-            if swap['cmdname']:
-                receipt = '%s\'s %s' % (swap['cmdname'], member['name'])
+            if user.id == authid:
+                vote.execute(self)
+                await self.mark_success(message, True)
             else:
-                receipt = '%s (Receipt)' % member['name']
-            proxid = self.mkproxy(swap['otherid'], ProxyType.pkswap,
-                    cmdname = member['name'], otherid = swap['userid'],
-                    maskid = member['uuid'])
-            if swap['userid'] != swap['otherid']:
-                self.mkproxy(swap['userid'], ProxyType.pkreceipt,
-                        cmdname = receipt, otherid = swap['otherid'],
-                        maskid = proxid, state = ProxyState.inactive)
+                await self.initiate_vote(vote)
         except KeyError:
             raise UserError(ERROR_PKAPI)
-
-        await self.mark_success(message, True)
 
 
     async def cmd_pk_close(self, message, proxy):
@@ -1102,13 +1091,11 @@ class GestaltCommands:
 
             arg = reader.read_word()
             if arg == 'swap':
-                swap = self.get_user_proxy(message, reader.read_quote())
-                if (swap['type'] != ProxyType.swap
-                        or swap['state'] != ProxyState.active):
-                    raise UserError('Please provide an active swap.')
+                if (member := reader.read_member()) is None:
+                    raise UserError('User not found.')
                 pkid = reader.read_word()
 
-                return await self.cmd_pk_swap(message, swap, pkid)
+                return await self.cmd_pk_swap(message, member, pkid)
 
             elif arg == 'close':
                 swap = self.get_user_proxy(message, reader.read_quote())

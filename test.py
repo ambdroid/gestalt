@@ -1441,29 +1441,44 @@ class GestaltTest(unittest.TestCase):
                 '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
                 '"color": "123456"}')
 
-        self.assertCommand(alpha, c, 'gs;swap open %s' % beta.mention)
-        # swap needs to be active
-        self.assertNotCommand(alpha, c, 'gs;pk swap test-beta aaaaa')
-        self.assertCommand(beta, c, 'gs;swap open %s' % alpha.mention)
-        self.assertCommand(alpha, c, 'gs;pk swap test-beta aaaaa')
+        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        interact(c[-1], alpha, 'yes')
+        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        interact(c[-1], beta, 'no')
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(send(beta, c, 'a'), 'member!')
+        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         # shouldn't work twice
-        self.assertNotCommand(alpha, c, 'gs;pk swap test-beta aaaaa')
+        self.assertNotVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
         # should be able to send to two users
         self.assertCommand(alpha, c, 'gs;swap open %s' % gamma.mention)
         self.assertCommand(gamma, c, 'gs;swap open %s' % alpha.mention)
-        self.assertCommand(alpha, c, 'gs;pk swap test-gamma aaaaa')
-        self.assertNotCommand(alpha, c, 'gs;pk swap test-gamma aaaaa')
-        self.assertIsNotNone(instance.get_user_proxy(send(gamma, c, 'a'),
-            'member!'))
-        # should be deleted upon swap close
+        msg = self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % gamma.mention)
+        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % gamma.mention)
+        interact(msg, gamma, 'yes')
+        interact(c[-1], gamma, 'yes')
+        instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
+        # should NOT be deleted upon swap close
         self.assertCommand(alpha, c, 'gs;swap close test-gamma')
-        with self.assertRaises(gestalt.UserError):
-            instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
+        #with self.assertRaises(gestalt.UserError):
+        instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
         # handle PluralKit linked accounts
         instance.session._add('/systems/' + str(gamma.id), '{"id": "exmpl"}')
         self.assertCommand(beta, c, 'gs;swap open %s' % gamma.mention)
         self.assertCommand(gamma, c, 'gs;swap open %s' % beta.mention)
-        self.assertNotCommand(gamma, c, 'gs;pk swap test-beta aaaaa')
+        self.assertNotVote(gamma, c, 'gs;pk swap %s aaaaa' % beta.mention)
+
+        # test sending to self
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(send(alpha, c, 'a'), 'member!')
+        self.assertCommand(alpha, c, 'gs;pk swap %s aaaaa' % alpha.mention)
+        instance.get_user_proxy(send(alpha, c, 'a'), 'member!')
+        with self.assertRaises(gestalt.UserError):
+            instance.get_user_proxy(send(alpha, c, 'a'),
+                    'test-alpha\'s member!')
+        self.assertCommand(alpha, c, 'gs;pk close member!')
 
         # test using it!
         self.assertCommand(beta, c, 'gs;p member! tags [text]')
@@ -1522,27 +1537,24 @@ class GestaltTest(unittest.TestCase):
         # test closing specific pkswap
         # first by receipt
         instance.get_user_proxy(send(beta, c, 'a'), 'member!')
+        instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
         self.assertCommand(alpha, c, 'gs;pk close "test-beta\'s member!"')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
-        instance.get_user_proxy(send(beta, c, 'a'), 'test-alpha')
-        instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta')
 
         # then by pkswap
-        self.assertCommand(alpha, c, 'gs;pk swap test-beta aaaaa')
+        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        interact(c[-1], beta, 'yes')
         instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         self.assertCommand(beta, c, 'gs;pk close member!')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
-        instance.get_user_proxy(send(beta, c, 'a'), 'test-alpha')
-        instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta')
 
         self.assertNotCommand(beta, c, 'gs;pk close test-alpha')
-        self.assertCommand(beta, c, 'gs;swap close test-alpha')
 
     def test_24_logs(self):
         g1 = Guild(name = 'logged guild')
@@ -1750,7 +1762,8 @@ class GestaltTest(unittest.TestCase):
         pkmsg = run(pkhook.send('member!', '', content = 'new message'))
         instance.session._add('/messages/' + str(pkmsg.id),
                 '{"member": {"uuid": "a-a-a-a-a"}}')
-        self.assertCommand(alpha, cmds, 'gs;pk swap test-beta aaaaa')
+        self.assertVote(alpha, cmds, 'gs;pk swap %s aaaaa' % beta.mention)
+        interact(cmds[-1], beta, 'yes')
         self.assertCommand(beta, cmds, 'gs;p member! tags memb:text')
         # unsynced pkswap should be deleted
         self.assertDeleted(beta, main, 'memb:not synced')
@@ -1771,6 +1784,7 @@ class GestaltTest(unittest.TestCase):
                 % main.mention)
         self.assertCommand(alpha, main, 'gs;swap close test-beta')
         self.assertCommand(alpha, main, 'gs;swap close test-alpha')
+        self.assertCommand(alpha, main, 'gs;pk close "test-beta\'s member!"')
 
     def test_28_emojis(self):
         g1 = Guild(name = 'emoji guild')
@@ -1844,7 +1858,8 @@ class GestaltTest(unittest.TestCase):
         instance.session._add('/members/aaaaa',
                 '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
                 '"color": "123456"}')
-        self.assertCommand(alpha, c1, 'gs;pk swap test-beta aaaaa')
+        self.assertVote(alpha, c1, 'gs;pk swap %s aaaaa' % beta.mention)
+        interact(c1[-1], beta, 'yes')
         self.assertCommand(beta, c1, 'gs;ap member!')
         self.assertNotCommand(alpha, c1, 'gs;ap "test-beta\'s member!"')
         g1._remove_member(alpha)
