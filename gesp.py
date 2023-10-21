@@ -693,6 +693,46 @@ class VoteConsensus(VoteProgram, _type = VoteType.consensus):
         return view
 
 
+@dc.dataclass
+class VotePkswap(VoteConfirm, _type = VoteType.pkswap):
+    name: str = None
+    uuid: str = None
+    receipt: str = None
+    def execute(self, bot):
+        if not self.is_redundant(bot):
+            userid = list(self.eligible)[0]
+            sender = self.context.initiator
+            proxid = bot.mkproxy(userid, ProxyType.pkswap, cmdname = self.name,
+                    otherid = sender, maskid = self.uuid)
+            if userid != sender:
+                bot.mkproxy(sender, ProxyType.pkreceipt,
+                        cmdname = self.receipt, otherid = userid,
+                        maskid = proxid, state = ProxyState.inactive)
+    async def on_done(self, bot):
+        if self.yes:
+            self.execute(bot)
+    def description(self):
+        if self.yes:
+            desc = '<@%i> accepted <@%i>\'s %s.'
+        elif self.no:
+            desc = '<@%i> declined <@%i>\'s %s.'
+        else:
+            desc = '<@%i>, do you want <@%i>\'s %s?'
+        return desc % (list(self.eligible)[0], self.context.initiator,
+                self.name)
+    def is_redundant(self, bot):
+        # it would be really nice to just check the pkhid in the command
+        # that way we could check if the proxy exists as the first step
+        # unfortunately, pkhids are NOT guaranteed to be constant!
+        # therefore, we're forced to use the pkuuid...
+        # NB: a pk system may be attached to multiple accounts
+        return bool(bot.fetchone(
+            'select 1 from proxies '
+            'where (userid, maskid, type, state) = (?, ?, ?, ?)',
+            (list(self.eligible)[0], self.uuid, ProxyType.pkswap,
+                ProxyState.active)))
+
+
 class GestaltVoting:
     def load(self):
         self.votes = {row['msgid']: Vote.from_json(row['state'])
