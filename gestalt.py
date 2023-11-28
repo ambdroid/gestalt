@@ -703,19 +703,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             await self.try_delete(message, delay = DELETE_DELAY
                     if prefs & Prefs.delay else None)
 
-        # try to automatically fix external emojis
-        # custom emojis are of the form /<:[a-zA-Z90-9_~]+:[0-9]+>/
-        # when proxied they are usually replaced with the :name: part
-        # so all we have to do is count the angle brackets
-        # (don't compare content != content bc not sure what else might change)
-        if new.content.count('<') != present['content'].count('<'):
-            try:
-                new = await hook.edit_message(new.id,
-                        content = present['content'], thread = thread,
-                        allowed_mentions = am)
-            except:
-                pass
-
         await self.make_log_message(new, message, proxy)
 
         return new
