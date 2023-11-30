@@ -491,7 +491,7 @@ class Vote(metaclass = serializable):
     threshold: int = 0
     yes: set[int] = dc.field(default_factory = set)
     no: set[int] = dc.field(default_factory = set)
-    async def on_interaction(self, interaction, bot):
+    def on_interaction(self, interaction, bot):
         if (userid := interaction.user.id) in self.eligible:
             button = interaction.data['custom_id']
             if button == 'abstain':
@@ -514,17 +514,18 @@ class Vote(metaclass = serializable):
                     desc = 'You voted %s.' % button
         else:
             desc = 'You are not eligible for this vote.'
+        return self.after_interaction(interaction, desc, bot) # return coro
+    async def after_interaction(self, interaction, desc, bot):
+        # TODO update message w/tally
         await interaction.response.send_message(
                 embed = discord.Embed(description = desc),
                 ephemeral = True)
-        if interaction.message.embeds[0].description != self.description():
-            await interaction.message.edit(
-                embed = discord.Embed(description = self.description()))
-        # TODO update message w/tally
-        if self.is_done():
-            await self.on_done(bot)
-            await interaction.message.edit(view = self.view(True))
-            return True
+        embed = discord.Embed(description = self.description())
+        embed = (embed if interaction.message.embeds[0] != embed
+                else discord.utils.MISSING)
+        view = self.view(True) if self.is_done() else discord.utils.MISSING
+        if embed or view:
+            await interaction.message.edit(embed = embed, view = view)
     def is_done(self):
         raise NotImplementedError()
     async def on_done(self, bot):
@@ -629,6 +630,8 @@ class VoteProgram(Vote):
         # (but it's not actually default)
         if not (self.state and self.action):
             raise ValueError()
+    async def on_done(self, bot):
+        await bot.step_program(self.state, self.context, self.action)
     @classmethod
     def class_dict(cls, _dict):
         return super().class_dict(_dict | {
@@ -645,6 +648,7 @@ class VoteApproval(VoteProgram, _type = VoteType.approval):
         # however, this might change so that expiry = False
         # therefore still pass it through context for forward compatibility
         self.context.answer = True
+        await super().on_done(bot)
     def description(self):
         return '**%i**/**%i** votes needed' % (len(self.yes), self.threshold)
     def view(self, disabled = False):
@@ -670,6 +674,7 @@ class VoteConsensus(VoteProgram, _type = VoteType.consensus):
     async def on_done(self, bot):
         self.context.yes = frozenset(self.yes)
         self.context.no = frozenset(self.no)
+        await super().on_done(bot)
     def view(self, disabled = False):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
@@ -852,9 +857,12 @@ class GestaltVoting:
                     embed = discord.Embed(description =
                         'That vote has already concluded.'),
                     ephemeral = True)
-        if await vote.on_interaction(interaction, self):
+        # NOTE on_interaction is sync, but returns coro from after_interaction
+        coro = vote.on_interaction(interaction, self)
+        if vote.is_done():
+            # this needs to happen before any async stuff
+            # otherwise race conditions are possible
             del self.votes[msgid]
-            if isinstance(vote, VoteProgram):
-                await self.step_program(vote.state, vote.context,
-                        vote.action)
+            await vote.on_done(self)
+        await coro
 
