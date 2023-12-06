@@ -337,7 +337,6 @@ class ActionRules(VotableAction, _type = ActionType.rules):
                 return # TODO errors
         bot.execute('update masks set rules = ? where maskid = ?',
                 (self.newrules.to_json(), self.mask))
-        bot.rules[self.mask] = self.newrules
 
 
 @dc.dataclass
@@ -742,10 +741,24 @@ class GestaltVoting:
     def load(self):
         self.votes = {row['msgid']: Vote.from_json(row['state'])
                 for row in self.fetchall('select * from votes')}
-        # if rules got saved then they've passed all checks already
-        # so no need to worry about exceptions
-        self.rules = {row['maskid']: Rules.from_json(row['rules'])
-                for row in self.fetchall('select maskid, rules from masks')}
+        # TODO remove this; left over from in-memory cache
+        class RulesDict:
+            def __init__(self, bot):
+                self.bot = bot
+            def get(self, key):
+                if row := self.bot.fetchone(
+                        'select rules from masks where maskid = ?',
+                        (key,)):
+                    return Rules.from_json(row[0])
+            def __getitem__(self, key):
+                if rules := self.get(key):
+                    return rules
+                raise KeyError(key)
+            def __setitem__(self, key, value):
+                self.bot.execute(
+                        'update masks set rules = ? where maskid = ?',
+                        (value.to_json(), key))
+        self.rules = RulesDict(self)
         # paying for past decisions in RAM. sigh.
         # maybe i'll remove this later but rn i don't care
         # (we all know i won't)
