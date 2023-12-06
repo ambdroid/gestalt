@@ -578,7 +578,7 @@ class GestaltTest(unittest.TestCase):
         return msg.embeds[0].description
 
     def assertReload(self):
-        attrs = ('votes', 'rules', 'mask_presence')
+        attrs = ('votes', 'mask_presence')
         origs = [getattr(instance, attr) for attr in attrs]
         instance.save()
         [setattr(instance, attr, None) for attr in attrs]

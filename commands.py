@@ -560,7 +560,6 @@ class GestaltCommands:
                 raise UserError(
                         '...Sorry, I lost a race condition. Don\'t panic, '
                         'I\'m looking into it. Try again?')
-            del self.rules[maskid]
             if maskid in self.mask_presence:
                 del self.mask_presence[maskid]
         elif authid in self.rules[maskid].named:
