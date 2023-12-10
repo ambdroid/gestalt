@@ -741,24 +741,6 @@ class GestaltVoting:
     def load(self):
         self.votes = {row['msgid']: Vote.from_json(row['state'])
                 for row in self.fetchall('select * from votes')}
-        # TODO remove this; left over from in-memory cache
-        class RulesDict:
-            def __init__(self, bot):
-                self.bot = bot
-            def get(self, key):
-                if row := self.bot.fetchone(
-                        'select rules from masks where maskid = ?',
-                        (key,)):
-                    return Rules.from_json(row[0])
-            def __getitem__(self, key):
-                if rules := self.get(key):
-                    return rules
-                raise KeyError(key)
-            def __setitem__(self, key, value):
-                self.bot.execute(
-                        'update masks set rules = ? where maskid = ?',
-                        (value.to_json(), key))
-        self.rules = RulesDict(self)
         # paying for past decisions in RAM. sigh.
         # maybe i'll remove this later but rn i don't care
         # (we all know i won't)
@@ -779,8 +761,15 @@ class GestaltVoting:
                     if discord.utils.snowflake_time(msgid) > cutoff))
 
 
+    def get_rules(self, maskid):
+        if row := self.fetchone(
+                'select rules from masks where maskid = ?',
+                (maskid,)):
+            return Rules.from_json(row[0])
+
+
     async def initiate_action(self, context, action):
-        if not (rule := self.rules.get(action.mask)):
+        if not (rule := self.get_rules(action.mask)):
             return # TODO errors?
         context.named = rule.named
         context.members = frozenset(
@@ -846,7 +835,7 @@ class GestaltVoting:
     def nominate(self, maskid, nominator, nominee):
         if not self.is_member_of(maskid, nominee):
             return # TODO errors
-        rules = self.rules[maskid]
+        rules = self.get_rules(maskid)
         rules.named = [nominee if i == nominator else i for i in rules.named]
         ActionRules(maskid, rules).execute(self)
 
