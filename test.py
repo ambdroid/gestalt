@@ -2227,10 +2227,10 @@ class GestaltTest(unittest.TestCase):
             gesp.ProgramContext.from_message(send(alpha, c, 'msg')),
             gesp.ActionRules('mask5', gesp.RulesDictator(user = alpha.id))))
         interact(c[-1], alpha, 'yes')
-        self.assertEqual(type(instance.rules['mask5']), gesp.RulesMajority)
+        self.assertEqual(type(instance.get_rules('mask5')), gesp.RulesMajority)
         self.assertReload()
         interact(c[-1], beta, 'yes')
-        self.assertEqual(type(instance.rules['mask5']), gesp.RulesDictator)
+        self.assertEqual(type(instance.get_rules('mask5')), gesp.RulesDictator)
 
         instance.execute('insert into masks values '
                 '("mask6", "", NULL, NULL, ?, 0, 0, 0)',
@@ -2348,22 +2348,22 @@ class GestaltTest(unittest.TestCase):
         self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         self.assertCommand(alpha, c, 'gs;m maask rules unanimous')
-        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesUnanimous)
         self.assertVote(beta, c, 'gs;m %s join' % maaskid)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         interact(c[-1], alpha, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, beta.id))
         self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
         self.assertVote(alpha, c, 'gs;m maask rules handsoff')
-        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesUnanimous)
         interact(c[-1], alpha, 'yes')
-        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesUnanimous)
         interact(c[-1], alpha, 'abstain')
-        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesUnanimous)
         interact(c[-1], beta, 'yes')
-        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesUnanimous)
+        self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesUnanimous)
         interact(c[-1], alpha, 'yes')
-        self.assertEqual(type(instance.rules[maaskid]), gesp.RulesHandsOff)
+        self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesHandsOff)
         # test the handsoff clause that the dictator can't be removed
         # this is the only time that (candidate) is used in the default rules
         # comment out action.add_context(context) to see this fail
@@ -2384,6 +2384,7 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
         self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % beta.mention)
         self.assertCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
+        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
         self.assertCommand(beta, c, 'gs;m maask leave')
         self.assertVote(beta, c, 'gs;m %s join' % maaskid)
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
@@ -2488,7 +2489,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIn(vote.id, instance.votes)
         interact(vote, gamma, 'yes')
         self.assertNotIn(vote.id, instance.votes)
-        self.assertEqual(type(instance.rules[maskid]), gesp.RulesMajority)
+        self.assertEqual(type(instance.get_rules(maskid)), gesp.RulesMajority)
 
     def test_37_nomerge(self):
         g = Guild(name = 'merge guild')

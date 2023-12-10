@@ -539,11 +539,11 @@ class GestaltCommands:
             await self.mark_success(message, True)
 
 
-    async def cmd_mask_nominate(self, message, maskid, member):
+    async def cmd_mask_nominate(self, message, mask, member):
         authid = message.author.id
-        if authid not in self.rules[maskid].named:
+        if authid not in gesp.Rules.from_json(mask['rules']).named:
             raise UserError('You are not named in the rules.')
-        self.nominate(maskid, authid, member.id)
+        self.nominate(mask['maskid'], authid, member.id)
         await self.mark_success(message, True)
 
 
@@ -562,7 +562,7 @@ class GestaltCommands:
                         'I\'m looking into it. Try again?')
             if maskid in self.mask_presence:
                 del self.mask_presence[maskid]
-        elif authid in self.rules[maskid].named:
+        elif authid in gesp.Rules.from_json(mask['rules']).named:
             if not member:
                 raise UserError(
                         'You are named in the rules of this mask and must '
@@ -1062,7 +1062,7 @@ class GestaltCommands:
                         raise UserError('That user is not a member.')
                     if member.id == authid:
                         raise UserError(ERROR_CURSED)
-                    return await self.cmd_mask_nominate(message, maskid, member)
+                    return await self.cmd_mask_nominate(message, row, member)
 
                 if action == 'leave':
                     if not self.is_member_of(maskid, authid):
