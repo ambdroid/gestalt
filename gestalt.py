@@ -165,12 +165,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'after delete on masks begin '
                     'insert into deleted values (old.maskid);'
                 'end')
-        # NOTE: this would include masks if masks can be removed from guilds
         self.execute(
                 'create temp trigger delete_guildmask '
-                'after delete on guildmasks begin '
+                'after delete on guildmasks when (old.type = %i) begin '
                     'insert into deleted values (old.maskid);'
-                'end')
+                'end' % ProxyType.collective)
 
         self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()

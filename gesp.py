@@ -294,12 +294,14 @@ class ActionRemove(VotableAction, _type = ActionType.remove):
 class ActionServer(VotableAction, _type = ActionType.server):
     server: int
     def execute(self, bot):
-        guilds = bot.mask_presence[self.mask]
-        if bot.get_guild(self.server) and self.server not in guilds:
-            bot.execute('insert into guildmasks values'
-                    '(?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL)',
-                    (self.mask, self.server, ProxyType.mask, int(time.time())))
-            guilds.add(self.server)
+        if bot.fetchone('select 1 from masks where maskid = ?', (self.mask,)):
+            guilds = bot.mask_presence[self.mask]
+            if bot.get_guild(self.server) and self.server not in guilds:
+                bot.execute('insert into guildmasks values'
+                        '(?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL)',
+                        (self.mask, self.server, ProxyType.mask,
+                            int(time.time())))
+                guilds.add(self.server)
 
 
 @dc.dataclass
