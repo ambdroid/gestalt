@@ -2491,6 +2491,28 @@ class GestaltTest(unittest.TestCase):
         self.assertNotIn(vote.id, instance.votes)
         self.assertEqual(type(instance.get_rules(maskid)), gesp.RulesMajority)
 
+        # make sure that deleted masks don't leave trash in guildmasks
+        # this doesn't cause any side effects that i know of but it's bad vibes
+        self.assertVote(alpha, c, 'gs;m new ghost')
+        interact(c[-1], alpha, 'no')
+        maskid = instance.fetchone(
+                'select maskid from proxies where cmdname = "ghost"')[0]
+        self.assertVote(alpha, c, 'gs;m ghost invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertCommand(alpha, c, 'gs;m ghost rules unanimous')
+        self.assertVote(alpha, c2, 'gs;m ghost add')
+        interact(c2[-1], beta, 'yes')
+        self.assertCommand(beta, c, 'gs;m ghost leave')
+        self.assertCommand(alpha, c, 'gs;m ghost leave')
+        self.assertIsNone(instance.fetchone(
+            'select 1 from guildmasks where maskid = ?',
+            (maskid,)))
+        # TODO maybe ex-members shouldn't vote? eh.
+        interact(c2[-1], alpha, 'yes')
+        self.assertIsNone(instance.fetchone(
+            'select 1 from guildmasks where maskid = ?',
+            (maskid,)))
+
     def test_37_nomerge(self):
         g = Guild(name = 'merge guild')
         c = g._add_channel('main')

@@ -560,6 +560,7 @@ class GestaltCommands:
                 raise UserError(
                         '...Sorry, I lost a race condition. Don\'t panic, '
                         'I\'m looking into it. Try again?')
+            self.execute('delete from guildmasks where maskid = ?', (maskid,))
             if maskid in self.mask_presence:
                 del self.mask_presence[maskid]
         elif authid in gesp.Rules.from_json(mask['rules']).named:
