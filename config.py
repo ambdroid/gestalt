@@ -145,8 +145,8 @@ HELPMSGS = {
         '`{p}collective (collective id) avatar (link/attacjment)`: set '
         'Collective avatar.\n'
         '`{p}collective (collective id) color (color)`: set Collective color.\n'
-        '`{p}collective new (@role/everyone)`: create a new Collective. '
-        'Requires `Manage Roles` permission.\n'
+        '~~`{p}collective new (@role/everyone)`: create a new Collective. '
+        'Requires `Manage Roles` permission.~~\n'
         '`{p}collective (collective id) delete`: requires `Manage Roles`.',
 
         'mask':

@@ -366,24 +366,8 @@ class GestaltCommands:
 
 
     async def cmd_collective_new(self, message, role):
-        # new collective with name of role and no avatar
-        collid = self.gen_id()
-        # '@everyone' is awkward and more likely to cause collisions as cmdname
-        name = role.guild.name if role == role.guild.default_role else role.name
-        self.execute('insert or ignore into guildmasks values'
-                '(?, ?, ?, ?, NULL, NULL, ?, ?, NULL, NULL)',
-                (collid, role.guild.id, role.id, name, ProxyType.collective,
-                    int(time.time())))
-        # if there wasn't already a collective on that role
-        if self.cur.rowcount == 1:
-            for member in role.members:
-                if not member.bot:
-                    self.mkproxy(member.id, ProxyType.collective,
-                            cmdname = name, guildid = role.guild.id,
-                            otherid = role.id, maskid = collid)
-
-            await self.mark_success(message, True)
-
+        raise UserError(
+                'Collectives are deprecated and their creation is disabled.')
 
     async def cmd_collective_update(self, message, collid, name, value):
         self.execute({
