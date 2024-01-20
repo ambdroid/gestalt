@@ -386,8 +386,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     async def on_guild_join(self, guild):
         for member in guild.members:
-            if not member.bot:
-                await self.try_auto_add_member(member)
+            await self.on_member_join(member)
 
 
     async def on_webhooks_update(self, channel):
@@ -397,7 +396,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     async def on_member_join(self, member):
         if not member.bot:
-            await self.try_auto_add_member(member)
+            for maskid, flags in self.fetchall(
+                    'select maskid, flags from proxies '
+                    'where (userid, type) = (?, ?)',
+                    (member.id, ProxyType.mask)):
+                # NOTE: this may block for a while with lots of masks
+                if flags & ProxyFlags.autoadd:
+                    await self.try_auto_add(member.id, member.guild.id, maskid)
 
 
     async def on_raw_member_remove(self, payload):
