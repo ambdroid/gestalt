@@ -74,15 +74,6 @@ class CommandReader:
             _ = self.read_word()
             return self.msg.mentions[0]
 
-    def read_role(self):
-        name = self.read_quote()
-        if self.msg.role_mentions:
-            return self.msg.role_mentions[0]
-        guild = self.msg.guild
-        if name == 'everyone':
-            return guild.default_role
-        return discord.utils.get(guild.roles, name = name)
-
     def read_channel(self):
         _ = self.read_word() # discard
         if self.msg.channel_mentions:
@@ -114,7 +105,7 @@ class GestaltCommands:
             raise UserError('Please provide a proxy name/ID.')
 
         # can't do 'and ? in (proxid, cmdname)'; breaks case insensitivity
-        proxies = self.fetch_valid_proxies(
+        proxies = self.fetchall(
                 'select * from proxies where userid = ? '
                 'and (proxid = ? or cmdname = ?) '
                 'and state != ?',
@@ -185,14 +176,6 @@ class GestaltCommands:
             if not user:
                 return
             parens = 'with **%s**' % escape(user)
-        elif proxy['type'] == ProxyType.collective:
-            line = SYMBOL_COLLECTIVE + line
-            guild = self.get_guild(proxy['guildid'])
-            if not guild or not (role := guild.get_role(proxy['roleid'])):
-                return
-            parens = ('**%s** on **%s** in **%s**'
-                    % (escape(proxy['nick']), escape(role.name),
-                        escape(guild.name)))
         elif proxy['type'] == ProxyType.pkswap:
             line = SYMBOL_PKSWAP + line
             # we don't have pkhids
@@ -202,7 +185,7 @@ class GestaltCommands:
             line = SYMBOL_RECEIPT + line
         elif proxy['type'] == ProxyType.mask:
             line = SYMBOL_MASK + line
-            parens = '**%s** on [`%s`]' % (escape(proxy['mnick']),
+            parens = '**%s** on [`%s`]' % (escape(proxy['nick']),
                     proxy['maskid'].upper())
 
         if proxy['prefix'] is not None:
@@ -219,14 +202,9 @@ class GestaltCommands:
 
 
     async def cmd_proxy_list(self, message, all_):
-        # TODO this will start listing proxies multiple times again
-        # if server nicknames are added
-        # probably just fetch masks in a different query
-        rows = sorted(self.fetch_valid_proxies(
-                'select distinct proxies.*, guildmasks.roleid, '
-                'guildmasks.nick, masks.nick as mnick from '
-                    'proxies left join guildmasks using (maskid) '
-                    'left join masks using (maskid) '
+        rows = sorted(self.fetchall(
+                'select proxies.*, masks.nick from proxies '
+                'left join masks using (maskid) '
                 'where proxies.userid = ?',
                 (message.author.id,)),
                 key = lambda row: (
@@ -255,7 +233,7 @@ class GestaltCommands:
     async def cmd_proxy_tags(self, message, proxy, tags):
         (prefix, postfix) = parse_tags(tags)
         if prefix is not None and self.get_tags_conflict(message.author.id,
-            proxy['guildid'], (prefix, postfix)) not in ([proxy['proxid']], []):
+            (prefix, postfix)) not in ([proxy['proxid']], []):
             raise UserError(ERROR_TAGS)
 
         self.execute(
@@ -283,11 +261,9 @@ class GestaltCommands:
 
     async def cmd_autoproxy_view(self, message):
         ap = self.fetchone(
-                'select members.latch, members.become, proxies.*, '
-                'guildmasks.roleid, guildmasks.nick, masks.nick as mnick from '
-                    'members '
+                'select members.latch, members.become, proxies.*, masks.nick '
+                'from members '
                     'left join proxies using (proxid) '
-                    'left join guildmasks using (maskid) '
                     'left join masks using (maskid) '
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
@@ -342,50 +318,6 @@ class GestaltCommands:
                             (member.id,))[0])
 
         await self.mark_success(message, True)
-
-
-    async def cmd_collective_list(self, message):
-        rows = self.fetchall(
-                'select * from guildmasks where (guildid, type) = (?, ?)',
-                (message.guild.id, ProxyType.collective))
-
-        if len(rows) == 0:
-            text = 'This guild does not have any collectives.'
-        else:
-            guild = message.guild
-            text = '\n'.join(['`%s`: %s %s' %
-                    (row['maskid'].upper(),
-                        '**%s**' % escape(row['nick']),
-                        # @everyone.mention shows up as @@everyone. weird!
-                        # note that this is an embed; mentions don't work
-                        ('@everyone' if row['roleid'] == guild.id
-                            else guild.get_role(row['roleid']).mention))
-                    for row in rows])
-
-        await self.reply(message, text)
-
-
-    async def cmd_collective_new(self, message, role):
-        raise UserError(
-                'Collectives are deprecated and their creation is disabled.')
-
-    async def cmd_collective_update(self, message, collid, name, value):
-        self.execute({
-                'nick': 'update guildmasks set nick = ? where maskid = ?',
-                'avatar': 'update guildmasks set avatar = ? where maskid = ?',
-                'color': 'update guildmasks set color = ? where maskid = ?',
-                }[name],
-                (value, collid))
-        if self.cur.rowcount == 1:
-            await self.mark_success(message, True)
-
-
-    async def cmd_collective_delete(self, message, coll):
-        self.execute('delete from proxies where maskid = ?', (coll['maskid'],))
-        self.execute('delete from guildmasks where maskid = ?',
-                (coll['maskid'],))
-        if self.cur.rowcount == 1:
-            await self.mark_success(message, True)
 
 
     async def cmd_config_list(self, message, user):
@@ -803,83 +735,6 @@ class GestaltCommands:
                 return await self.cmd_autoproxy_set(message, arg)
             return await self.cmd_autoproxy_view(message)
 
-        elif arg in ['collective', 'c']:
-            if not message.guild:
-                raise UserError(ERROR_DM)
-            guild = message.guild
-            arg = reader.read_quote()
-
-            if arg in ['', 'list']:
-                return await self.cmd_collective_list(message)
-
-            elif arg.lower() in ['new', 'create']:
-                if not message.author.guild_permissions.manage_roles:
-                    raise UserError(ERROR_MANAGE_ROLES)
-
-                role = reader.read_role()
-                if role == None:
-                    raise UserError('Please provide a role.')
-
-                if role.managed:
-                    # bots, server booster, integrated subscription services
-                    # requiring users to pay to participate is antithetical
-                    # to community-oriented identity play
-                    raise UserError(ERROR_CURSED)
-
-                return await self.cmd_collective_new(message, role)
-
-            else: # arg is collective ID/proxy name
-                collid = arg
-                action = reader.read_word().lower()
-
-                try:
-                    # if get_user_proxy succeeds, ['maskid'] must exist
-                    collid = self.get_user_proxy(message, collid)['maskid']
-                except UserError:
-                    pass # could save error, but would be confusing
-                row = self.fetchone('select * from guildmasks where maskid = ?',
-                        (collid,))
-                # non-collective guildmasks shouldn't have visible ids
-                # but check just to be safe
-                if row == None or row['type'] != ProxyType.collective:
-                    raise UserError('Collective not found.')
-                if row['guildid'] != guild.id:
-                    raise UserError('That collective belongs to another guild.')
-
-                if newaction := gesp.ActionChange.valid(action):
-                    role = guild.get_role(row['roleid'])
-                    if role == None:
-                        raise UserError('That role no longer exists?')
-
-                    member = message.author # Member because this isn't a DM
-                    if not (role in member.roles
-                            or member.guild_permissions.manage_roles):
-                        raise UserError(
-                                'You don\'t have access to that collective!')
-
-                    if newaction == 'nick':
-                        if not (arg := reader.read_remainder()):
-                            raise UserError('Please provide a new name.')
-                    if newaction == 'avatar':
-                        if not (arg := reader.read_image()):
-                            raise UserError(
-                                    'Please provide a valid URL or attachment.')
-                    if newaction == 'color':
-                        if not (arg := reader.read_color()):
-                            raise UserError(
-                                    'Please enter a color (e.g. `#012345`)')
-
-                    return await self.cmd_collective_update(message, collid,
-                            newaction, arg)
-
-                elif action == 'delete':
-                    if not message.author.guild_permissions.manage_roles:
-                        raise UserError(ERROR_MANAGE_ROLES)
-                    # all the more reason to delete it then, right?
-                    # if guild.get_role(row[1]) == None:
-
-                    return await self.cmd_collective_delete(message, row)
-
         elif arg in ['account', 'a']:
             arg = reader.read_word().lower()
             if arg == 'config':
@@ -947,7 +802,7 @@ class GestaltCommands:
                 maskid = arg
                 action = reader.read_word().lower()
 
-                # TODO clean this up. in collectives too
+                # TODO clean this up
                 try:
                     # if get_user_proxy succeeds, ['maskid'] must exist
                     maskid = self.get_user_proxy(message, maskid)['maskid']
