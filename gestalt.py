@@ -318,9 +318,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             exists = self.fetchone(
                     'select exists(select 1 from proxies where proxid = ?)'
                     'or exists(select 1 from masks where maskid = ?)'
-                    'or exists(select 1 from guildmasks where maskid = ?)'
                     'or exists(select 1 from deleted where id = ?)',
-                    (id,) * 4)[0]
+                    (id,) * 3)[0]
             if not exists:
                 return id
 
