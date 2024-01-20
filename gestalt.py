@@ -84,8 +84,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'chanid integer primary key,'
                 'hookid integer unique,'
                 'token text)')
-        # note that collective proxies store both the roleid and maskid
-        # because collectives might not always be tied to a role
         self.execute(
                 'create table if not exists proxies('
                 'proxid text primary key collate nocase,'   # of form 'abcde'
@@ -95,7 +93,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'prefix text,'
                 'postfix text,'
                 'type integer,'                 # see enum ProxyType
-                'otherid integer,'              # roleid or userid for swaps
+                'otherid integer,'              # userid for swaps
                 'maskid text collate nocase,'   # same collation for joining
                 'flags integer,'                # see enum ProxyFlags
                 'state integer,'                # see enum ProxyState
@@ -120,10 +118,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'msgcount integer,' # reserved
                 'unique(maskid, guildid),'
                 'unique(guildid, roleid))')
-        self.execute(
-                'create index if not exists guildmasks_roleid '
-                'on guildmasks(roleid) where type = %i;'
-                % ProxyType.collective)
         self.execute(
                 'create table if not exists masks('
                 'maskid text primary key collate nocase,'
@@ -165,11 +159,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'after delete on masks begin '
                     'insert into deleted values (old.maskid);'
                 'end')
-        self.execute(
-                'create temp trigger delete_guildmask '
-                'after delete on guildmasks when (old.type = %i) begin '
-                    'insert into deleted values (old.maskid);'
-                'end' % ProxyType.collective)
 
         self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()
@@ -196,13 +185,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     def execute(self, *args): return self.cur.execute(*args)
     def fetchone(self, *args): return self.cur.execute(*args).fetchone()
     def fetchall(self, *args): return self.cur.execute(*args).fetchall()
-
-
-    # turns out there's no applicable situation that uses fetchone() yet
-    # so only the fetchall() version is defined
-    def fetch_valid_proxies(self, *args):
-        return [proxy for proxy in self.cur.execute(*args).fetchall()
-                if self.delete_invalid_proxy(proxy)]
 
 
     def has_perm(self, channel, **kwargs):
@@ -343,16 +325,16 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 return id
 
 
-    def mkproxy(self, userid, proxtype, cmdname = '', guildid = 0,
+    def mkproxy(self, userid, proxtype, cmdname = '',
             prefix = None, postfix = None, otherid = None, maskid = None,
             flags = ProxyFlags(0), state = ProxyState.active):
-        if prefix is not None and self.get_tags_conflict(userid, guildid,
+        if prefix is not None and self.get_tags_conflict(userid,
                 (prefix, postfix)):
             raise UserError(ERROR_TAGS)
         self.execute(
                 'insert into proxies values '
                 '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
-                (proxid := self.gen_id(), cmdname, userid, guildid,
+                (proxid := self.gen_id(), cmdname, userid, 0,
                     prefix, postfix, proxtype, otherid, maskid,
                     flags, state, int(time.time())))
         return proxid
@@ -391,14 +373,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     (latch, member.id, member.guild.id))
 
 
-    def get_tags_conflict(self, userid, guildid, pair):
+    def get_tags_conflict(self, userid, pair):
         (prefix, postfix) = pair
-        return [proxy['proxid'] for proxy in self.fetch_valid_proxies(
+        return [proxy['proxid'] for proxy in self.fetchall(
             'select * from proxies where userid = ?', (userid,))
             if proxy['prefix'] is not None
-            # if prefix is to be global, check everything
-            # if not, check only the same guild
-            and (guildid == 0 or (guildid and proxy['guildid'] in (0, guildid)))
             and ((prefix.startswith(proxy['prefix'])
                 and postfix.endswith(proxy['postfix']))
                 or (proxy['prefix'].startswith(prefix)
@@ -416,71 +395,14 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             await self.confirm_webhook_deletion(hook)
 
 
-    def on_member_role_add(self, member, role):
-        mask = self.fetchone(
-                'select maskid, nick from guildmasks '
-                'where (roleid, type) = (?, ?)',
-                (role.id, ProxyType.collective)) # uses index
-        if mask:
-            try:
-                self.mkproxy(member.id, ProxyType.collective,
-                        cmdname = mask['nick'], guildid = member.guild.id,
-                        otherid = role.id, maskid = mask['maskid'])
-            except sqlite.IntegrityError:
-                pass
-
-
-    def on_member_role_remove(self, member, role):
-        self.execute('delete from proxies where (userid, otherid) = (?, ?)',
-                (member.id, role.id))
-
-
-    async def on_guild_role_delete(self, role):
-        # no need to delete proxies; on_member_update takes care of that
-        self.execute('delete from guildmasks where (roleid, type) = (?, ?)',
-                (role.id, ProxyType.collective))
-
-
-    async def on_member_update(self, before, after):
-        if after.bot:
-            return
-        # not sure if more than one role can change at a time
-        # but this needs to be airtight
-        for role in set(before.roles) ^ set(after.roles):
-            if role in after.roles:
-                self.on_member_role_add(after, role)
-            else:
-                self.on_member_role_remove(after, role)
-
-
     async def on_member_join(self, member):
-        if member.bot:
-            return
-
-        # add @everyone collective, if necessary
-        self.on_member_role_add(member, member.guild.default_role)
-        await self.try_auto_add_member(member)
+        if not member.bot:
+            await self.try_auto_add_member(member)
 
 
     async def on_raw_member_remove(self, payload):
         self.execute('delete from proxies where (userid, guildid) = (?, ?)',
                 (payload.user.id, payload.guild_id))
-
-
-    def get_proxy_collective(self, message, proxy, prefs, content):
-        if prefs & Prefs.replace:
-            # do these in order (or else, e.g. "I'm" could become "We'm")
-            # which is funny but not what we want here
-            # this could be a reduce() but this is more readable
-            for x, y in REPLACEMENTS:
-                content = x.sub(y, content)
-
-        mask = self.fetchone('select * from guildmasks where maskid = ?',
-                (proxy['maskid'],))
-        return {'username': mask['nick'],
-                'avatar_url': mask['avatar'],
-                'color': mask['color'],
-                'content': content}
 
 
     def get_proxy_swap(self, message, proxy, prefs, content):
@@ -587,8 +509,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         footer = ('Sender: %s (%i) | Message ID: %i | Original Message ID: %i'
                 % (str(orig.author), orig.author.id, message.id, orig.id))
         if proxy:
-            footer = (('Collective ID: %s | ' % proxy['maskid']
-                if proxy['type'] == ProxyType.collective else '')
+            footer = (('Mask ID: %s | ' % proxy['maskid']
+                if proxy['type'] == ProxyType.mask else '')
                 + 'Proxy ID: %s | ' % proxy['proxid']) + footer
         embed.set_footer(text = footer)
         try:
@@ -634,9 +556,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         args = (message, proxy, prefs, self.maybe_remove_embeds(message,
             content))
         proxtype = proxy['type']
-        if proxtype == ProxyType.collective:
-            present = self.get_proxy_collective(*args)
-        elif proxtype == ProxyType.swap:
+        if proxtype == ProxyType.swap:
             present = self.get_proxy_swap(*args)
         elif proxtype == ProxyType.pkswap:
             present = self.get_proxy_pkswap(*args)
@@ -713,28 +633,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         self.mkproxy(user.id, ProxyType.override)
 
 
-    def delete_invalid_proxy(self, proxy):
-        if not self.is_ready():
-            return proxy
-        if proxy['type'] == ProxyType.collective:
-            if not (guild := self.get_guild(proxy['guildid'])):
-                return # assume it's temporarily unavailable
-            if not ((member := guild.get_member(proxy['userid']))
-                    and proxy['otherid'] in (role.id for role in member.roles)):
-                self.execute('delete from proxies where proxid = ?',
-                        (proxy['proxid'],))
-                self.log('Deleted proxy %s', proxy['proxid'])
-                return
-        return proxy
-
-
     def proxy_visible_in(self, proxy, guild):
         if proxy['state'] == ProxyState.hidden:
             return False
         if proxy['type'] == ProxyType.override:
             return True
-        elif proxy['type'] == ProxyType.collective:
-            return proxy['guildid'] == guild.id
         elif proxy['type'] in (ProxyType.swap, ProxyType.pkswap,
                 ProxyType.pkreceipt):
             return bool(guild.get_member(proxy['otherid']))
@@ -757,9 +660,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         # this is where the magic happens
         # inactive proxies get matched but only to bypass the current autoproxy
         lower = message.content.lower()
-        proxies = self.fetch_valid_proxies(
-                'select * from proxies where userid = ? and guildid in (0, ?)',
-                (message.author.id, message.guild.id))
+        proxies = self.fetchall(
+                'select * from proxies where userid = ?',
+                (message.author.id,))
         # this can't be a join because we need it even if there's no proxy set
         while not (member := self.fetchone(
             'select proxid as ap, latch, become from members '

@@ -153,7 +153,7 @@ class ChannelMode(enum.IntEnum):
 @enum.unique
 class Prefs(enum.IntFlag):
 #   auto        = 1 << 0
-    replace     = 1 << 1
+#   replace     = 1 << 1 coming back soon...?
 #   autoswap    = 1 << 2
     errors      = 1 << 3
     delay       = 1 << 4
@@ -163,7 +163,7 @@ class Prefs(enum.IntFlag):
 @enum.unique
 class ProxyType(enum.IntEnum):
     override    = 0
-    collective  = 1
+#   collective  = 1 RIP
     swap        = 2
     pkswap      = 3
     pkreceipt   = 4
