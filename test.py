@@ -2094,6 +2094,8 @@ class GestaltTest(unittest.TestCase):
 
     def test_35_voting(self):
         for rules in gesp.Rules.table.values():
+            if rules == gesp.RulesLegacy:
+                continue
             for atype in gesp.ActionType:
                 self.assertEqual(gesp.check(rules().for_action(atype)), bool)
 
@@ -2546,6 +2548,52 @@ class GestaltTest(unittest.TestCase):
         c[-1]._react(gestalt.REACT_DELETE, beta)
         c[-1]._react(gestalt.REACT_DELETE, alpha)
         self.assertTrue(pad(self.assertProxied(beta, c, 'test')))
+
+    def test_38_legacy(self):
+        g = Guild(name = 'legacy guild')
+        c = g._add_channel('main')
+        role = g._add_role('leg')
+        g._add_member(alpha)
+        g._add_member(instance.user)
+
+        instance.execute('insert into masks values '
+                '("legacy", "", NULL, NULL, ?, 0, 0, 0)',
+                (gesp.RulesLegacy(role = role.id, guild = g.id).to_json(),))
+        instance.load()
+        # outsider can't join
+        gesp.ActionServer('legacy', g.id).execute(instance)
+        self.assertNotCommand(beta, beta.dm_channel, 'gs;m legacy join')
+        self.assertNotCommand(beta, beta.dm_channel, 'gs;m legacy nick legacy')
+        self.assertIsNone(self.get_proxid(beta, 'legacy'))
+        g._add_member(beta, perms = discord.Permissions.none())
+        # unprivileged member can't join
+        self.assertNotCommand(beta, c, 'gs;m legacy join')
+        self.assertNotCommand(beta, c, 'gs;m legacy nick legacy')
+        self.assertNotVote(beta, c, 'gs;m legacy invite %s' % alpha.mention)
+        self.assertIsNone(self.get_proxid(beta, 'legacy'))
+        g._remove_member(beta)
+        g._add_member(beta)
+        # privileged member can join
+        self.assertCommand(beta, c, 'gs;m legacy join')
+        self.assertCommand(beta, c, 'gs;m legacy nick legacy')
+        self.assertVote(beta, c, 'gs;m legacy invite %s' % alpha.mention)
+        interact(c[-1], alpha, 'yes')
+        self.assertIsNotNone(self.get_proxid(beta, 'legacy'))
+        self.assertIsNotNone(self.get_proxid(alpha, 'legacy'))
+        g._remove_member(beta)
+        self.assertNotCommand(beta, beta.dm_channel, 'gs;m legacy nick legacy')
+        g._add_member(beta, perms = discord.Permissions.none())
+        # unprivileged member can only change appearance
+        self.assertCommand(beta, c, 'gs;m legacy nick legacy')
+        self.assertNotCommand(beta, c, 'gs;m legacy rules dictator')
+        g2 = Guild()._add_member(beta)._add_member(instance.user)
+        c2 = g2._add_channel('main')
+        self.assertNotCommand(beta, c2, 'gs;m legacy rules dictator')
+        g2._add_member(alpha)
+        self.assertNotCommand(alpha, c2, 'gs;m legacy add')
+        self.assertCommand(alpha, c2, 'gs;m legacy rules dictator')
+        self.assertCommand(alpha, c2, 'gs;m legacy add')
+        self.assertNotCommand(alpha, c2, 'gs;m legacy rules legacy')
 
 
 def main():
