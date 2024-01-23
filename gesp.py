@@ -1,5 +1,5 @@
 from collections import ChainMap, namedtuple, defaultdict
-from functools import reduce, partial, cached_property
+from functools import reduce, partial
 from datetime import timedelta
 import dataclasses as dc
 import json
@@ -100,7 +100,7 @@ def check(ast, context = {}):
         raise TypeError('Type check failed')
     return type(ast)
 
-def comp(ast, index):
+def comp(ast, index = 0):
     if type(ast) in [int, str, bool]:
         return [ast]
     elif ast.op == 'and':
@@ -195,7 +195,7 @@ def run(state, context = None):
 def eval(program):
     exp = parse_full(program)[0]
     check(exp)
-    return run(ProgramState(comp(exp, 0), 0, []))
+    return run(ProgramState(comp(exp), 0, []))
 
 
 # there is probably a better way to do this
@@ -203,7 +203,6 @@ def eval(program):
 def serializable(name, parents, attrs):
     class Inner:
         _type = None
-        excluded = ()
         table = {}
         def get_type(self):
             return self._type
@@ -219,11 +218,7 @@ def serializable(name, parents, attrs):
         def to_dict(self):
             # dc.asdict() converts child dc's to dicts too, unwanted
             # (that wouldn't include the type)
-            return {
-                    'type': self._type,
-                    'data': {k: v for k, v in vars(self).items()
-                        if k not in self.excluded}
-                    }
+            return {'type': self._type, 'data': vars(self)}
         def to_json(self):
             return json.dumps(self.to_dict(),
                     default =
@@ -247,16 +242,16 @@ class VotableAction(metaclass = serializable):
 
 @dc.dataclass
 class Rules(metaclass = serializable):
-    excluded = ('compiled',)
     named: list[int] = dc.field(default_factory = list)
     @classmethod
     def from_message(cls, message):
         return cls()
     def for_action(self, atype):
         raise NotImplementedError()
-    @cached_property
-    def compiled(self):
-        return {atype: comp(self.for_action(atype), 0) for atype in ActionType}
+    async def eval(self, bot, context, action):
+        return await bot.step_program(
+                ProgramState(comp(self.for_action(action.get_type())), 0, []),
+                context, action)
 
 
 @dc.dataclass
@@ -339,6 +334,33 @@ class ActionRules(VotableAction, _type = ActionType.rules):
                 return # TODO errors
         bot.execute('update masks set rules = ? where maskid = ?',
                 (self.newrules.to_json(), self.mask))
+
+
+@dc.dataclass
+class RulesLegacy(Rules, _type = RuleType.legacy):
+    role: int = 0
+    guild: int = 0
+    @classmethod
+    def from_message(cls, message):
+        raise UserError('You cannot set a mask to legacy rules.')
+    async def eval(self, bot, context, action):
+        """
+        join    = manage_roles
+        invite  = manage_roles
+        remove  = manage_roles
+        server  = never
+        change  = always
+        rules   = manage_roles
+        """
+        if not (guild := bot.get_guild(self.guild)):
+            return
+        member = guild.get_member(context.initiator)
+        if not member or type(action) == ActionServer:
+            return
+        elif (type(action) == ActionChange
+                or member.guild_permissions.manage_roles):
+            action.execute(bot)
+            return True
 
 
 @dc.dataclass
@@ -781,9 +803,7 @@ class GestaltVoting:
                     (action.mask,))
                 )
         action.add_context(context)
-        return await self.step_program(
-                ProgramState(rule.compiled[action.get_type()], 0, []),
-                context, action)
+        return await rule.eval(self, context, action)
 
 
     async def initiate_vote(self, vote):

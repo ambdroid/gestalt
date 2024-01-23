@@ -209,6 +209,7 @@ class VoteType(enum.IntEnum):
 
 @enum.unique
 class RuleType(enum.IntEnum):
+    legacy          = -1
 #   custom          = 0 not yet!
     dictator        = 1
     handsoff        = 2
