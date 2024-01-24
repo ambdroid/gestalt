@@ -469,7 +469,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             return discord.Webhook.partial(row[1], row[2],
                     session = self.session)
         if create:
-            hook = await channel.create_webhook(name = WEBHOOK_NAME)
+            try:
+                hook = await channel.create_webhook(name = WEBHOOK_NAME)
+            except discord.errors.HTTPException as e:
+                if e.code in (30007, 30058):
+                    raise UserError('You\'re carrying too many webhooks.')
+                raise UserError('Failed to create webhook for proxying.')
             self.execute('insert into webhooks values (?, ?, ?)',
                     (channel.id, hook.id, hook.token))
             return hook
