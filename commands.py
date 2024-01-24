@@ -702,8 +702,7 @@ class GestaltCommands:
         authid = message.author.id
 
         if arg == 'help':
-            topic = reader.read_word()
-            return await self.cmd_help(message, topic)
+            return await self.cmd_help(message, reader.read_word().lower())
 
         elif arg == 'invite':
             return await self.cmd_invite(message)
