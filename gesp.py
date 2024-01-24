@@ -293,7 +293,7 @@ class ActionServer(VotableAction, _type = ActionType.server):
             guilds = bot.mask_presence[self.mask]
             if bot.get_guild(self.server) and self.server not in guilds:
                 bot.execute('insert into guildmasks values'
-                        '(?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL)',
+                        '(?, ?, NULL, NULL, NULL, ?, ?, NULL)',
                         (self.mask, self.server, ProxyType.mask,
                             int(time.time())))
                 guilds.add(self.server)

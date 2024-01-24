@@ -651,7 +651,7 @@ class GestaltCommands:
 
         self.execute(
                 'insert or replace into guildmasks values '
-                '(?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL)',
+                '(?, ?, ?, ?, ?, ?, ?, ?)',
                 ('pk-' + pkuuid, message.guild.id,
                     ref.author.display_name.removesuffix(MERGE_PADDING),
                     str(ref.author.display_avatar),

@@ -1,0 +1,14 @@
+BEGIN TRANSACTION ;
+insert or rollback into masks select maskid, nick, avatar, color, json_object('type', -1, 'data', json_object('named', json_array(), 'role', roleid, 'guild', guildid)), created, (select count() from proxies where proxies.maskid = guildmasks.maskid), 0 from guildmasks where type = 1;
+update or rollback guildmasks set nick = NULL, avatar = NULL, color = NULL, type = 5 where type = 1;
+create table proxiesnew(proxid text primary key collate nocase,cmdname text collate nocase,userid integer,prefix text,postfix text,type integer,otherid integer,maskid text collate nocase,flags integer,state integer,created integer,msgcount integer,unique(maskid, userid));
+insert or rollback into proxiesnew select proxid, cmdname, userid, prefix, postfix, type, otherid, maskid, flags, state, created, msgcount from proxies;
+drop table proxies;
+alter table proxiesnew rename to proxies;
+create table guildmasksnew(maskid text collate nocase,guildid integer,nick text,avatar text,color text,type integer,created integer,updated integer,unique(maskid, guildid));
+insert or rollback into guildmasksnew select maskid, guildid, nick, avatar, color, type, created, updated from guildmasks;
+drop table guildmasks;
+alter table guildmasksnew rename to guildmasks;
+update or rollback proxies set type = 5 where type = 1;
+update or rollback masks set msgcount = (select count() from history where history.maskid = masks.maskid);
+COMMIT TRANSACTION ;

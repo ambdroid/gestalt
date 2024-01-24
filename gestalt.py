@@ -89,7 +89,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'proxid text primary key collate nocase,'   # of form 'abcde'
                 'cmdname text collate nocase,'
                 'userid integer,'
-                'guildid integer,'              # 0 for swaps, overrides
                 'prefix text,'
                 'postfix text,'
                 'type integer,'                 # see enum ProxyType
@@ -100,7 +99,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'created integer,'              # unix timestamp
                 'msgcount integer,'             # reserved
                 'unique(maskid, userid))')
-        # for fast proxy deletion on role removal
+        # for swaps/pkswaps
         self.execute(
                 'create index if not exists proxies_userid_otherid '
                 'on proxies(userid, otherid)')
@@ -108,16 +107,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'create table if not exists guildmasks('
                 'maskid text collate nocase,'
                 'guildid integer,'
-                'roleid integer,'
                 'nick text,'
                 'avatar text,'
                 'color text,'
                 'type integer,'     # also uses enum ProxyType
                 'created integer,'  # unix timestamp
                 'updated integer,'  # snowflake; for future automatic pk sync
-                'msgcount integer,' # reserved
-                'unique(maskid, guildid),'
-                'unique(guildid, roleid))')
+                'unique(maskid, guildid))')
         self.execute(
                 'create table if not exists masks('
                 'maskid text primary key collate nocase,'
@@ -140,6 +136,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     'update masks set members = members - 1 '
                     'where maskid = old.maskid;'
                 'end' % ProxyType.mask)
+        self.execute(
+                'create trigger if not exists mask_history_create '
+                'after insert on history when new.maskid not null begin '
+                    'update masks set msgcount = msgcount + 1 '
+                    'where maskid = new.maskid;'
+                'end')
+        self.execute(
+                'create trigger if not exists mask_history_delete '
+                'after delete on history when old.maskid not null begin '
+                    'update masks set msgcount = msgcount - 1 '
+                    'where maskid = old.maskid;'
+                'end')
         self.execute(
                 'create table if not exists votes('
                 'msgid integer primary key,'
@@ -332,10 +340,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             raise UserError(ERROR_TAGS)
         self.execute(
                 'insert into proxies values '
-                '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
-                (proxid := self.gen_id(), cmdname, userid, 0,
-                    prefix, postfix, proxtype, otherid, maskid,
-                    flags, state, int(time.time())))
+                '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+                (proxid := self.gen_id(), cmdname, userid, prefix, postfix,
+                    proxtype, otherid, maskid, flags, state, int(time.time())))
         return proxid
 
 
@@ -402,11 +409,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 # NOTE: this may block for a while with lots of masks
                 if flags & ProxyFlags.autoadd:
                     await self.try_auto_add(member.id, member.guild.id, maskid)
-
-
-    async def on_raw_member_remove(self, payload):
-        self.execute('delete from proxies where (userid, guildid) = (?, ?)',
-                (payload.user.id, payload.guild_id))
 
 
     def get_proxy_swap(self, message, proxy, prefs, content):
