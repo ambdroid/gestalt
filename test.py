@@ -392,8 +392,6 @@ class Guild(Object):
         return self # for chaining
     def _remove_member(self, user):
         del self._members[user.id]
-        run(instance.on_raw_member_remove(Object(user = user,
-            guild_id = self.id)))
     def get_member(self, user_id):
         return self._members.get(user_id)
     def get_role(self, role_id):
