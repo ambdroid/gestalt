@@ -152,6 +152,7 @@ HELPMSGS = {
         'enabling autoadd will have no effect.\n'
         '\n'
         '`{p}mask new (name)`: create a new Mask with you as the dictator.\n'
+        '`{p}mask (id/name/MASK ID)`: show information about a Mask.\n'
         '`{p}mask (MASK ID) join`: request to join a Mask.\n'
         '`{p}mask (id/name) invite @member`: invite someone to a Mask.\n'
         '`{p}mask (id/name) remove @member`: remove someone from a Mask.\n'
