@@ -1,6 +1,7 @@
 import json
 import time
 import asyncio
+import datetime
 
 import aiohttp
 import discord
@@ -395,6 +396,27 @@ class GestaltCommands:
             user = message.author.id,
             name = name,
             context = gesp.ProgramContext.from_message(message)))
+
+
+    async def cmd_mask_view(self, message, mask):
+        embed = discord.Embed()
+        embed.set_author(name = mask['nick'], icon_url = mask['avatar'])
+        embed.set_thumbnail(url = mask['avatar'])
+        embed.add_field(name = 'Members', value = mask['members'])
+        # assume that masks too old for a creation date have incomplete count
+        embed.add_field(name = 'Message Count', value = '%i%s' %
+                (mask['msgcount'], '' if mask['created'] else '+'))
+        embed.add_field(name = 'Rules', value =
+                discord.utils.get(RuleType, value =
+                    json.loads(mask['rules'])['type']).name)
+        if mask['color']:
+            embed.color = discord.Color.from_str(mask['color'])
+            embed.add_field(name = 'Color', value = mask['color'])
+        embed.set_footer(text = 'Mask ID: %s%s' %
+                (mask['maskid'].upper(), (' | Created on %s UTC' %
+                    datetime.datetime.utcfromtimestamp(int(mask['created']))
+                    ) if mask['created'] else ''))
+        await self.reply(message, embed)
 
 
     async def cmd_mask_join(self, message, maskid):
@@ -813,6 +835,9 @@ class GestaltCommands:
                 if not row:
                     raise UserError('Mask not found.')
                 maskid = maskid.lower() # TODO rules cache requires this...
+
+                if action == '':
+                    return await self.cmd_mask_view(message, row)
 
                 if action == 'join':
                     if self.is_member_of(maskid, authid):

@@ -302,15 +302,16 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         return self.InProgress(self, message)
 
 
-    async def send_embed(self, channel, text, view = None, reference = None):
+    async def send_embed(self, channel, content, view = None, reference = None):
         if self.has_perm(channel, send_messages = True):
             return await channel.send(
-                    embed = discord.Embed(description = text), view = view,
-                    reference = reference)
+                    embed = (content if isinstance(content, discord.Embed)
+                        else discord.Embed(description = content)),
+                    view = view, reference = reference)
 
 
-    async def reply(self, replyto, text):
-        msg = await self.send_embed(replyto.channel, text)
+    async def reply(self, replyto, content):
+        msg = await self.send_embed(replyto.channel, content)
         # insert into history to allow initiator to delete message if desired
         if msg and replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
