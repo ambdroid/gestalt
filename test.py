@@ -2593,6 +2593,20 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c2, 'gs;m legacy add')
         self.assertNotCommand(alpha, c2, 'gs;m legacy rules legacy')
 
+    def test_39_mask_view(self):
+        for avatar in (None, 'http://avatar.png'):
+            for color in (None, '#b536da'):
+                for created in (None, 12):
+                    maskid = instance.gen_id()
+                    instance.execute('insert into masks values '
+                            '(?, "mask!", ?, ?, ?, ?, 999999, 9999999999)',
+                            (maskid, avatar, color,
+                                gesp.RulesUnanimous().to_json(), created))
+                    instance.load()
+                    send(alpha, alpha.dm_channel, 'gs;mask %s' % maskid)
+                    self.assertEqual(str(alpha.dm_channel[-1].embeds[0].color),
+                            str(color))
+
 
 def main():
     global alpha, beta, gamma, g, instance
