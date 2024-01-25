@@ -412,7 +412,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     await self.try_auto_add(member.id, member.guild.id, maskid)
 
 
-    def get_proxy_swap(self, message, proxy, prefs, content):
+    def get_proxy_swap(self, message, proxy):
         member = message.guild.get_member(proxy['otherid'])
         if member:
             color = self.fetchone('select color from users where userid = ?',
@@ -420,11 +420,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             return {'username': member.display_name,
                     'avatar_url': member.display_avatar.replace(
                         format = 'webp'),
-                    'color': color,
-                    'content': content}
+                    'color': color}
 
 
-    def get_proxy_pkswap(self, message, proxy, prefs, content):
+    def get_proxy_pkswap(self, message, proxy):
         if not message.guild.get_member(proxy['otherid']):
             return
         mask = self.fetchone(
@@ -433,12 +432,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if mask:
             return {'username': mask['nick'],
                     'avatar_url': mask['avatar'],
-                    'color': mask['color'],
-                    'content': content}
+                    'color': mask['color']}
         raise UserError('That proxy has not been synced yet.')
 
 
-    def get_proxy_mask(self, message, proxy, prefs, content):
+    def get_proxy_mask(self, message, proxy):
         if mask := self.fetchone(
                 'select masks.nick, masks.avatar, masks.color '
                 'from guildmasks left join masks using (maskid) '
@@ -446,19 +444,25 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 (message.guild.id, proxy['maskid'])):
             return {'username': mask['nick'],
                     'avatar_url': mask['avatar'],
-                    'color': mask['color'],
-                    'content': content}
+                    'color': mask['color']}
 
 
-    def maybe_remove_embeds(self, message, content):
-        if message.channel.permissions_for(message.author).embed_links:
-            return content
-        return LINK_REGEX.sub(
-                lambda match: match.group(0)
-                if (match.group(0).startswith('<')
-                    and match.group(0).endswith('>'))
-                else '<%s>' % match.group(0),
-                content)
+    def fix_content(self, message, content, proxy = None):
+        embedded = (content
+                if message.channel.permissions_for(message.author).embed_links
+                else LINK_REGEX.sub(
+                    lambda match: match.group(0)
+                    if (match.group(0).startswith('<')
+                        and match.group(0).endswith('>'))
+                    else '<%s>' % match.group(0),
+                    content))
+        if proxy and proxy['flags'] & ProxyFlags.replace:
+            # do these in order (or else, e.g. "I'm" could become "We'm")
+            # which is funny but not what we want here
+            # this could be a reduce() but this is more readable
+            for x, y in REPLACEMENTS:
+                embedded = x.sub(y, embedded)
+        return embedded
 
 
     async def get_webhook(self, channel, create = False):
@@ -565,15 +569,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if msgfiles == [] and content == '':
             return
 
-        args = (message, proxy, prefs, self.maybe_remove_embeds(message,
-            content))
         proxtype = proxy['type']
         if proxtype == ProxyType.swap:
-            present = self.get_proxy_swap(*args)
+            present = self.get_proxy_swap(message, proxy)
         elif proxtype == ProxyType.pkswap:
-            present = self.get_proxy_pkswap(*args)
+            present = self.get_proxy_pkswap(message, proxy)
         elif proxtype == ProxyType.mask:
-            present = self.get_proxy_mask(*args)
+            present = self.get_proxy_mask(message, proxy)
         else:
             raise UserError('Unknown proxy type')
         # in case e.g. it's a swap but the other user isn't in the guild
@@ -622,7 +624,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         try:
             (new, hook) = await self.execute_webhook(channel, thread = thread,
                     files = msgfiles and [i async for i in msgfiles],
-                    embed = embed, allowed_mentions = am, **present)
+                    embed = embed, allowed_mentions = am,
+                    content = self.fix_content(message, content, proxy),
+                    **present)
         except discord.errors.Forbidden:
             raise UserError('I need `Manage Webhooks` permission to proxy.')
 

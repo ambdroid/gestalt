@@ -549,7 +549,7 @@ class GestaltCommands:
 
         try:
             edited = await hook.edit_message(proxied.id,
-                    content = self.maybe_remove_embeds(message, content),
+                    content = self.fix_content(message, content),
                     thread = thread,
                     allowed_mentions = discord.AllowedMentions(
                         everyone = channel.permissions_for(
