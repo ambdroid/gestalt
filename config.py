@@ -100,7 +100,9 @@ HELPMSGS = {
         '`{p}proxy (id/name) echo (on/off)`: don\'t delete the original '
         'message\n'
         '`{p}proxy (id/name) nomerge (on/off)`: don\'t merge with other '
-        'instances of this proxy',
+        'instances of this proxy\n'
+        '`{p}proxy (id/name) replace (on/off)`: convert singular pronouns to '
+        'plural',
 
         'swap':
         '**Swaps**: (shortcut `{p}s`)\n'

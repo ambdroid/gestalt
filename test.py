@@ -1059,21 +1059,17 @@ class GestaltTest(unittest.TestCase):
 
     # by far the most ominous test
     def test_10_replacements(self):
-        """
         chan = g['main']
         before = 'I am myself. i was and am. I\'m. im. am I? I me my mine.'
         after = (
                 'We are Ourselves. We were and are. We\'re. We\'re. are We? '
                 'We Us Our Ours.')
-        self.assertCommand(alpha, chan, 'gs;account config replace off')
+        self.assertCommand(alpha, chan, 'gs;proxy test replace off')
         self.assertEqual(send(alpha, chan, 'e:' + before).content, before)
-        self.assertCommand(alpha, chan, 'gs;a config replace on')
+        self.assertCommand(alpha, chan, 'gs;proxy test replace on')
         self.assertEqual(send(alpha, chan, 'e:' + before).content, after)
-        self.assertCommand(alpha, chan, 'gs;a config replace off')
+        self.assertCommand(alpha, chan, 'gs;proxy test replace off')
         self.assertEqual(send(alpha, chan, 'e:' + before).content, before)
-        self.assertCommand(alpha, chan, 'gs;a config defaults')
-        self.assertEqual(send(alpha, chan, 'e:' + before).content, after)
-        """
 
     def test_11_avatar_url(self):
         chan = g['main']
@@ -2008,30 +2004,39 @@ class GestaltTest(unittest.TestCase):
     def test_32_message_perms(self):
         g = Guild(name = 'literally 1984')
         c = g._add_channel('main')
-        g._add_member(alpha, perms = discord.Permissions(embed_links = False,
-            mention_everyone = False))
         g._add_member(instance.user)
 
-        self.assertCommand(alpha, c, 'gs;swap open %s a:text' % alpha.mention)
+        self.assertVote(alpha, alpha.dm_channel, 'gs;m new links')
+        interact(alpha.dm_channel[-1], alpha, 'yes')
+        self.assertCommand(alpha, alpha.dm_channel, 'gs;p links tags a:text')
 
-        self.assertEqual(self.assertProxied(alpha, c,
-            'a: hi https://discord.com').content,
-            'hi <https://discord.com>')
-        self.assertEqual(self.assertProxied(alpha, c,
-            'a: hi <https://discord.com>').content,
-            'hi <https://discord.com>')
-        # try edits
-        msg = self.assertProxied(alpha, c, 'a: hi')
-        self.assertDeleted(alpha, c, 'gs;e hi https://discord.com')
-        self.assertEditedContent(msg, 'hi <https://discord.com>')
+        for arg in ['on', 'off']:
+            g._add_member(alpha, perms = discord.Permissions(
+                embed_links = False, mention_everyone = False))
+            self.assertCommand(alpha, c, 'gs;p links replace %s' % arg)
+            self.assertEqual(self.assertProxied(alpha, c,
+                'a: hi https://discord.com').content,
+                'hi <https://discord.com>')
+            self.assertEqual(self.assertProxied(alpha, c,
+                'a: hi <https://discord.com>').content,
+                'hi <https://discord.com>')
+            if arg == 'on':
+                self.assertEqual(self.assertProxied(alpha, c,
+                    'a: I like this link https://discord.com').content,
+                    'We like this link <https://discord.com>')
+            # try edits
+            msg = self.assertProxied(alpha, c, 'a: hi')
+            self.assertDeleted(alpha, c, 'gs;e hi https://discord.com')
+            self.assertEditedContent(msg, 'hi <https://discord.com>')
 
-        g._remove_member(alpha)
-        g._add_member(alpha)
-        self.assertEqual(self.assertProxied(alpha, c,
-            'a: hi https://discord.com').content,
-            'hi https://discord.com')
+            g._remove_member(alpha)
+            g._add_member(alpha)
+            self.assertEqual(self.assertProxied(alpha, c,
+                'a: hi https://discord.com').content,
+                'hi https://discord.com')
+            g._remove_member(alpha)
 
-        self.assertCommand(alpha, c, 'gs;swap close test-alpha')
+        self.assertCommand(alpha, alpha.dm_channel, 'gs;m links leave')
 
     def test_33_consistency(self):
         """
