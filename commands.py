@@ -416,7 +416,7 @@ class GestaltCommands:
                 (mask['maskid'].upper(), (' | Created on %s UTC' %
                     datetime.datetime.utcfromtimestamp(int(mask['created']))
                     ) if mask['created'] else ''))
-        await self.reply(message, embed)
+        await self.reply(message, embeds = [embed])
 
 
     async def cmd_mask_join(self, message, maskid):
@@ -1013,10 +1013,7 @@ class GestaltCommands:
                 return await self.cmd_channel_mode(message, channel, mode)
 
         elif arg == 'explain':
-            if self.has_perm(message.channel, send_messages = True):
-                reply = await message.channel.send(EXPLAIN)
-                self.mkhistory(reply, message.author.id)
-                return
+            return await self.reply(message, plain = EXPLAIN)
 
         elif arg == 'motd':
             if message.author.id == self.owner:
