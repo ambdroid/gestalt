@@ -66,9 +66,9 @@ class User(Object):
                 del guild._members[self.id]
     def __str__(self):
         return self.name + '#' + self.discriminator
-    async def send(self, content = None, embed = None, file = None):
+    async def send(self, content = None, embeds = [], file = None):
         await self.dm_channel.send(
-                content = content, embed = embed, file = file)
+                content = content, embeds = embeds, file = file)
 
 # note that this class does NOT subclass Object because member IDs are user IDs
 class Member:
@@ -109,15 +109,19 @@ class Member:
         return self.user.mutual_guilds
 
 class Message(Object):
-    def __init__(self, embed = None, view = None, **kwargs):
+    def __init__(self, content = '', embed = None, embeds = [], view = None,
+            **kwargs):
+        if embed and embeds:
+            raise TypeError('embed and embeds are mutually exclusive')
         self._deleted = False
         self._prev = None
+        self.content = content
         self.webhook_id = None
         self.attachments = []
         self.reactions = []
         self.reference = None
         self.edited_at = None
-        self.embeds = [embed] if embed else []
+        self.embeds = [embed] if embed else embeds
         self.components = view.children if view else []
         self.guild = None
         super().__init__(**kwargs)
@@ -295,10 +299,9 @@ class Channel(Object):
     def permissions_for(self, user):
         # TODO need channel-level permissions
         return self.guild.get_member(user.id).guild_permissions
-    async def send(self, content = None, embed = None, file = None,
-            view = None, reference = None):
-        msg = Message(author = instance.user, content = content, embed = embed,
-                view = view)
+    async def send(self, content = None, file = None, reference = None,
+            **kwargs):
+        msg = Message(author = instance.user, content = content, **kwargs)
         await self._add(msg)
         return msg
 

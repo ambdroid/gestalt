@@ -302,16 +302,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         return self.InProgress(self, message)
 
 
-    async def send_embed(self, channel, content, view = None, reference = None):
+    async def send(self, channel, content = '', plain = '', embeds = [],
+            view = None, reference = None):
         if self.has_perm(channel, send_messages = True):
             return await channel.send(
-                    embed = (content if isinstance(content, discord.Embed)
-                        else discord.Embed(description = content)),
+                    plain,
+                    embeds = (([discord.Embed(description = content)]
+                        if content else []) + embeds),
                     view = view, reference = reference)
 
 
-    async def reply(self, replyto, content):
-        msg = await self.send_embed(replyto.channel, content)
+    async def reply(self, replyto, content = '', plain = '', embeds = []):
+        msg = await self.send(replyto.channel, content, plain, embeds)
         # insert into history to allow initiator to delete message if desired
         if msg and replyto.guild:
             await self.try_add_reaction(msg, REACT_DELETE)
@@ -529,15 +531,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 if proxy['type'] == ProxyType.mask else '')
                 + 'Proxy ID: %s | ' % proxy['proxid']) + footer
         embed.set_footer(text = footer)
-        try:
-            await self.get_channel(logchan[0]).send(
-                    # jump_url doesn't work in messages from webhook.send()
-                    # (and .channel can be PartialMessageable)
-                    # (that was annoying)
-                    message.channel.get_partial_message(message.id).jump_url,
-                    embed = embed)
-        except:
-            pass
+        await self.send(self.get_channel(logchan[0]), plain =
+                # jump_url doesn't work in messages from webhook.send()
+                # (and .channel can be PartialMessageable)
+                # (that was annoying)
+                message.channel.get_partial_message(message.id).jump_url,
+                embeds = [embed])
 
 
     def should_pad(self, channel, proxy, present):

@@ -817,9 +817,9 @@ class GestaltVoting:
                 channel.id)).recipient
             if (vote.eligible, vote.threshold) != (frozenset([recipient.id]),
                     1):
-                return await self.send_embed(channel,
+                return await self.send(channel,
                         'A vote was called for, but it must be run in a guild.')
-        if msg := await self.send_embed(channel, vote.description(),
+        if msg := await self.send(channel, vote.description(),
                 view = vote.view(),
                 reference = channel.get_partial_message(vote.context.message)):
             if channel.guild:
