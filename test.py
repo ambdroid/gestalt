@@ -1523,6 +1523,8 @@ class GestaltTest(unittest.TestCase):
         # first by receipt
         instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
+        self.assertNotCommand(alpha, c,
+                'gs;p "test-beta\'s member!" tags zzzztext')
         self.assertCommand(alpha, c, 'gs;pk close "test-beta\'s member!"')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, 'a'), 'member!')
