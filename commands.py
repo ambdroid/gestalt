@@ -724,6 +724,8 @@ class GestaltCommands:
             proxy = self.get_user_proxy(message, name)
 
             if arg == 'tags':
+                if proxy['type'] == ProxyType.pkreceipt:
+                    raise UserError('You cannot assign tags to that proxy.')
                 arg = reader.read_remainder()
                 return await self.cmd_proxy_tags(message, proxy, arg)
 
