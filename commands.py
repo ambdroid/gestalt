@@ -162,30 +162,23 @@ class GestaltCommands:
 
 
     def proxy_string(self, proxy):
-        line = '[`%s`] ' % proxy['proxid']
+        line = '%s[`%s`] ' % (ProxySymbol[proxy['type']], proxy['proxid'])
         if proxy['cmdname']:
             line += '**%s**' % escape(proxy['cmdname'])
         else:
             line += '*no name*'
 
         parens = ''
-        if proxy['type'] == ProxyType.override:
-            line = SYMBOL_OVERRIDE + line
-        elif proxy['type'] == ProxyType.swap:
-            line = SYMBOL_SWAP + line
+        if proxy['type'] == ProxyType.swap:
             user = self.get_user(proxy['otherid'])
             if not user:
                 return
             parens = 'with **%s**' % escape(user)
         elif proxy['type'] == ProxyType.pkswap:
-            line = SYMBOL_PKSWAP + line
             # we don't have pkhids
             # parens = 'PluralKit member **%s**' % proxy['maskid']
             parens = ''
-        elif proxy['type'] == ProxyType.pkreceipt:
-            line = SYMBOL_RECEIPT + line
         elif proxy['type'] == ProxyType.mask:
-            line = SYMBOL_MASK + line
             parens = '**%s** on [`%s`]' % (escape(proxy['nick']),
                     proxy['maskid'].upper())
 
