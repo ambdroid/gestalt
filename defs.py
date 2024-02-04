@@ -170,6 +170,15 @@ class ProxyType(enum.IntEnum):
     mask        = 5
 
 
+ProxySymbol = {
+        ProxyType.override: '\N{NO ENTRY}',
+        ProxyType.swap: '\N{TWISTED RIGHTWARDS ARROWS}',
+        ProxyType.pkswap: '\N{FOX FACE}',
+        ProxyType.pkreceipt: '\N{RECEIPT}',
+        ProxyType.mask: '\N{PERFORMING ARTS}',
+}
+
+
 @enum.unique
 class ProxyFlags(enum.IntFlag):
 #   auto        = 1 << 0
