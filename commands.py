@@ -83,6 +83,9 @@ class CommandReader:
                 return chan
 
     def read_image(self):
+        if self.cmd.startswith('-clear'):
+            self.cmd = self.cmd.removeprefix('-clear').strip()
+            return CLEAR
         if m := LINK_REGEX.match(self.cmd):
             self.cmd = self.cmd.removeprefix(m[0]).strip()
             return m[1] # excluding <...> if present
@@ -458,7 +461,8 @@ class GestaltCommands:
     async def cmd_mask_update(self, message, maskid, name, value):
         if await self.initiate_action(
                 gesp.ProgramContext.from_message(message),
-                gesp.ActionChange(maskid, name, value)):
+                gesp.ActionChange(maskid, name,
+                    None if value == CLEAR else value)):
             await self.mark_success(message, True)
 
 
