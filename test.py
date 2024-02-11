@@ -2520,6 +2520,29 @@ class GestaltTest(unittest.TestCase):
             'select 1 from guildmasks where maskid = ?',
             (maskid,)))
 
+        # test avatar and color clearing
+        self.assertVote(alpha, c, 'gs;m new invisible')
+        interact(c[-1], alpha, 'no')
+        self.assertCommand(alpha, c, 'gs;m invisible avatar http://image')
+        self.assertCommand(alpha, c, 'gs;p invisible tags invisible:text')
+        self.assertProxied(alpha, c, 'invisible: test')
+        self.assertEqual(c[-1].author.display_avatar, 'http://image')
+        self.assertVote(alpha, c, 'gs;m invisible invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertCommand(alpha, c, 'gs;m invisible rules unanimous')
+        self.assertVote(alpha, c, 'gs;m invisible color -clear')
+        self.assertReload()
+        interact(c[-1], alpha, 'yes')
+        interact(c[-1], beta, 'yes')
+        self.assertVote(alpha, c, 'gs;m invisible avatar -clear')
+        self.assertReload()
+        interact(c[-1], alpha, 'yes')
+        interact(c[-1], beta, 'yes')
+        self.assertProxied(alpha, c, 'invisible: test')
+        self.assertEqual(c[-1].author.display_avatar, None)
+        self.assertCommand(beta, c, 'gs;m invisible leave')
+        self.assertCommand(alpha, c, 'gs;m invisible leave')
+
     def test_37_nomerge(self):
         g = Guild(name = 'merge guild')
         c = g._add_channel('main')
