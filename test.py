@@ -400,19 +400,32 @@ class Guild(Object):
     def get_role(self, role_id):
         return self._roles[role_id]
 
-# incoming messages have Attachments, outgoing messages have Files
-# but we'll pretend that they're the same for simplicity
-class File(Object):
-    def __init__(self, size):
-        self.size = size
-        super().__init__()
-    def is_spoiler(self):
-        return False
-    async def to_file(self, spoiler):
-        return self
+# use the same class for Files and Attachments for simplicity
+class Attachment(Object):
+    def __init__(self, data, **kwargs):
+        self._data = data
+        self.content_type = 'text/plain'
+        self.filename = 'attachment.txt'
+        super().__init__(**kwargs)
+        instance.session._add(self.url, data)
+    @property
+    def size(self):
+        return len(self._data)
     @property
     def url(self):
-        return 'https://%i' % self.id
+        return 'https://cdn.discord.com/%i/%s?ex=aa&is=bb&hm=cc&' % (self.id,
+                self.filename)
+    @property
+    def width(self):
+        # only used for logging
+        return 1
+    @property
+    def height(self):
+        return 1
+    def is_spoiler(self):
+        return self.filename.startswith('SPOILER_')
+    async def to_file(self, spoiler):
+        return self
 
 class Interaction:
     def __init__(self, message, user, button):
@@ -462,15 +475,17 @@ class TestBot(gestalt.Gestalt):
 
 class ClientSession:
     class Response:
-        def __init__(self, text): self._text = text
-        async def text(self, encoding): return self._text
+        def __init__(self, data): self._data = data
+        async def read(self): return self._data
+        async def text(self, encoding): return self._data
         @property
-        def status(self): return 200 if type(self._text) == str else self._text
+        def status(self): return self._data if type(self._data) == int else 200
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
     _data = {}
     def get(self, url, **kwargs): return self.Response(self._data[url])
-    def _add(self, path, data): self._data[gestalt.PK_ENDPOINT + path] = data
+    def _add(self, path, data): self._data[path] = data
+    def _pk(self, path, data): self._add(gestalt.PK_ENDPOINT + path, data)
 
 class NotFound(discord.errors.NotFound):
     def __init__(self):
@@ -1074,7 +1089,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, chan, 'gs;proxy test replace off')
         self.assertEqual(send(alpha, chan, 'e:' + before).content, before)
 
-    def test_11_avatar_url(self):
+    def test_11_avatar(self):
         chan = g['main']
         self.assertVote(alpha, chan, 'gs;m new url')
         interact(chan[-1], alpha, 'no')
@@ -1084,7 +1099,8 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, chan, 'gs;m url avatar _http://avatar.gov')
         self.assertNotCommand(alpha, chan, 'gs;m url avatar foobar')
         self.assertCommand(alpha, chan, 'gs;m url avatar <http://avatar.gov>')
-        avatar = File(1024)
+        avatar = Attachment('a cat')
+        self.assertNotCommand(alpha, chan, 'gs;m url avatar')
         self.assertCommand(alpha, chan, 'gs;m url avatar', files = [avatar])
         self.assertCommand(alpha, chan, 'gs;p url tags url:text')
         self.assertProxied(alpha, chan, 'url:test')
@@ -1320,29 +1336,32 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertProxied(alpha, c, '[test')
         self.assertEqual(len(msg.files), 0)
         # one file, no content
-        msg = self.assertProxied(alpha, c, '[', files = [File(12)])
+        msg = self.assertProxied(alpha, c, '[', files = [Attachment('hi')])
         self.assertEqual(msg.content, '')
         self.assertEqual(len(msg.files), 1)
         # two files, no content
-        msg = self.assertProxied(alpha, c, '[', files = [File(12), File(9)])
+        msg = self.assertProxied(alpha, c, '[', files = [Attachment('hello'),
+            Attachment('I talk exclusively through files now')])
         self.assertEqual(len(msg.files), 2)
         # two files, with content
-        msg = self.assertProxied(alpha, c, '[files!', files = [File(12),
-            File(9)])
+        msg = self.assertProxied(alpha, c, '[files!', files = [Attachment('!'),
+            Attachment('this next file is very big')])
         self.assertEqual(msg.content, 'files!')
         self.assertEqual(len(msg.files), 2)
         # no files or content
         self.assertNotProxied(alpha, c, '[', files = [])
         # big file, no content
-        self.assertNotProxied(alpha, c, '[', files = [File(999999999)])
-        half = gestalt.MAX_FILE_SIZE[0]/2
+        self.assertNotProxied(alpha, c, '[', files = [
+            Attachment(range(999999999))])
+        half = Attachment(b'a' * (gestalt.MAX_FILE_SIZE[0] >> 1))
         # files at the limit, no content
-        self.assertProxied(alpha, c, '[', files = [File(half), File(half)])
+        self.assertProxied(alpha, c, '[', files = [half, half])
         # files too big, no content
-        self.assertNotProxied(alpha, c, '[', files = [File(half), File(half+1)])
+        self.assertNotProxied(alpha, c, '[', files = [half, half,
+            Attachment('a')])
         # files too big, with content
-        msg = self.assertProxied(alpha, c, '[files!', files = [File(half),
-            File(half+1)])
+        msg = self.assertProxied(alpha, c, '[files!', files = [half, half,
+            Attachment('a')])
         self.assertEqual(msg.files, [])
 
         self.assertCommand(alpha, c, 'gs;m attachments leave')
@@ -1427,8 +1446,8 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(gamma)
         pkhook = Webhook(c, 'pk webhook')
 
-        instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
-        instance.session._add('/members/aaaaa',
+        instance.session._pk('/systems/' + str(alpha.id), '{"id": "exmpl"}')
+        instance.session._pk('/members/aaaaa',
                 '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
                 '"color": "123456"}')
 
@@ -1456,7 +1475,7 @@ class GestaltTest(unittest.TestCase):
         #with self.assertRaises(gestalt.UserError):
         instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
         # handle PluralKit linked accounts
-        instance.session._add('/systems/' + str(gamma.id), '{"id": "exmpl"}')
+        instance.session._pk('/systems/' + str(gamma.id), '{"id": "exmpl"}')
         self.assertCommand(beta, c, 'gs;swap open %s' % gamma.mention)
         self.assertCommand(gamma, c, 'gs;swap open %s' % beta.mention)
         self.assertNotVote(gamma, c, 'gs;pk swap %s aaaaa' % beta.mention)
@@ -1477,11 +1496,11 @@ class GestaltTest(unittest.TestCase):
         old = run(pkhook.send('member!', '', content = 'old message'))
         new = run(pkhook.send('member!', '', content = 'new message'))
         nope = run(pkhook.send('someone else', '', content = 'irrelevant'))
-        instance.session._add('/messages/' + str(old.id),
+        instance.session._pk('/messages/' + str(old.id),
                 '{"member": {"uuid": "a-a-a-a-a"}}')
-        instance.session._add('/messages/' + str(new.id),
+        instance.session._pk('/messages/' + str(new.id),
                 '{"member": {"uuid": "a-a-a-a-a", "color": "123456"}}')
-        instance.session._add('/messages/' + str(nope.id),
+        instance.session._pk('/messages/' + str(nope.id),
                 '{"member": {"uuid": "z-z-z-z-z"}}')
         self.assertNotCommand(beta, c, 'gs;pk sync')
         self.assertNotCommand(beta, c, 'gs;pk sync',
@@ -1499,11 +1518,11 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertNotProxied(beta, c, '[test]')
         g1._add_member(alpha)
         # test a message with no pk entry
-        instance.session._add('/messages/' + str(c[-1].id), 404)
+        instance.session._pk('/messages/' + str(c[-1].id), 404)
         self.assertNotCommand(beta, c, 'gs;pk sync',
                 Object(cached_message = c[-1]))
         # change the color
-        instance.session._add('/messages/' + str(new.id),
+        instance.session._pk('/messages/' + str(new.id),
                 '{"member": {"uuid": "a-a-a-a-a", "color": "654321"}}')
         self.assertCommand(beta, c, 'gs;pk sync',
             Object(cached_message = None, message_id = new.id))
@@ -1511,7 +1530,7 @@ class GestaltTest(unittest.TestCase):
             Object(cached_message = None, message_id = new.id))
         self.assertEqual(str(msg.embeds[0].color), '#654321')
         # delete the color
-        instance.session._add('/messages/' + str(new.id),
+        instance.session._pk('/messages/' + str(new.id),
                 '{"member": {"uuid": "a-a-a-a-a", "color": null}}')
         self.assertCommand(beta, c, 'gs;pk sync',
             Object(cached_message = None, message_id = new.id))
@@ -1744,12 +1763,12 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, cmds, 'gs;m mandatory leave')
 
         pkhook = Webhook(cmds, 'pk webhook')
-        instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
-        instance.session._add('/members/aaaaa',
+        instance.session._pk('/systems/' + str(alpha.id), '{"id": "exmpl"}')
+        instance.session._pk('/members/aaaaa',
                 '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
                 '"color": "123456"}')
         pkmsg = run(pkhook.send('member!', '', content = 'new message'))
-        instance.session._add('/messages/' + str(pkmsg.id),
+        instance.session._pk('/messages/' + str(pkmsg.id),
                 '{"member": {"uuid": "a-a-a-a-a"}}')
         self.assertVote(alpha, cmds, 'gs;pk swap %s aaaaa' % beta.mention)
         interact(cmds[-1], beta, 'yes')
@@ -1846,8 +1865,8 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
         self.assertNotCommand(alpha, c1, 'gs;ap %s'
                 % (overid := self.get_proxid(alpha, None)))
-        instance.session._add('/systems/' + str(alpha.id), '{"id": "exmpl"}')
-        instance.session._add('/members/aaaaa',
+        instance.session._pk('/systems/' + str(alpha.id), '{"id": "exmpl"}')
+        instance.session._pk('/members/aaaaa',
                 '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
                 '"color": "123456"}')
         self.assertVote(alpha, c1, 'gs;pk swap %s aaaaa' % beta.mention)
