@@ -1,4 +1,8 @@
 DEFAULT_DB = 'gestalt.db'
+AVATAR_DIRECTORY = 'avatars'
+AVATAR_URL_BASE = ''
+
+AVATAR_MAX_SIZE_MB = 2
 
 PK_ENDPOINT = 'https://api.pluralkit.me/v2'
 # see https://pluralkit.me/api/#rate-limiting; 2/s but may change
