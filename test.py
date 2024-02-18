@@ -1,10 +1,12 @@
 #!/usr/bin/python3
 
+from asyncio import run, get_running_loop
+from tempfile import TemporaryDirectory
+from functools import reduce, partial
 from datetime import timedelta
-from functools import reduce
-from asyncio import run
 import unittest
 import math
+import os
 import re
 
 import aiohttp
@@ -447,9 +449,14 @@ class TestBot(gestalt.Gestalt):
     def __init__(self):
         self._user = User(name = 'Gestalt', bot = True)
         super().__init__(dbfile = ':memory:')
+        # discord.py complains about Client.loop in this harness
+        TestBot.loop = property(lambda self : get_running_loop())
         self.session = ClientSession()
         self.pk_ratelimit = discord.gateway.GatewayRatelimiter(count = 1000,
                 per = 1.0)
+    def __del__(self):
+        del TestBot.loop
+        super().__del__()
     def log(*args):
         pass
     @property
@@ -1099,13 +1106,65 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, chan, 'gs;m url avatar _http://avatar.gov')
         self.assertNotCommand(alpha, chan, 'gs;m url avatar foobar')
         self.assertCommand(alpha, chan, 'gs;m url avatar <http://avatar.gov>')
-        avatar = Attachment('a cat')
         self.assertNotCommand(alpha, chan, 'gs;m url avatar')
-        self.assertCommand(alpha, chan, 'gs;m url avatar', files = [avatar])
-        self.assertCommand(alpha, chan, 'gs;p url tags url:text')
-        self.assertProxied(alpha, chan, 'url:test')
-        self.assertEqual(chan[-1].author.display_avatar, avatar.url)
+        self.assertNotCommand(alpha, chan, 'gs;m url avatar', files = [
+            Attachment('a cat')])
+        self.assertNotCommand(alpha, chan, 'gs;m url avatar', files = [
+            Attachment(range(999999999), content_type = 'image/png')])
+        self.assertNotCommand(alpha, chan, 'gs;m url avatar %s' %
+                Attachment('a cat', content_type = 'image/png').url)
+        self.assertNotCommand(alpha, chan, 'gs;m url avatar %s' %
+                (gestalt.AVATAR_URL_BASE + '/avatar.png'))
         self.assertCommand(alpha, chan, 'gs;m url leave')
+
+        def embed(url):
+            send(alpha, chan, 'gs;m temp')
+            self.assertEqual(chan[-1].embeds[0].thumbnail.url, url)
+            self.assertEqual(chan[-1].embeds[0].author.icon_url, url)
+
+        def clear():
+            self.assertCommand(alpha, chan, 'gs;m temp avatar -clear')
+            self.assertIsNone(self.assertProxied(alpha, chan,
+                'temp:temp').author.display_avatar)
+            self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
+            embed(None)
+
+        def url():
+            self.assertCommand(alpha, chan, 'gs;m temp avatar http://cat.png')
+            self.assertEqual(self.assertProxied(alpha, chan,
+                'temp:temp').author.display_avatar, 'http://cat.png')
+            embed('http://cat.png')
+            self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
+
+        def attachment(content, sha):
+            attach = Attachment(content, content_type = 'image/png')
+            name = r'[a-z]{5}_%s\.png' % sha
+            self.assertCommand(alpha, chan, 'gs;m temp avatar',
+                    files = [attach])
+            display = self.assertProxied(alpha, chan,
+                    'temp:temp').author.display_avatar
+            self.assertIsNotNone(re.fullmatch(gestalt.LINK_REGEX, display))
+            self.assertIsNotNone(re.fullmatch(
+                re.escape(gestalt.AVATAR_URL_BASE) + name, display))
+            embed(display)
+            files = os.listdir(gestalt.AVATAR_DIRECTORY)
+            self.assertEqual(len(files), 1)
+            self.assertIsNotNone(re.fullmatch(name, files[0]))
+
+        attachment1 = partial(attachment, b'a real cat',
+                '5efbe0334783d12a60d190d24724fa469618278d')
+        attachment2 = partial(attachment, b'a fake cat',
+                'b26d9842c999fd47c67972fc47a86adfc6970c3f')
+
+        for first in [clear, url, attachment1]:
+            for second in [clear, url, attachment1, attachment2]:
+                self.assertVote(alpha, chan, 'gs;m new temp')
+                interact(chan[-1], alpha, 'no')
+                self.assertCommand(alpha, chan, 'gs;p temp tags temp:text')
+                first()
+                second()
+                self.assertCommand(alpha, chan, 'gs;m temp leave')
+                self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
 
     def test_12_username_change(self):
         chan = g['main']
@@ -2689,6 +2748,11 @@ gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
 gestalt.commands.DEFAULT_PREFS = gestalt.DEFAULT_PREFS
 
 gestalt.BECOME_MAX = 1
+
+tempdir = TemporaryDirectory()
+gestalt.AVATAR_DIRECTORY = tempdir.name
+gestalt.AVATAR_URL_BASE = 'https://gestalt.gov/'
+gestalt.commands.AVATAR_URL_BASE = gestalt.AVATAR_URL_BASE
 
 
 if __name__ == '__main__':

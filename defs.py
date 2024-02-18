@@ -9,6 +9,10 @@ from config import *
 
 # from discord markdown parser
 LINK_REGEX = re.compile(r'<?(https?:\/\/[^\s<]+[^<.,:;"\')\]\s])>?')
+# only match links that expire since cdn has valid non expiring images
+# such as avatars. hopefully used with consent...
+# but reuploading is trivial so there isn't much point to blocking that
+CDN_REGEX = re.compile(r'.*ex=[0-9a-f]+&is=[0-9a-f]+&hm=[0-9a-f]+&?')
 
 
 QUOTE_REGEXES = [
@@ -133,6 +137,14 @@ MAX_FILE_SIZE = [
         25*1024*1024,
         50*1024*1024,
         100*1024*1024]
+
+
+VALID_MIME_TYPES = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        ]
 
 
 ALLOWED_CHANNELS = (

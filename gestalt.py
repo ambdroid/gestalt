@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from functools import reduce
 import sqlite3 as sqlite
@@ -10,6 +11,7 @@ import string
 import math
 import time
 import sys
+import os
 import re
 
 from discord.ext import tasks
@@ -171,6 +173,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()
         self.load()
+        self.threads = ThreadPoolExecutor()
 
 
     def __del__(self):
@@ -438,6 +441,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         raise UserError('That proxy has not been synced yet.')
 
 
+    def is_hosted_avatar(self, url):
+        return bool(url) and not LINK_REGEX.fullmatch(url)
+
+
+    def hosted_avatar_local_path(self, avatar):
+        return os.path.join(AVATAR_DIRECTORY, avatar)
+
+
+    def hosted_avatar_fix(self, url):
+        return AVATAR_URL_BASE + url if self.is_hosted_avatar(url) else url
+
+
     def get_proxy_mask(self, message, proxy):
         if mask := self.fetchone(
                 'select masks.nick, masks.avatar, masks.color '
@@ -445,7 +460,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'where (guildid, maskid) = (?, ?)',
                 (message.guild.id, proxy['maskid'])):
             return {'username': mask['nick'],
-                    'avatar_url': mask['avatar'],
+                    'avatar_url': self.hosted_avatar_fix(mask['avatar']),
                     'color': mask['color']}
 
 

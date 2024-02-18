@@ -2,9 +2,11 @@ from collections import ChainMap, namedtuple, defaultdict
 from functools import reduce, partial
 from datetime import timedelta
 import dataclasses as dc
+import hashlib
 import json
 import math
 import time
+import os
 import re
 
 import discord
@@ -304,7 +306,9 @@ class ActionChange(VotableAction, _type = ActionType.change):
     cols = ('nick', 'avatar', 'color')
     which: str
     value: str
-    server: int = 0 # reserved
+    message: int = 0    # for logging
+    ext: str = ''       # if avatar is attachment to be saved
+    server: int = 0     # reserved
     def valid(word):
         if ((ret := {'name': 'nick', 'colour': 'color'}.get(word, word))
                 in ActionChange.cols):
@@ -312,7 +316,33 @@ class ActionChange(VotableAction, _type = ActionType.change):
     def __post_init__(self):
         if self.which not in self.cols:
             raise ValueError(self.which)
-    def execute(self, bot):
+    def save_avatar(self, bot, image):
+        # hashlib and i/o release GIL
+        digest = hashlib.sha1(image).hexdigest()
+        name = '%s_%s.%s' % (self.mask, digest, self.ext)
+        with open(bot.hosted_avatar_local_path(name), 'wb') as f:
+            f.write(image)
+        return name
+    async def execute(self, bot):
+        if self.which == 'avatar':
+            if not (prev := bot.fetchone(
+                    'select avatar from masks where maskid = ?',
+                    (self.mask,))):
+                return
+            prev = prev[0]
+            if self.ext:
+                try:
+                    async with bot.session.get(self.value) as r:
+                        if r.status != 200:
+                            return
+                        image = await r.read()
+                except:
+                    return
+                self.value = await bot.loop.run_in_executor(bot.threads,
+                        self.save_avatar, bot, image)
+                bot.log('%i: saved %s', self.message, self.value)
+            if self.value != prev and bot.is_hosted_avatar(prev):
+                os.remove(bot.hosted_avatar_local_path(prev))
         bot.execute({
                 'nick': 'update masks set nick = ? where maskid = ?',
                 'avatar': 'update masks set avatar = ? where maskid = ?',
@@ -359,7 +389,7 @@ class RulesLegacy(Rules, _type = RuleType.legacy):
             return
         elif (type(action) == ActionChange
                 or member.guild_permissions.manage_roles):
-            action.execute(bot)
+            await discord.utils.maybe_coroutine(action.execute, bot)
             return True
 
 
@@ -858,7 +888,7 @@ class GestaltVoting:
             if context.channel: # None in case of auto-add (no channel)
                 await self.initiate_vote(result(action = action))
         elif result == True:
-            action.execute(self)
+            await discord.utils.maybe_coroutine(action.execute, self)
             return True
 
 

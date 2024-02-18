@@ -2,6 +2,7 @@ import json
 import time
 import asyncio
 import datetime
+import os
 
 import aiohttp
 import discord
@@ -43,6 +44,11 @@ class CommandReader:
     def is_empty(self):
         return self.cmd == ''
 
+    def read_clear(self):
+        if self.cmd.startswith('-clear'):
+            self.cmd = self.cmd.removeprefix('-clear').strip()
+            return CLEAR
+
     def read_word(self):
         # add empty strings to pad array if string empty or no split
         split = self.cmd.split(maxsplit = 1) + ['','']
@@ -82,20 +88,13 @@ class CommandReader:
             if chan.guild == self.msg.guild:
                 return chan
 
-    def read_image(self):
-        if self.cmd.startswith('-clear'):
-            self.cmd = self.cmd.removeprefix('-clear').strip()
-            return CLEAR
+    def read_link(self):
         if m := LINK_REGEX.match(self.cmd):
             self.cmd = self.cmd.removeprefix(m[0]).strip()
             return m[1] # excluding <...> if present
-        if self.msg.attachments:
-            return self.msg.attachments[0].url
 
     def read_color(self):
         name = self.read_word()
-        if name == '-clear':
-            return CLEAR
         try:
             return str(discord.Color.from_str(
                 NAMED_COLORS.get(name.lower(), name)))
@@ -396,8 +395,9 @@ class GestaltCommands:
 
     async def cmd_mask_view(self, message, mask):
         embed = discord.Embed()
-        embed.set_author(name = mask['nick'], icon_url = mask['avatar'])
-        embed.set_thumbnail(url = mask['avatar'])
+        avatar = self.hosted_avatar_fix(mask['avatar'])
+        embed.set_author(name = mask['nick'], icon_url = avatar)
+        embed.set_thumbnail(url = avatar)
         embed.add_field(name = 'Members', value = mask['members'])
         # assume that masks too old for a creation date have incomplete count
         embed.add_field(name = 'Message Count', value = '%i%s' %
@@ -458,6 +458,17 @@ class GestaltCommands:
                 await self.try_auto_add(author.id, guild.id, proxy['maskid'])
 
 
+    async def cmd_mask_avatar_attachment(self, message, maskid, attach):
+        self.log('%i: %i changing %s avatar to %s (%ib, %ix%i)',
+                message.id, message.author.id, maskid, attach.url,
+                attach.size, attach.width, attach.height)
+        if await self.initiate_action(
+                gesp.ProgramContext.from_message(message),
+                gesp.ActionChange(maskid, 'avatar', attach.url, message.id,
+                    attach.content_type.removeprefix('image/'))):
+            await self.mark_success(message, True)
+
+
     async def cmd_mask_update(self, message, maskid, name, value):
         if await self.initiate_action(
                 gesp.ProgramContext.from_message(message),
@@ -498,6 +509,8 @@ class GestaltCommands:
             self.execute('delete from guildmasks where maskid = ?', (maskid,))
             if maskid in self.mask_presence:
                 del self.mask_presence[maskid]
+            if self.is_hosted_avatar(mask['avatar']):
+                os.remove(self.hosted_avatar_local_path(mask['avatar']))
         elif authid in gesp.Rules.from_json(mask['rules']).named:
             if not member:
                 raise UserError(
@@ -778,7 +791,7 @@ class GestaltCommands:
                 return await self.cmd_config_update(message, user, arg, value)
 
             elif arg in ['color', 'colour']:
-                if not (arg := reader.read_color()):
+                if not (arg := reader.read_clear() or reader.read_color()):
                     raise UserError('Please enter a color (e.g. `#012345`)')
 
                 return await self.cmd_account_update(message, arg)
@@ -895,11 +908,29 @@ class GestaltCommands:
                         if not (arg := reader.read_remainder()):
                             raise UserError('Please provide a new name.')
                     if newaction == 'avatar':
-                        if not (arg := reader.read_image()):
+                        arg = reader.read_clear() or reader.read_link()
+                        if AVATAR_URL_BASE and str(arg).startswith(
+                                AVATAR_URL_BASE):
+                            raise UserError(ERROR_CURSED)
+                        if CDN_REGEX.fullmatch(str(arg)):
+                            raise UserError('Please reupload the attachment.')
+                        if AVATAR_URL_BASE and not arg and message.attachments:
+                            arg = message.attachments[0]
+                            if arg.content_type not in VALID_MIME_TYPES:
+                                raise UserError(
+                                        'That attachment is not a valid image.')
+                            if arg.size > AVATAR_MAX_SIZE_MB * 1024 * 1024:
+                                raise UserError(
+                                        'That attachment is too large '
+                                        '(max %iMB)' % AVATAR_MAX_SIZE_MB)
+                            return await self.cmd_mask_avatar_attachment(
+                                    message, maskid, arg)
+                        if not arg:
                             raise UserError(
                                     'Please provide a valid URL or attachment.')
                     if newaction == 'color':
-                        if not (arg := reader.read_color()):
+                        if not (arg := reader.read_clear() or
+                                reader.read_color()):
                             raise UserError(
                                     'Please enter a color (e.g. `#012345`)')
 
