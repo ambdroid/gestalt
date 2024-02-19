@@ -568,6 +568,14 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         return False
 
 
+    def truncate(self, content, length):
+        # TODO handle markdown better
+        trunc = content[:length]
+        if (content.count('||') & 1 == 0 and trunc.count('||') & 1 == 1):
+            trunc += '||'
+        return trunc + (REPLY_CUTOFF if len(content) > length else '')
+
+
     async def do_proxy(self, message, content, proxy, prefs):
         authid = message.author.id
         channel = message.channel
@@ -618,10 +626,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 embed = discord.Embed(description = (
                     '**[Reply to:](%s)** %s' % (
                         reference.jump_url,
-                        # TODO handle markdown
-                        reference.clean_content[:100] + (
-                            REPLY_CUTOFF if len(reference.clean_content) > 100
-                            else ''))
+                        self.truncate(reference.clean_content, 100))
                     if reference.content else
                     '*[(click to see attachment)](%s)*' % reference.jump_url))
                 if present['color']:
