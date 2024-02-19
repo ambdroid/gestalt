@@ -12,6 +12,15 @@ import re
 import aiohttp
 import discord
 
+# change globals before importation by main program so they're inherited
+import defs
+tempdir = TemporaryDirectory()
+defs.AVATAR_DIRECTORY = tempdir.name
+defs.AVATAR_URL_BASE = 'https://gestalt.gov/'
+defs.BECOME_MAX = 1
+# don't spam the channels with error messages
+defs.DEFAULT_PREFS &= ~defs.Prefs.errors
+
 import gestalt
 import gesp
 
@@ -32,7 +41,7 @@ class warptime:
 
 
 class Object:
-    nextid = gestalt.discord.utils.time_snowflake(warptime.now())
+    nextid = discord.utils.time_snowflake(warptime.now())
     def __init__(self, **kwargs):
         # don't call now() each time
         self.id = ((warptime.warp * 1000) << 22) + Object.nextid
@@ -2742,17 +2751,6 @@ def main():
 discord.utils.utcnow = warptime.now
 discord.Webhook.partial = Webhook.partial
 discord.Thread = Thread
-# don't spam the channel with error messages
-gestalt.DEFAULT_PREFS &= ~gestalt.Prefs.errors
-#gestalt.DEFAULT_PREFS |= gestalt.Prefs.replace
-gestalt.commands.DEFAULT_PREFS = gestalt.DEFAULT_PREFS
-
-gestalt.BECOME_MAX = 1
-
-tempdir = TemporaryDirectory()
-gestalt.AVATAR_DIRECTORY = tempdir.name
-gestalt.AVATAR_URL_BASE = 'https://gestalt.gov/'
-gestalt.commands.AVATAR_URL_BASE = gestalt.AVATAR_URL_BASE
 
 
 if __name__ == '__main__':
