@@ -1258,6 +1258,28 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(reply.embeds), 1)
         self.assertEqual(self.desc(reply),
                 '**[Reply to:](%s)** no reply' % msg.jump_url)
+        # now with attachments
+        attach = Attachment('file goes here')
+        msg = self.assertProxied(alpha, chan, 'e: content', files = [attach])
+        reply = self.assertProxied(alpha, chan, 'e: reply.',
+                Object(cached_message = msg))
+        self.assertIn('content', self.desc(reply))
+        msg = self.assertProxied(alpha, chan, 'e:', files = [attach])
+        reply = self.assertProxied(alpha, chan, 'e: reply.',
+                Object(cached_message = msg))
+        self.assertIn('click to see attachment', self.desc(reply))
+        # test message truncation
+        self.assertEqual(instance.truncate('short', 100), 'short')
+        self.assertEqual(instance.truncate('short', 4),
+                'shor' + gestalt.REPLY_CUTOFF)
+        self.assertEqual(instance.truncate('||short||', 4),
+                '||sh||' + gestalt.REPLY_CUTOFF)
+        self.assertEqual(instance.truncate('||short|| and more ||', 10),
+                '||short|| ' + gestalt.REPLY_CUTOFF)
+        self.assertEqual(instance.truncate('||short|| and ||more||', 4),
+                '||sh||' + gestalt.REPLY_CUTOFF)
+        self.assertEqual(instance.truncate('||short|| and ||more||', 10),
+                '||short|| ' + gestalt.REPLY_CUTOFF)
 
     def test_17_edit(self):
         chan = g._add_channel('edit')
