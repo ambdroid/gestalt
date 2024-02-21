@@ -227,7 +227,7 @@ class GestaltCommands:
 
 
     async def cmd_proxy_tags(self, message, proxy, tags):
-        (prefix, postfix) = parse_tags(tags)
+        (prefix, postfix) = (None, None) if tags is CLEAR else parse_tags(tags)
         if prefix is not None and self.get_tags_conflict(message.author.id,
             (prefix, postfix)) not in ([proxy['proxid']], []):
             raise UserError(ERROR_TAGS)
@@ -736,7 +736,7 @@ class GestaltCommands:
             if arg == 'tags':
                 if proxy['type'] == ProxyType.pkreceipt:
                     raise UserError('You cannot assign tags to that proxy.')
-                arg = reader.read_remainder()
+                arg = reader.read_clear() or reader.read_remainder()
                 return await self.cmd_proxy_tags(message, proxy, arg)
 
             elif arg == 'auto':

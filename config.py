@@ -91,7 +91,7 @@ HELPMSGS = {
         '**All proxies**: (shortcut `{p}p`)\n'
         '\n'
         '`{p}proxy list`: list your proxies.\n'
-        '`{p}proxy (id/name) tags [tags]`: set tags\n'
+        '`{p}proxy (id/name) tags ([tags]/-clear)`: set tags\n'
         '`{p}proxy (id/name) rename (new name)`: rename proxy\n'
         '`{p}proxy (id/name) keepproxy (on/off)`: don\'t remove tags from '
         'proxied messages\n'
@@ -158,8 +158,9 @@ HELPMSGS = {
         '`{p}mask (id/name) remove @member`: remove someone from a Mask.\n'
         '`{p}mask (id/name) add (invite?)`: add the Mask to a server.\n'
         '`{p}mask (id/name) nick (nick)`: change the display name.\n'
-        '`{p}mask (id/name) avatar (URL/attachment)`: change the avatar.\n'
-        '`{p}mask (id/name) color (color)`: change the color.\n'
+        '`{p}mask (id/name) avatar (URL/attachment/-clear)`: change the '
+        'avatar.\n'
+        '`{p}mask (id/name) color (color/-clear)`: change the color.\n'
         '`{p}mask (id/name) rules (dictator/handsoff/majority/unanimous)`: '
         'change the rules.\n'
         '`{p}mask (id/name) nominate @member`: transfer control of the Mask.\n'
@@ -202,7 +203,7 @@ HELPMSGS = {
         '- `homestuck`: let `> Be (name)` be an alias for '
         '`{p}autoproxy (name)`. (default: **off**)\n'
         '\n'
-        '`{p}account color (color)`: change your color in swaps.',
+        '`{p}account color (color/-clear)`: change your color in swaps.',
 
         'server':
         '**Server Commands**:\n'

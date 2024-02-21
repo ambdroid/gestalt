@@ -804,6 +804,9 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(chan[-1].content, 'tags, no auto')
         self.assertCommand(alpha, chan, 'gs;p %s tags text]' % proxid)
         self.assertProxied(alpha, chan, 'postfix tag]')
+        self.assertCommand(alpha, chan, 'gs;p %s tags -clear' % proxid)
+        self.assertNotProxied(alpha, chan, 'postfix tag]')
+        self.assertNotCommand(alpha, chan, 'gs;p %s tags -clean' % proxid)
 
         # test keepproxy
         self.assertCommand(alpha, chan, 'gs;p %s tags [text]' % proxid)
