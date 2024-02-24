@@ -240,8 +240,6 @@ class RuleType(enum.IntEnum):
     unanimous       = 5
 
 
-COMMAND_REGEX = re.compile('%s(.*)' % re.escape(COMMAND_PREFIX),
-        re.DOTALL | re.IGNORECASE)
 BE_REGEX = re.compile(r'\\?> ?Be (.*?)\.?', re.IGNORECASE)
 # convert into dict of single opening char : regex matching all ending chars
 QUOTE_REGEXES = reduce(dict.__or__, map(

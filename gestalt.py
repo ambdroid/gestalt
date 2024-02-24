@@ -732,7 +732,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 (message.channel.id,))
         mandatory = chan and chan['mode'] == ChannelMode.mandatory
         # command prefix is optional in DMs
-        if (match := COMMAND_REGEX.fullmatch(content)) or not message.guild:
+        if reader := commands.CommandReader.from_message(message):
             if mandatory:
                 await self.try_delete(message)
                 raise UserError(
@@ -742,9 +742,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             # it's impossible for the row to matter before they use a command
             if not user:
                 self.init_user(message.author)
-            # strip() so that e.g. 'gs; help' works (helpful with autocorrect)
-            await self.do_command(message,
-                    match[1].strip() if match else content)
+            await self.do_command(message, reader)
             return
 
         if not user:
