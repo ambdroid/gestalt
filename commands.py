@@ -1,8 +1,10 @@
+from functools import cache
 import json
 import time
 import asyncio
 import datetime
 import os
+import re
 
 import aiohttp
 import discord
@@ -37,16 +39,31 @@ class CommandReader:
         '1': 1
     }
 
-    def __init__(self, msg, cmd):
-        self.msg = msg
-        self.cmd = cmd
+    def from_message(message):
+        reader = CommandReader(message)
+        if reader.read_token(COMMAND_PREFIX) or not message.guild:
+            return reader
+
+    def __init__(self, message):
+        self.msg = message
+        self.cmd = message.content
 
     def is_empty(self):
         return self.cmd == ''
 
+    @staticmethod
+    @cache
+    def get_token_regex(token):
+        return re.compile(r'%s\s*(.*)' % re.escape(token),
+                re.DOTALL | re.IGNORECASE)
+
+    def read_token(self, token):
+        if match := self.get_token_regex(token).fullmatch(self.cmd):
+            self.cmd = match[1]
+        return bool(match)
+
     def read_clear(self):
-        if self.cmd.startswith('-clear'):
-            self.cmd = self.cmd.removeprefix('-clear').strip()
+        if self.read_token('-clear'):
             return CLEAR
 
     def read_word(self):
@@ -706,8 +723,7 @@ class GestaltCommands:
 
 
     # parse, convert, and validate arguments, then call the relevant function
-    async def do_command(self, message, cmd):
-        reader = CommandReader(message, cmd)
+    async def do_command(self, message, reader):
         arg = reader.read_word().lower()
         authid = message.author.id
 
@@ -728,7 +744,7 @@ class GestaltCommands:
 
             if name in ['', 'list']:
                 return await self.cmd_proxy_list(message,
-                        reader.read_remainder() == '-all')
+                        reader.read_token('-all'))
 
             arg = reader.read_word().lower()
             proxy = self.get_user_proxy(message, name)
@@ -823,16 +839,14 @@ class GestaltCommands:
                 return await self.cmd_swap_close(message, proxy)
 
         elif arg in ['mask', 'm']:
-            arg = reader.read_quote()
-
-            if arg.lower() == 'new':
+            if reader.read_token('new'):
                 if not (name := reader.read_remainder()):
                     raise UserError('Please provide a name.')
 
                 return await self.cmd_mask_new(message, name)
 
-            else: # arg is mask ID/name
-                maskid = arg
+            else:
+                maskid = reader.read_quote()
                 action = reader.read_word().lower()
 
                 # TODO clean this up

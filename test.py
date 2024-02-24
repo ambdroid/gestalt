@@ -837,9 +837,9 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, chan, 'gs;p %s echo off' % proxid)
 
         # invalid tags. these should fail
-        self.assertNotCommand(alpha, chan, 'gs;p %s tags ' % proxid)
-        self.assertNotCommand(alpha, chan, 'gs;p %s tags text ' % proxid)
-        self.assertNotCommand(alpha, chan, 'gs;p %s tags txet ' % proxid)
+        self.assertNotCommand(alpha, chan, 'gs;p %s tags' % proxid)
+        self.assertNotCommand(alpha, chan, 'gs;p %s tags text' % proxid)
+        self.assertNotCommand(alpha, chan, 'gs;p %s tags txet' % proxid)
 
         # test autoproxy without tags
         # also test proxies added on role add
