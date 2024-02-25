@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
-from asyncio import run, get_running_loop
 from tempfile import TemporaryDirectory
 from functools import reduce, partial
+from asyncio import new_event_loop
 from datetime import timedelta
 import unittest
 import math
@@ -459,13 +459,10 @@ class TestBot(gestalt.Gestalt):
         self._user = User(name = 'Gestalt', bot = True)
         super().__init__(dbfile = ':memory:')
         # discord.py complains about Client.loop in this harness
-        TestBot.loop = property(lambda self : get_running_loop())
+        self.loop = new_event_loop()
         self.session = ClientSession()
         self.pk_ratelimit = discord.gateway.GatewayRatelimiter(count = 1000,
                 per = 1.0)
-    def __del__(self):
-        del TestBot.loop
-        super().__del__()
     def log(*args):
         pass
     @property
@@ -506,6 +503,9 @@ class ClientSession:
 class NotFound(discord.errors.NotFound):
     def __init__(self):
         pass
+
+def run(coro):
+    return instance.loop.run_until_complete(coro)
 
 def send(user, channel, content, reference = None, files = [], orig = False):
     author = channel.guild.get_member(user.id) if channel.guild else user
