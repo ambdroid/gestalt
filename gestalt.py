@@ -155,20 +155,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'msgid integer primary key,'
                 'state text)')
         self.execute(
-                'create table if not exists deleted('
+                'create table if not exists taken('
                 'id text unique collate nocase'
                 ')')
-        # make these temp to avoid interference during maintenance
-        self.execute(
-                'create temp trigger delete_proxy '
-                'after delete on proxies begin '
-                    'insert into deleted values (old.proxid);'
-                'end')
-        self.execute(
-                'create temp trigger delete_mask '
-                'after delete on masks begin '
-                    'insert into deleted values (old.maskid);'
-                'end')
 
         self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()
@@ -329,13 +318,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             # this bit copied from PluralKit, Apache 2.0 license
             id = ''.join(random.choices(string.ascii_lowercase, k=5))
             # IDs don't need to be globally unique but it can't hurt
-            exists = self.fetchone(
-                    'select exists(select 1 from proxies where proxid = ?)'
-                    'or exists(select 1 from masks where maskid = ?)'
-                    'or exists(select 1 from deleted where id = ?)',
-                    (id,) * 3)[0]
-            if not exists:
+            try:
+                self.execute('insert into taken values (?)', (id,))
                 return id
+            except sqlite.IntegrityError:
+                continue
 
 
     def mkproxy(self, userid, proxtype, cmdname = '',
