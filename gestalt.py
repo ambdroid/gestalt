@@ -786,12 +786,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if (message.channel.type not in ALLOWED_CHANNELS
                 or message.author.id == self.user.id):
             return
-        # we don't know without a query if any given webhook message is ours
-        # but we do know that any non-webhook message definitely isn't
-        # so if it is deleted, save a db call in on_raw_message_delete
+        # save a db call in on_raw_message_delete for messages that aren't ours
         # (this could be significant with other delete-heavy bots like PK)
         authid = message.author.id # if webhook then webhook id
-        if authid != self.user.id and not message.webhook_id:
+        if self.user.id not in (authid, message.application_id):
             self.ignore_delete_cache.add(message.id)
         if (message.type in (discord.MessageType.default,
             discord.MessageType.reply)
