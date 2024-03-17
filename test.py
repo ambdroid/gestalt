@@ -126,6 +126,7 @@ class Message(Object):
             raise TypeError('embed and embeds are mutually exclusive')
         self._deleted = False
         self._prev = None
+        self.application_id = None
         self.content = content
         self.webhook_id = None
         self.attachments = []
@@ -253,6 +254,7 @@ class Webhook(Object):
         if self._deleted or (thread and thread.parent != self._channel):
             raise NotFound()
         msg = Message(**kwargs) # note: absorbs other irrelevant arguments
+        msg.application_id = instance.user.id
         msg.webhook_id = self.id
         name = username if username else self.name
         msg.author = Object(id = self.id, bot = True,
