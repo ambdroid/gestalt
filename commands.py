@@ -620,7 +620,8 @@ class GestaltCommands:
         await self.pk_ratelimit.block()
         try:
             async with self.session.get(PK_ENDPOINT + url,
-                    timeout = aiohttp.ClientTimeout(total = 5.0)) as r:
+                    timeout = aiohttp.ClientTimeout(total = 5.0),
+                    headers = {'User-Agent': PK_USER_AGENT}) as r:
                 if r.status != 200:
                     raise UserError(ERROR_PKAPI)
                 response = await r.text(encoding = 'UTF-8')
