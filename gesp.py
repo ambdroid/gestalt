@@ -608,11 +608,15 @@ class VoteConfirm(Vote):
             raise ValueError('No user')
         if self.threshold != 1:
             raise ValueError('Threshold must be 1')
+    def get_user(self):
+        return next(iter(self.eligible)) # only one
     def is_done(self):
         return bool(self.yes or self.no)
     async def on_done(self, bot):
         self.context.answer = bool(self.yes)
     def view(self, disabled = False):
+        if disabled:
+            return None
         view = discord.ui.View()
         view.add_item(discord.ui.Button(
             custom_id = 'yes',
@@ -636,7 +640,7 @@ class VoteCreate(VoteConfirm, _type = VoteType.create):
         bot.execute('insert into masks values '
                 '(?, ?, NULL, NULL, NULL, ?, 0, 0)',
                 ((maskid := bot.gen_id()), self.name, time.time()))
-        user = list(self.eligible)[0] # only one
+        user = self.get_user()
         autoadd = bool(self.yes)
         ActionJoin(maskid, user).execute(bot, autoadd = autoadd)
         # this has to be after join or an is_member_of() check fails
@@ -655,8 +659,6 @@ class VoteCreate(VoteConfirm, _type = VoteType.create):
                     'your current and future guilds? Other members can enable '
                     'this for themselves with `{p}p (name/id) autoadd on`.'
                     ).format(p = COMMAND_PREFIX)
-    def view(self, disabled = False):
-        return None if disabled else super().view(False)
 
 
 @dc.dataclass
@@ -669,9 +671,15 @@ class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
     async def on_done(self, bot):
         if self.yes:
             await bot.initiate_action(self.context,
-                    ActionInvite(self.mask, list(self.eligible)[0]))
+                    ActionInvite(self.mask, self.get_user()))
     def description(self):
-        return '<@%i>, do you want to join this mask?' % list(self.eligible)[0]
+        if self.yes:
+            desc = '<@%i> joined the mask.'
+        elif self.no:
+            desc = '<@%i> declined to join the mask.'
+        else:
+            desc = '<@%i>, do you want to join this mask?'
+        return desc % self.get_user()
 
 
 @dc.dataclass
@@ -758,7 +766,7 @@ class VotePkswap(VoteConfirm, _type = VoteType.pkswap):
     receipt: str = None
     def execute(self, bot):
         if not self.is_redundant(bot):
-            userid = list(self.eligible)[0]
+            userid = self.get_user()
             sender = self.context.initiator
             proxid = bot.mkproxy(userid, ProxyType.pkswap, cmdname = self.name,
                     otherid = sender, maskid = self.uuid)
@@ -776,8 +784,7 @@ class VotePkswap(VoteConfirm, _type = VoteType.pkswap):
             desc = '<@%i> declined <@%i>\'s %s.'
         else:
             desc = '<@%i>, do you want <@%i>\'s %s?'
-        return desc % (list(self.eligible)[0], self.context.initiator,
-                self.name)
+        return desc % (self.get_user(), self.context.initiator, self.name)
     def is_redundant(self, bot):
         # it would be really nice to just check the pkhid in the command
         # that way we could check if the proxy exists as the first step
@@ -787,8 +794,7 @@ class VotePkswap(VoteConfirm, _type = VoteType.pkswap):
         return bool(bot.fetchone(
             'select 1 from proxies '
             'where (userid, maskid, type, state) = (?, ?, ?, ?)',
-            (list(self.eligible)[0], self.uuid, ProxyType.pkswap,
-                ProxyState.active)))
+            (self.get_user(), self.uuid, ProxyType.pkswap, ProxyState.active)))
 
 
 class GestaltVoting:
@@ -844,9 +850,8 @@ class GestaltVoting:
             # docs say recipient may not always be available
             # yes this means two different chances to call fetch_(). i hate it
             recipient = channel.recipient or (await self.fetch_channel(
-                channel.id)).recipient
-            if (vote.eligible, vote.threshold) != (frozenset([recipient.id]),
-                    1):
+                chanid)).recipient
+            if vote.eligible != frozenset({recipient.id}):
                 return await self.send(channel,
                         'A vote was called for, but it must be run in a guild.')
         if msg := await self.send(channel, vote.description(),
