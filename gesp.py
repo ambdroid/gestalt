@@ -391,6 +391,12 @@ class RulesLegacy(Rules, _type = RuleType.legacy):
                 or member.guild_permissions.manage_roles):
             await discord.utils.maybe_coroutine(action.execute, bot)
             return True
+        raise UserError(
+                'Because this is a legacy Mask, you need `Manage Roles` '
+                'permissions to do that. '
+                + (('(The <@&%i> role itself is no longer necessary.)'
+                    % self.role)
+                    if self.role != self.guild else ''))
 
 
 @dc.dataclass
