@@ -496,7 +496,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             self.execute('delete from webhooks where hookid = ?', (hook.id,))
             return True
         else:
-            self.log('False NotFound for webhook %i', hook.id)
+            return False
 
 
     async def execute_webhook(self, channel, **kwargs):
@@ -508,6 +508,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 # webhook is deleted
                 hook = await self.get_webhook(channel, create = True)
                 return (await hook.send(wait = True, **kwargs), hook)
+            else:
+                self.log('False NotFound for webhook %i', hook.id)
 
 
     async def make_log_message(self, message, orig, proxy = None, old = None):
