@@ -304,7 +304,7 @@ class GestaltCommands:
                             % int(ap['become'] * 100))
         if not lines:
             lines.append('You have no autoproxy enabled in this server.')
-        lines.append('For more information, please see `%shelp proxy`.'
+        lines.append('For more information, please see `%shelp autoproxy`.'
                 % COMMAND_PREFIX)
 
         await self.reply(message, '\n'.join(lines))
