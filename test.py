@@ -1657,6 +1657,14 @@ class GestaltTest(unittest.TestCase):
 
         self.assertNotCommand(beta, c, 'gs;pk close test-alpha')
 
+        # test long IDs
+        instance.session._pk('/members/lon-gid',
+                '{"system": "exmpl", "uuid": "l-o-o-n-g", "name": "long", '
+                '"color": "123456"}')
+        self.assertVote(alpha, c, 'gs;pk swap %s lon-gid' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertCommand(beta, c, 'gs;pk close long')
+
     def test_24_logs(self):
         g1 = Guild(name = 'logged guild')
         c = g1._add_channel('main')
