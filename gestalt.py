@@ -7,7 +7,6 @@ import sqlite3 as sqlite
 import asyncio
 import random
 import signal
-import string
 import math
 import time
 import sys
@@ -315,8 +314,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     def gen_id(self):
         while True:
-            # this bit copied from PluralKit, Apache 2.0 license
-            id = ''.join(random.choices(string.ascii_lowercase, k=5))
+            # d, i, l, m, q removed for readability
+            id = ''.join(random.choices('abcefghjknoprstuvwxyz', k=5))
             # IDs don't need to be globally unique but it can't hurt
             try:
                 self.execute('insert into taken values (?)', (id,))
