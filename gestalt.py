@@ -296,11 +296,21 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     async def send(self, channel, content = '', plain = '', embeds = [],
             view = None, reference = None):
         if self.has_perm(channel, send_messages = True):
-            return await channel.send(
-                    plain,
-                    embeds = (([discord.Embed(description = content)]
-                        if content else []) + embeds),
-                    view = view, reference = reference)
+            try:
+                return await channel.send(
+                        plain,
+                        embeds = (([discord.Embed(description = content)]
+                            if content else []) + embeds),
+                        view = view, reference = reference)
+            except discord.HTTPException:
+                # check if reference has been deleted and retry
+                if reference:
+                    try:
+                        await reference.channel.fetch_message(reference.id)
+                    except:
+                        return await self.send(channel, content, plain, embeds,
+                                view)
+                raise
 
 
     async def reply(self, replyto, content = '', plain = '', embeds = []):

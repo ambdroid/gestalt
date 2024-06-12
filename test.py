@@ -314,7 +314,13 @@ class Channel(Object):
         return self.guild.get_member(user.id).guild_permissions
     async def send(self, content = None, file = None, reference = None,
             **kwargs):
-        msg = Message(author = instance.user, content = content, **kwargs)
+        if reference:
+            try:
+                await self.fetch_message(reference.id)
+            except NotFound:
+                raise HTTPException() from None
+        msg = Message(author = instance.user, content = content,
+                reference = reference, **kwargs)
         await self._add(msg)
         return msg
 
@@ -501,6 +507,10 @@ class ClientSession:
     def get(self, url, **kwargs): return self.Response(self._data[url])
     def _add(self, path, data): self._data[path] = data
     def _pk(self, path, data): self._add(gestalt.PK_ENDPOINT + path, data)
+
+class HTTPException(discord.errors.HTTPException):
+    def __init__(self):
+        pass
 
 class NotFound(discord.errors.NotFound):
     def __init__(self):
@@ -2664,6 +2674,24 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(c[-1].author.display_avatar, None)
         self.assertCommand(beta, c, 'gs;m invisible leave')
         self.assertCommand(alpha, c, 'gs;m invisible leave')
+
+        # test initiating message being deleted
+        (g, c) = mkguild('HTTPException', instance.user, alpha, beta, gamma)
+        self.assertVote(alpha, c, 'gs;m new replies')
+        interact(c[-1], alpha, 'no')
+        self.assertCommand(alpha, c, 'gs;m replies rules unanimous')
+        self.assertVote(alpha, c, 'gs;m replies invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        run(self.assertVote(alpha, c, 'gs;m replies invite %s'
+            % gamma.mention).delete())
+        self.assertIsNotNone(c[-1].reference)
+        interact(c[-1], gamma, 'yes')
+        self.assertIsNone(c[-1].reference)
+        interact(c[-1], alpha, 'yes')
+        interact(c[-1], beta, 'yes')
+        self.assertCommand(alpha, c, 'gs;m replies leave')
+        self.assertCommand(beta, c, 'gs;m replies leave')
+        self.assertCommand(gamma, c, 'gs;m replies leave')
 
     def test_37_nomerge(self):
         g = Guild(name = 'merge guild')
