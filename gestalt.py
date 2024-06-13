@@ -302,14 +302,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                         embeds = (([discord.Embed(description = content)]
                             if content else []) + embeds),
                         view = view, reference = reference)
-            except discord.HTTPException:
-                # check if reference has been deleted and retry
-                if reference:
-                    try:
-                        await reference.channel.fetch_message(reference.id)
-                    except:
-                        return await self.send(channel, content, plain, embeds,
-                                view)
+            except discord.HTTPException as e:
+                if reference and e.code == 50035:
+                    # Invalid Form Body\nIn message_reference: Unknown message
+                    # (reference has probably been deleted; retry)
+                    return await self.send(channel, content, plain, embeds,
+                            view)
                 raise
 
 
