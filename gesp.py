@@ -680,7 +680,7 @@ class VotePreinvite(VoteConfirm, _type = VoteType.preinvite):
                     ActionInvite(self.mask, self.get_user()))
     def description(self):
         if self.yes:
-            desc = '<@%i> joined the mask.'
+            desc = '<@%i> accepted the invitation to the mask.'
         elif self.no:
             desc = '<@%i> declined to join the mask.'
         else:
