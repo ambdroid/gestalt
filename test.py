@@ -318,7 +318,7 @@ class Channel(Object):
             try:
                 await self.fetch_message(reference.id)
             except NotFound:
-                raise HTTPException() from None
+                raise HTTPException(50035) from None
         msg = Message(author = instance.user, content = content,
                 reference = reference, **kwargs)
         await self._add(msg)
@@ -509,8 +509,8 @@ class ClientSession:
     def _pk(self, path, data): self._add(gestalt.PK_ENDPOINT + path, data)
 
 class HTTPException(discord.errors.HTTPException):
-    def __init__(self):
-        pass
+    def __init__(self, code):
+        self.code = code
 
 class NotFound(discord.errors.NotFound):
     def __init__(self):
