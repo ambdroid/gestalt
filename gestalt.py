@@ -206,7 +206,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         self.loop.add_signal_handler(signal.SIGINT, self.handler)
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         # this could go in __init__ but that would break testing
-        self.sync_loop.start()
+        # also, this is a decorator, but that would break testing too
+        tasks.loop(seconds = SYNC_TIMEOUT)(self.cleanup).start()
 
 
     async def update_status(self):
@@ -227,10 +228,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         await super().close()
 
 
-    @tasks.loop(seconds = SYNC_TIMEOUT)
-    async def sync_loop(self):
+    async def cleanup(self):
         self.conn.commit()
         self.ignore_delete_cache.clear()
+        self.votes = {
+                msgid: vote for msgid, vote in self.votes.items()
+                if not vote.inactive
+                }
 
 
     async def try_delete(self, message, delay = None):

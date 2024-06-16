@@ -9,7 +9,6 @@ import math
 import os
 import re
 
-import aiohttp
 import discord
 
 # change globals before importation by main program so they're inherited
@@ -2385,6 +2384,26 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(self.get_proxid(beta, 'mask6'))
         interact(c[-1], beta, 'yes')
         self.assertIsNotNone(self.get_proxid(beta, 'mask6'))
+
+        # test vote expiry
+        c = alpha.dm_channel
+        self.assertVote(alpha, c, 'gs;m new unexpired')
+        warptime.warp += int(timedelta(hours = 12).total_seconds())
+        run(instance.cleanup())
+        interact(c[-1], alpha, 'no')
+        self.assertCommand(alpha, c, 'gs;m unexpired leave')
+        self.assertVote(alpha, c, 'gs;m new expired')
+        warptime.warp += int(timedelta(days = 1).total_seconds())
+        self.assertIn(c[-1].id, instance.votes)
+        run(instance.cleanup())
+        self.assertNotIn(c[-1].id, instance.votes)
+        interact(c[-1], alpha, 'no')
+        self.assertNotCommand(alpha, c, 'gs;m expired leave')
+        self.assertVote(alpha, c, 'gs;m new expired')
+        warptime.warp += int(timedelta(days = 1).total_seconds())
+        interact(c[-1], alpha, 'no')
+        self.assertNotCommand(alpha, c, 'gs;m expired leave')
+        run(instance.cleanup())
 
     def test_36_masks(self):
         mkguild = lambda name, *members : (g :=
