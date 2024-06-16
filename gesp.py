@@ -575,18 +575,24 @@ class Vote(metaclass = serializable):
             desc = 'You are not eligible for this vote.'
         return self.after_interaction(interaction, desc, bot) # return coro
     async def after_interaction(self, interaction, desc, bot):
-        # TODO update message w/tally
-        await interaction.response.send_message(
-                embed = discord.Embed(description = desc),
-                ephemeral = True)
+        await respond(interaction, desc)
         embed = discord.Embed(description = self.description())
         embed = (embed if interaction.message.embeds[0] != embed
                 else discord.utils.MISSING)
-        view = self.view(True) if self.is_done() else discord.utils.MISSING
+        view = self.view(True) if self.inactive else discord.utils.MISSING
         if embed or view:
             await interaction.message.edit(embed = embed, view = view)
-    def is_done(self):
+    # has vote received the maximum amount of interaction
+    @property
+    def complete(self):
         raise NotImplementedError()
+    # is vote no longer accepting interactions due to being complete OR expired
+    @property
+    def inactive(self):
+        return self.complete or (discord.utils.utcnow()
+                - discord.utils.snowflake_time(self.context.message)
+                # limited by avatar changes; cdn link expiry w/some padding
+                > timedelta(days = 1, seconds = -10))
     async def on_done(self, bot):
         raise NotImplementedError()
     def description(self):
@@ -616,7 +622,8 @@ class VoteConfirm(Vote):
             raise ValueError('Threshold must be 1')
     def get_user(self):
         return next(iter(self.eligible)) # only one
-    def is_done(self):
+    @property
+    def complete(self):
         return bool(self.yes or self.no)
     async def on_done(self, bot):
         self.context.answer = bool(self.yes)
@@ -657,7 +664,7 @@ class VoteCreate(VoteConfirm, _type = VoteType.create):
         elif self.context.guild:
             ActionServer(maskid, self.context.guild).execute(bot)
     def description(self):
-        if self.is_done():
+        if self.complete:
             return 'Mask **%s** created!' % discord.utils.escape_markdown(
                     self.name)
         else:
@@ -708,7 +715,8 @@ class VoteProgram(Vote):
 
 
 class VoteApproval(VoteProgram, _type = VoteType.approval):
-    def is_done(self):
+    @property
+    def complete(self):
         return len(self.yes) >= self.threshold
     async def on_done(self, bot):
         # no other possibility except vote simply expiring
@@ -736,7 +744,8 @@ class VoteApproval(VoteProgram, _type = VoteType.approval):
 
 
 class VoteConsensus(VoteProgram, _type = VoteType.consensus):
-    def is_done(self):
+    @property
+    def complete(self):
         return len(self.yes) + len(self.no) >= self.threshold
     async def on_done(self, bot):
         self.context.yes = frozenset(self.yes)
@@ -803,6 +812,12 @@ class VotePkswap(VoteConfirm, _type = VoteType.pkswap):
             (self.get_user(), self.uuid, ProxyType.pkswap, ProxyState.active)))
 
 
+async def respond(interaction, content):
+    await interaction.response.send_message(
+            embed = discord.Embed(description = content),
+            ephemeral = True)
+
+
 class GestaltVoting:
     def load(self):
         self.votes = {row['msgid']: Vote.from_json(row['state'])
@@ -820,11 +835,8 @@ class GestaltVoting:
 
     def save(self):
         self.execute('delete from votes')
-        # TODO clear old votes more often than this
-        cutoff = discord.utils.utcnow() - timedelta(days = 1)
         self.cur.executemany('insert into votes values (?, ?)',
-                ((msgid, vote.to_json()) for msgid, vote in self.votes.items()
-                    if discord.utils.snowflake_time(msgid) > cutoff))
+                ((msg, vote.to_json()) for msg, vote in self.votes.items()))
 
 
     def get_rules(self, maskid):
@@ -907,16 +919,12 @@ class GestaltVoting:
     # but it's easier than using the callbacks across reboots
     async def on_interaction(self, interaction):
         vote = self.votes.get(msgid := interaction.message.id)
-        if vote is None or vote.is_done(): # hehe
-            return await interaction.response.send_message(
-                    embed = discord.Embed(description =
-                        'That vote has already concluded.'),
-                    ephemeral = True)
+        if vote is None or vote.inactive:
+            return await respond(interaction, 'This has concluded or expired.')
         # NOTE on_interaction is sync, but returns coro from after_interaction
+        # this is to avoid race conditions
         coro = vote.on_interaction(interaction, self)
-        if vote.is_done():
-            # this needs to happen before any async stuff
-            # otherwise race conditions are possible
+        if vote.complete:
             del self.votes[msgid]
             await vote.on_done(self)
         await coro
