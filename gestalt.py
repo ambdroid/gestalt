@@ -207,7 +207,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         self.loop.add_signal_handler(signal.SIGTERM, self.handler)
         # this could go in __init__ but that would break testing
         # also, this is a decorator, but that would break testing too
-        tasks.loop(seconds = SYNC_TIMEOUT)(self.cleanup).start()
+        tasks.loop(seconds = CLEANUP_TIMEOUT)(self.cleanup).start()
 
 
     async def update_status(self):
