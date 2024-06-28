@@ -858,10 +858,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             if row == None:
                 return
         else:
-            if emoji == REACT_DELETE:
-                # just to be sure
-                if (await message.fetch()).author == self.user:
-                    await message.delete()
+            if (emoji == REACT_DELETE
+                and payload.message_author_id == self.user.id):
+                await message.delete()
             return
 
 

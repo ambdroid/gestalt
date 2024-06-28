@@ -189,9 +189,11 @@ class Message(Object):
             self.reactions.append(react)
         coro = instance.on_raw_reaction_add(
                 discord.raw_models.RawReactionActionEvent(data = {
+                    'type': discord.enums.ReactionType.normal,
                     'message_id': self.id,
                     'user_id': user.id,
-                    'channel_id': self.channel.id},
+                    'channel_id': self.channel.id,
+                    'message_author_id': self.author.id},
                     emoji = discord.PartialEmoji(name = emoji),
                     event_type = None))
         return coro if _async else run(coro)
