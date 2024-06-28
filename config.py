@@ -228,6 +228,12 @@ HELPMSGS = {
         'swapper or swappee may delete the message.\n'
         ':question: : query who sent a message. '
         }
+HELPMSGS['proxies'] = HELPMSGS['proxy']
+HELPMSGS['swaps'] = HELPMSGS['swap']
+HELPMSGS['masks'] = HELPMSGS['mask']
+HELPMSGS['accounts'] = HELPMSGS['account']
+HELPMSGS['utilities'] = HELPMSGS['utility']
+HELPMSGS['servers'] = HELPMSGS['server']
 
 # parody of PluralKit/PluralKit.Bot/Commands/Help.cs
 EXPLAIN = (
