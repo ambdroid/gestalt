@@ -15,16 +15,17 @@ DELETE_DELAY = 0.4
 TIMEOUT_EDIT = 10 * 60
 
 REPLACEMENTS = [
-        ('\\bam\\b', 'are'),
-        ('\\bmyself\\b', 'Ourselves'),
-        ('\\bi\\s+was\\b', 'We were'),
-        ('\\bi\'m\\b', 'We\'re'),
-        ('\\bim\\b', 'We\'re'),
-        ('\\bam\\s+i\\b', 'are We'),
-        ('\\bi\\b', 'We'), # also corrects I'll, I'd, I've
-        ('\\bme\\b', 'Us'),
-        ('\\bmy\\b', 'Our'),
-        ('\\bmine\\b', 'Ours')
+        (r'\bam\b', 'are'),
+        (r'\bmyself\b', 'Ourselves'),
+        (r'\bi\s+wasn\'t\b', 'We weren\'t'),
+        (r'\bi\s+was\b', 'We were'),
+        (r'\bi\'m\b', 'We\'re'),
+        (r'\bim\b', 'We\'re'),
+        (r'\bam\s+i\b', 'are We'),
+        (r'\bi\b', 'We'), # also corrects I'll, I'd, I've
+        (r'\bme\b', 'Us'),
+        (r'\bmy\b', 'Our'),
+        (r'\bmine\b', 'Ours')
         ]
 
 REACT_QUERY = '\N{BLACK QUESTION MARK ORNAMENT}'

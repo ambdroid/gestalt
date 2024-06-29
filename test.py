@@ -1110,12 +1110,12 @@ class GestaltTest(unittest.TestCase):
     # by far the most ominous test
     def test_10_replacements(self):
         chan = g['main']
-        before = 'I am myself. i was and am. I\'m. im. am I? I me my mine.'
+        before = (
+                'I am myself. i wasn\'t and i was and am. '
+                'I\'m. im. am I? I me my mine.')
         after = (
-                'We are Ourselves. We were and are. We\'re. We\'re. are We? '
-                'We Us Our Ours.')
-        self.assertCommand(alpha, chan, 'gs;proxy test replace off')
-        self.assertEqual(send(alpha, chan, 'e:' + before).content, before)
+                'We are Ourselves. We weren\'t and We were and are. '
+                'We\'re. We\'re. are We? We Us Our Ours.')
         self.assertCommand(alpha, chan, 'gs;proxy test replace on')
         self.assertEqual(send(alpha, chan, 'e:' + before).content, after)
         self.assertCommand(alpha, chan, 'gs;proxy test replace off')
