@@ -5,6 +5,7 @@ from functools import reduce, partial
 from asyncio import new_event_loop
 from datetime import timedelta
 import unittest
+import json
 import math
 import os
 import re
@@ -61,7 +62,7 @@ class User(Object):
         User.users[self.id] = self
     @property
     def mention(self):
-        return '<@!%d>' % self.id
+        return '<@%d>' % self.id
     @property
     def mutual_guilds(self):
         return list(filter(
@@ -155,8 +156,7 @@ class Message(Object):
         # also you can always force a link to someone not present
         # but it isn't included in the actual mentions property
         if self.guild and self.content:
-            mentions = map(int, re.findall('(?<=\<\@\!)[0-9]+(?=\>)',
-                self.content))
+            mentions = map(int, re.findall('\<\@\!?([0-9]+)\>', self.content))
             if self.guild:
                 mentions = map(self.guild.get_member, mentions)
             return list(mentions)
@@ -165,7 +165,7 @@ class Message(Object):
     def role_mentions(self):
         if self.content:
             return [Role.roles[int(mention)] for mention
-                    in re.findall('(?<=\<\@\&)[0-9]+(?=\>)', self.content)]
+                    in re.findall('\<\@\&([0-9]+)\>', self.content)]
         return []
     @property
     def type(self):
@@ -178,9 +178,11 @@ class Message(Object):
                 discord.raw_models.RawMessageDeleteEvent(data = {
                     'channel_id': self.channel.id,
                     'id': self.id}))
-    async def edit(self, *args, **kwargs):
-        # TODO currently only used in Votes
-        pass
+    async def edit(self, embed = None, embeds = [], view = None):
+        if (newbeds := [embed] if embed else embeds):
+            self.embeds = newbeds
+        if view:
+            self.components = view.children
     def _react(self, emoji, user, _async = False):
         react = discord.Reaction(message = self, emoji = emoji,
                 data = {'count': 1, 'me': None})
@@ -428,6 +430,8 @@ class Attachment(Object):
         self.filename = 'attachment.txt'
         super().__init__(**kwargs)
         instance.session._add(self.url, data)
+    def __str__(self):
+        return self.url
     @property
     def size(self):
         return len(self._data)
@@ -2797,19 +2801,165 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c2, 'gs;m legacy add')
         self.assertNotCommand(alpha, c2, 'gs;m legacy rules legacy')
 
-    def test_39_mask_view(self):
+    def test_39_cards(self):
+        g = Guild(name = 'legacy guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(beta)
+        g._add_member(instance.user)
+
+        self.assertVote(alpha, c, 'gs;m new cards')
+        interact(c[-1], alpha, 'no')
         for avatar in (None, 'http://avatar.png'):
+            # attachment avatars have already been tested
             for color in (None, '#b536da'):
-                for created in (None, 12):
-                    maskid = instance.gen_id()
-                    instance.execute('insert into masks values '
-                            '(?, "mask!", ?, ?, ?, ?, 999999, 9999999999)',
-                            (maskid, avatar, color,
-                                gesp.RulesUnanimous().to_json(), created))
-                    instance.load()
-                    send(alpha, alpha.dm_channel, 'gs;mask %s' % maskid)
-                    self.assertEqual(str(alpha.dm_channel[-1].embeds[0].color),
-                            str(color))
+                for created in (None, 1):
+                    self.assertCommand(alpha, c, 'gs;m cards avatar %s'
+                            % (avatar or '-clear'))
+                    self.assertCommand(alpha, c, 'gs;m cards color %s'
+                            % (color or '-clear'))
+                    instance.execute(
+                            'update masks set created = ? '
+                            'where nick = "cards"',
+                            (created,))
+
+                    send(alpha, c, 'gs;mask cards')
+                    embed = c[-1].embeds[0]
+                    self.assertEqual(str(embed.color), str(color))
+                    if created:
+                        self.assertIn('Created on 1970-01-01 00:00:01 UTC',
+                                      embed.footer.text)
+                    else:
+                        self.assertNotIn('Created on', embed.footer.text)
+                    send(alpha, c, 'gs;p cards')
+                    self.assertEqual(c[-1].embeds[1], embed)
+
+        field = lambda msg, ind, name : discord.utils.get(
+                msg.embeds[ind].fields, name = name)
+        self.assertEqual(field(c[-1], 0, 'Type').value, 'Mask')
+        self.assertIsNone(field(c[-1], 0, 'Message Count'))
+        self.assertIsNone(field(c[-1], 1, 'Message Count'))
+        self.assertCommand(alpha, c, 'gs;p cards tags cards:text')
+        proxied = self.assertProxied(alpha, c, 'cards:first')
+        send(alpha, c, 'gs;p cards')
+        self.assertEqual(field(c[-1], 0, 'Message Count').value, '1')
+        self.assertEqual(field(c[-1], 1, 'Message Count').value, '1')
+        proxied._react(gestalt.REACT_DELETE, alpha)
+        send(alpha, c, 'gs;p cards')
+        self.assertIsNone(field(c[-1], 0, 'Message Count'))
+        self.assertIsNone(field(c[-1], 1, 'Message Count'))
+        self.assertEqual(field(c[-1], 1, 'Members').value, '1')
+        self.assertVote(alpha, c, 'gs;m cards invite %s' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        self.assertCommand(beta, c, 'gs;p cards tags cards:text')
+        self.assertProxied(beta, c, 'cards:first')
+        proxied = self.assertProxied(beta, c, 'cards:second')
+        send(alpha, c, 'gs;p cards')
+        self.assertEqual(field(c[-1], 1, 'Members').value, '2')
+        self.assertIsNone(field(c[-1], 0, 'Message Count'))
+        self.assertEqual(field(c[-1], 1, 'Message Count').value, '2')
+        send(beta, c, 'gs;p cards')
+        self.assertEqual(field(c[-1], 0, 'Message Count').value, '2')
+        self.assertEqual(field(c[-1], 1, 'Message Count').value, '2')
+        proxied._react(gestalt.REACT_DELETE, beta)
+        send(alpha, c, 'gs;p cards')
+        # self.assertEqual(field(c[-1], 0, 'Owner').value, alpha.mention)
+        self.assertIsNone(field(c[-1], 0, 'Message Count'))
+        self.assertEqual(field(c[-1], 1, 'Message Count').value, '1')
+        send(beta, c, 'gs;p cards')
+        # self.assertEqual(field(c[-1], 0, 'Owner').value, beta.mention)
+        self.assertEqual(field(c[-1], 0, 'Message Count').value, '1')
+        self.assertEqual(field(c[-1], 1, 'Message Count').value, '1')
+
+        self.assertEqual(field(c[-1], 0, 'Type').value, 'Mask')
+        self.assertCommand(alpha, c, 'gs;p cards tags `text')
+        send(alpha, c, 'gs;p cards')
+        self.assertEqual(field(c[-1], 0, 'Tags').value, '``\N{ZWNBSP}`text``')
+        self.assertCommand(beta, c, 'gs;p cards tags a`text')
+        send(beta, c, 'gs;p cards')
+        self.assertEqual(field(c[-1], 0, 'Tags').value, '``a`text``')
+
+        self.assertCommand(beta, c, 'gs;m cards leave')
+        self.assertCommand(alpha, c, 'gs;m cards leave')
+
+        send(alpha, c, 'gs;p %s' % self.get_proxid(alpha, None))
+        self.assertEqual(field(c[-1], 0, 'Type').value, 'Override')
+
+        self.assertCommand(alpha, c, 'gs;swap open %s' % beta.mention)
+        send(alpha, c, 'gs;p test-beta')
+        self.assertEqual(len(c[-1].embeds), 1)
+        self.assertEqual(field(c[-1], 0, 'Type').value, 'Swap')
+        self.assertIn('inactive', c[-1].embeds[0].description)
+        self.assertCommand(beta, c, 'gs;swap open %s' % alpha.mention)
+        send(alpha, c, 'gs;p test-beta')
+        msg = c[-1]
+        self.assertEqual(len(msg.embeds), 2)
+        self.assertIsNone(msg.embeds[0].description)
+        self.assertEqual(field(c[-1], 0, 'Partner').value, beta.mention)
+        self.assertEqual(field(c[-1], 1, 'Partner').value, alpha.mention)
+        send(beta, c, 'gs;p test-alpha')
+        self.assertEqual(msg.embeds, list(reversed(c[-1].embeds)))
+        # self.assertCommand(alpha, c, 'gs;swap open %s' % alpha.mention)
+        send(alpha, c, 'gs;p test-alpha')
+        self.assertEqual(len(c[-1].embeds), 1)
+        self.assertIsNone(c[-1].embeds[0].description)
+        self.assertCommand(alpha, c, 'gs;swap close test-beta')
+
+        vriska = {
+            'id': 'vriska',
+            'uuid': '88888888-8888-8888-8888-888888888888',
+            'system': 'serket',
+            'name': 'Vriska',
+            'display_name': None,
+            'color': '005682',
+            'birthday': '2010-07-03',
+            'pronouns': 'she/her',
+            'avatar_url': 'https://homestuck.gov/hs2/02196_2.gif',
+            'webhook_avatar_url': None,
+            'banner': None,
+            'description': 'Yeah!!!!!!!!',
+            'created': '2010-07-03T17:08:08.888888Z',
+            'keep_proxy': False,
+            'tts': False,
+            'autoproxy_enabled': None,
+            'message_count': 413,
+            'last_message_timestamp': None,
+            'proxy_tags': [
+                {'prefix': 'AG:', 'suffix': None},
+                {'prefix': None, 'suffix': '!!!!!!!!'}
+                ],
+            'privacy': None
+            }
+        instance.session._pk('/members/' + vriska['id'], json.dumps(vriska))
+        instance.session._pk('/members/' + vriska['uuid'], json.dumps(vriska))
+        instance.session._pk('/systems/' + str(alpha.id), '{"id": "serket"}')
+
+        self.assertVote(alpha, c, 'gs;pk swap %s vriska' % beta.mention)
+        interact(c[-1], beta, 'yes')
+        send(beta, c, 'gs;p vriska')
+        msg = c[-1]
+        self.assertEqual(len(msg.embeds), 2)
+        self.assertEqual(field(c[-1], 0, 'Type').value, 'PluralKit Swap')
+        self.assertEqual(field(msg, 1, 'Birthdate').value, 'Jul 03, 2010')
+        self.assertEqual(field(msg, 1, 'Proxy Tags').value,
+                         '``AG:text``\n``text!!!!!!!!``')
+        self.assertIn('Created on 2010-07-03 17:08:08 UTC',
+                      msg.embeds[1].footer.text)
+        send(alpha, c, 'gs;p "test-beta\'s vriska"')
+        self.assertEqual(len(c[-1].embeds), 3)
+        self.assertEqual(field(c[-1], 0, 'Type').value, 'PluralKit Receipt')
+        self.assertEqual(msg.embeds, c[-1].embeds[1:])
+
+        vriska['color'] = 'a suffusion of yellow'
+        vriska['birthday'] = '0004-07-03'
+        vriska['created'] = None
+        instance.session._pk('/members/' + vriska['uuid'], json.dumps(vriska))
+        send(beta, c, 'gs;p vriska')
+        self.assertEqual(c[-1].embeds[1].color, discord.Color.light_gray())
+        self.assertEqual(field(c[-1], 1, 'Birthdate').value, 'Jul 03')
+        self.assertNotIn('Created on', c[-1].embeds[1].footer.text)
+
+        send(alpha, c, 'gs;pk close "test-beta\'s vriska"')
 
 
 def main():

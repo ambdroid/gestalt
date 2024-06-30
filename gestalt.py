@@ -98,7 +98,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'flags integer,'                # see enum ProxyFlags
                 'state integer,'                # see enum ProxyState
                 'created integer,'              # unix timestamp
-                'msgcount integer,'             # reserved
+                'msgcount integer,'
                 'unique(maskid, userid))')
         # for swaps/pkswaps
         self.execute(
@@ -148,6 +148,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'after delete on history when old.maskid not null begin '
                     'update masks set msgcount = msgcount - 1 '
                     'where maskid = old.maskid;'
+                'end')
+        self.execute(
+                'create trigger if not exists history_create '
+                'after insert on history when new.proxid not null begin '
+                    'update proxies set msgcount = msgcount + 1 '
+                    'where proxid = new.proxid;'
+                'end')
+        self.execute(
+                'create trigger if not exists history_delete '
+                'after delete on history when old.proxid not null begin '
+                    'update proxies set msgcount = msgcount - 1 '
+                    'where proxid = old.proxid;'
                 'end')
         self.execute(
                 'create table if not exists votes('
@@ -344,7 +356,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             raise UserError(ERROR_TAGS)
         self.execute(
                 'insert into proxies values '
-                '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+                '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
                 (proxid := self.gen_id(), cmdname, userid, prefix, postfix,
                     proxtype, otherid, maskid, flags, state, int(time.time())))
         return proxid
