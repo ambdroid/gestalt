@@ -9,6 +9,7 @@ PK_USER_AGENT = 'Gestalt Vulpine Cooperation Initiative'
 # see https://pluralkit.me/api/#rate-limiting; 2/s but may change
 PK_RATELIMIT = 2
 PK_WINDOW = 1.0
+PK_DASH = 'https://dash.pluralkit.me/profile/m/%s'
 
 DELETE_DELAY = 0.4
 
@@ -93,6 +94,7 @@ HELPMSGS = {
         '**All proxies**: (shortcut `{p}p`)\n'
         '\n'
         '`{p}proxy list`: list your proxies.\n'
+        '`{p}proxy (id/name)`: view proxy information\n'
         '`{p}proxy (id/name) tags ([tags]/-clear)`: set tags\n'
         '`{p}proxy (id/name) rename (new name)`: rename proxy\n'
         '`{p}proxy (id/name) keepproxy (on/off)`: don\'t remove tags from '

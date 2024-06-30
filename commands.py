@@ -2,7 +2,7 @@ from functools import cache
 import json
 import time
 import asyncio
-import datetime
+from datetime import datetime
 import os
 import re
 
@@ -25,6 +25,12 @@ def parse_tags(tags):
         raise UserError(
                 'Please provide valid tags around `text` (e.g. `[text]`).')
     return split
+
+
+def unparse_tags(prefix, postfix):
+    return '`%s`' % (('`%stext%s`' % (prefix, postfix))
+            .replace('``', '`\N{ZWNBSP}`')
+            .replace('``', '`\N{ZWNBSP}`'))
 
 
 class CommandReader:
@@ -202,10 +208,7 @@ class GestaltCommands:
                     proxy['maskid'].upper())
 
         if proxy['prefix'] is not None:
-            parens += ' `%s`' % (
-                    ('`%stext%s`' % (proxy['prefix'], proxy['postfix']))
-                    .replace('``', '`\N{ZWNBSP}`')
-                    .replace('``', '`\N{ZWNBSP}`'))
+            parens += ' ' + unparse_tags(proxy['prefix'], proxy['postfix'])
         if proxy['state'] == ProxyState.inactive:
             parens += ' *(inactive)*'
 
@@ -241,6 +244,128 @@ class GestaltCommands:
             lines.append('Proxies in other servers have been omitted.')
             lines.append('To view all proxies, use `proxy list -all`.')
         await self.reply(message, '\n'.join(lines))
+
+
+    def get_cards_proxy(self, proxy, recurse = True):
+        embed = discord.Embed()
+        yield embed
+
+        embed.set_author(name = ProxySymbol[proxy['type']] +
+                (proxy['cmdname'] or '(no name)'))
+        # embed.add_field(name = 'Owner', value = '<@%i>' % proxy['userid'])
+
+        if proxy['type'] == ProxyType.override:
+            friendly = 'Override'
+
+        if proxy['type'] == ProxyType.swap:
+            friendly = 'Swap'
+            embed.add_field(name = 'Partner',
+                            value = '<@%i>' % proxy['otherid'])
+            if proxy['state'] == ProxyState.inactive:
+                embed.description = '*(this swap is inactive)*'
+            elif recurse and proxy['userid'] != proxy['otherid']:
+                swap = self.fetchone(
+                        'select * from proxies '
+                        'where (userid, otherid, type) = (?, ?, ?)',
+                        (proxy['otherid'], proxy['userid'], ProxyType.swap))
+                yield from self.get_cards_proxy(swap, False)
+
+        if proxy['type'] == ProxyType.pkswap:
+            friendly = 'PluralKit Swap'
+            yield self.get_card_pk(proxy['maskid'])
+
+        if proxy['type'] == ProxyType.pkreceipt:
+            friendly = 'PluralKit Receipt'
+            swap = self.fetchone('select * from proxies where proxid = ?',
+                    (proxy['maskid'],))
+            yield from self.get_cards_proxy(swap)
+
+        if proxy['type'] == ProxyType.mask:
+            friendly = 'Mask'
+            mask = self.fetchone('select * from masks where maskid = ?',
+                    (proxy['maskid'],))
+            yield self.get_card_mask(mask)
+
+        embed.insert_field_at(0, name = 'Type', value = friendly)
+
+        # assume that proxies too old for a creation date have incomplete count
+        if proxy['msgcount']:
+            embed.add_field(name = 'Message Count', value = '%i%s' %
+                    (proxy['msgcount'] or 0, '' if proxy['created'] else '+'))
+
+        if proxy['prefix'] is not None:
+            embed.add_field(name = 'Tags', value = unparse_tags(
+                proxy['prefix'], proxy['postfix']))
+
+        embed.set_footer(text = 'Proxy ID: %s%s' %
+                (proxy['proxid'], (' | Created on %s UTC' %
+                    datetime.utcfromtimestamp(int(proxy['created']))
+                    ) if proxy['created'] else ''))
+
+
+    async def get_card_pk(self, pkid):
+        member = await self.pk_api_get('/members/' + pkid)
+        embed = discord.Embed()
+
+        avatar = member['avatar_url']
+        embed.set_author(name = member['name'],
+                         icon_url = member['webhook_avatar_url'] or avatar,
+                         url = PK_DASH % member['id'])
+        embed.set_thumbnail(url = avatar)
+        embed.set_image(url = member['banner'])
+
+        if display := member['display_name']:
+            embed.add_field(name = 'Display Name', value = display)
+
+        if birthday := member['birthday']:
+            birthday = datetime.strptime(birthday, '%Y-%m-%d')
+            embed.add_field(name = 'Birthdate', value = birthday.strftime(
+                # pk represents a null year as 0004 for some reason
+                '%b %d' if birthday.year == 4 else '%b %d, %Y'))
+
+        if pronouns := member['pronouns']:
+            embed.add_field(name = 'Pronouns', value = pronouns)
+
+        if count := member['message_count']:
+            embed.add_field(name = 'Message Count', value = count)
+
+        if tags := member['proxy_tags']:
+            embed.add_field(name = 'Proxy Tags', value = '\n'.join(
+                unparse_tags(tag['prefix'] or '', tag['suffix'] or '')
+                for tag in tags))
+
+        if color := member['color']:
+            embed.add_field(name = 'Color', value = '#' + color)
+            # according to pk source, color might sometimes be invalid
+            try:
+                color = discord.Color.from_str('#' + color)
+            except ValueError:
+                color = None
+        embed.color = color or discord.Color.light_gray()
+
+        if description := member['description']:
+            embed.add_field(name = 'Description', value = description,
+                    inline = False)
+
+        embed.set_footer(text = 'System ID: %s | Member ID: %s%s' %
+                (member['system'], member['id'], (' | Created on %s UTC' %
+                    # TODO Falsehoods Programmers Believe About Time
+                    member['created'].split('.')[0].replace('T', ' ')
+                    ) if member['created'] else ''))
+
+        return embed
+
+
+    async def cmd_proxy_view(self, message, proxy):
+        embeds = list(self.get_cards_proxy(proxy))
+        (now, later) = (
+                (embeds[:-1], embeds[-1])
+                if asyncio.iscoroutine(embeds[-1])
+                else (embeds, []))
+        if (reply := await self.reply(message, embeds = now)) and later:
+            async with self.in_progress(reply):
+                now.append(await later)
+                await reply.edit(embeds = now)
 
 
     async def cmd_proxy_tags(self, message, proxy, tags):
@@ -410,26 +535,36 @@ class GestaltCommands:
             context = gesp.ProgramContext.from_message(message)))
 
 
-    async def cmd_mask_view(self, message, mask):
+    def get_card_mask(self, mask):
         embed = discord.Embed()
         avatar = self.hosted_avatar_fix(mask['avatar'])
         embed.set_author(name = mask['nick'], icon_url = avatar)
         embed.set_thumbnail(url = avatar)
         embed.add_field(name = 'Members', value = mask['members'])
+
         # assume that masks too old for a creation date have incomplete count
-        embed.add_field(name = 'Message Count', value = '%i%s' %
-                (mask['msgcount'], '' if mask['created'] else '+'))
+        if mask['msgcount']:
+            embed.add_field(name = 'Message Count', value = '%i%s' %
+                    (mask['msgcount'], '' if mask['created'] else '+'))
+
         embed.add_field(name = 'Rules', value =
                 discord.utils.get(RuleType, value =
                     json.loads(mask['rules'])['type']).name)
+
         if mask['color']:
             embed.color = discord.Color.from_str(mask['color'])
             embed.add_field(name = 'Color', value = mask['color'])
+
         embed.set_footer(text = 'Mask ID: %s%s' %
                 (mask['maskid'].upper(), (' | Created on %s UTC' %
-                    datetime.datetime.utcfromtimestamp(int(mask['created']))
+                    datetime.utcfromtimestamp(int(mask['created']))
                     ) if mask['created'] else ''))
-        await self.reply(message, embeds = [embed])
+
+        return embed
+
+
+    async def cmd_mask_view(self, message, mask):
+        await self.reply(message, embeds = [self.get_card_mask(mask)])
 
 
     async def cmd_mask_join(self, message, maskid):
@@ -749,6 +884,9 @@ class GestaltCommands:
 
             arg = reader.read_word().lower()
             proxy = self.get_user_proxy(message, name)
+
+            if arg == '':
+                return await self.cmd_proxy_view(message, proxy)
 
             if arg == 'tags':
                 if proxy['type'] == ProxyType.pkreceipt:
