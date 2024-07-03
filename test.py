@@ -149,7 +149,8 @@ class Message(Object):
         return self.content # only used in reply embeds
     @property
     def jump_url(self):
-        return '%s/%i' % (self.channel.jump_url, self.id)
+        return discord.MessageReference(guild_id = self.guild.id,
+            channel_id = self.channel.id, message_id = self.id).jump_url
     @property
     def mentions(self):
         # mentions can also be in the embed but that's irrelevant here
@@ -285,7 +286,8 @@ class Channel(Object):
         return self._messages[key]
     @property
     def jump_url(self):
-        return 'http://%i/%i' % (self.guild.id, self.id)
+        return discord.PartialMessageable(None, self.id,
+            self.guild.id).jump_url
     @property
     def members(self):
         return self.guild.members
@@ -1765,12 +1767,12 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(log._messages), 0)
         msg = self.assertProxied(alpha, th, 'beta:logg')
         self.assertEqual(len(log._messages), 1)
-        self.assertEqual(log[0].content, 'http://%i/%i/%i' % (g1.id, th.id,
-            msg.id))
+        # make sure it's the thread and not the parent channel
+        url = Message(id = msg.id, channel = th, guild = g1).jump_url
+        self.assertEqual(log[0].content, url)
         send(alpha, th, 'gs;edit log')
         self.assertEqual(len(log._messages), 2)
-        self.assertEqual(log[1].content, 'http://%i/%i/%i' % (g1.id, th.id,
-            msg.id))
+        self.assertEqual(log[1].content, url)
 
         self.assertCommand(beta, c, 'gs;swap close test-alpha')
 
