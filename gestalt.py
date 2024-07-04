@@ -480,7 +480,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     lambda match: match.group(0)
                     if (match.group(0).startswith('<')
                         and match.group(0).endswith('>'))
-                    else '<%s>' % match.group(0),
+                    else f'<{match.group(0)}>',
                     content))
         if proxy and proxy['flags'] & ProxyFlags.replace:
             # do these in order (or else, e.g. "I'm" could become "We'm")
@@ -639,7 +639,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                         reference.jump_url,
                         self.truncate(reference.clean_content, 100))
                     if reference.content else
-                    '*[(click to see attachment)](%s)*' % reference.jump_url))
+                    f'*[(click to see attachment)]({reference.jump_url})*'))
                 if present['color']:
                     embed.color = discord.Color.from_str(present['color'])
                 embed.set_author(

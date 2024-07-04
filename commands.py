@@ -28,7 +28,7 @@ def parse_tags(tags):
 
 
 def unparse_tags(prefix, postfix):
-    return '`%s`' % (('`%stext%s`' % (prefix, postfix))
+    return '`%s`' % (f'`{prefix}text{postfix}`'
             .replace('``', '`\N{ZWNBSP}`')
             .replace('``', '`\N{ZWNBSP}`'))
 
@@ -60,7 +60,7 @@ class CommandReader:
     @staticmethod
     @cache
     def get_token_regex(token):
-        return re.compile(r'%s\s*(.*)' % re.escape(token),
+        return re.compile(re.escape(token) + r'\s*(.*)',
                 re.DOTALL | re.IGNORECASE)
 
     def read_token(self, token):
@@ -165,7 +165,7 @@ class GestaltCommands:
 
         memberauth = guild.get_member(message.author.id)
         memberbot = guild.get_member(self.user.id)
-        lines = ['**%s**:' % guild.name]
+        lines = [f'**{guild.name}**:']
         for chan in guild.channels:
             if chan.type not in ALLOWED_CHANNELS:
                 continue
@@ -181,7 +181,7 @@ class GestaltCommands:
             if 'read_messages' in errors:
                 errors = ['read_messages']
             errors = REACT_CONFIRM if errors == [] else ', '.join(errors)
-            lines.append('%s: %s' % (chan.mention, errors))
+            lines.append(f'{chan.mention}: {errors}')
 
         await self.reply(message, '\n'.join(lines))
 
