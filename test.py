@@ -62,7 +62,7 @@ class User(Object):
         User.users[self.id] = self
     @property
     def mention(self):
-        return '<@%d>' % self.id
+        return f'<@{self.id}>'
     @property
     def mutual_guilds(self):
         return list(filter(
@@ -293,7 +293,7 @@ class Channel(Object):
         return self.guild.members
     @property
     def mention(self):
-        return '<#%i>' % self.id
+        return f'<#{self.id}>'
     @property
     def type(self):
         return discord.ChannelType.text
@@ -352,7 +352,7 @@ class Role(Object):
         Role.roles[self.id] = self
     @property
     def mention(self):
-        return '<@&%i>' % self.id
+        return f'<@&{self.id}>'
     async def delete(self):
         await self.guild._del_role(self)
 
@@ -439,8 +439,7 @@ class Attachment(Object):
         return len(self._data)
     @property
     def url(self):
-        return 'https://cdn.discord.com/%i/%s?ex=aa&is=bb&hm=cc&' % (self.id,
-                self.filename)
+        return f'https://cdn.discord.com/{self.id}/{self.filename}?ex=aa&is=bb&hm=cc&'
     @property
     def width(self):
         # only used for logging
@@ -645,7 +644,7 @@ class GestaltTest(unittest.TestCase):
 
         # alpha opens a swap with beta
         self.assertCommand(
-                alpha, chan, 'gs;swap open %s sw text' % beta.mention)
+                alpha, chan, f'gs;swap open {beta.mention} sw text')
         alphaid = self.get_proxid(alpha, beta)
         self.assertIsNotNone(alphaid)
         self.assertIsNone(self.get_proxid(beta, alpha))
@@ -653,7 +652,7 @@ class GestaltTest(unittest.TestCase):
             'select state from proxies where proxid = ?', (alphaid,))[0],
             gestalt.ProxyState.inactive)
         # simply trying to open the swap again doesn't work
-        self.assertNotCommand(alpha, chan, 'gs;swap open %s' % beta.mention)
+        self.assertNotCommand(alpha, chan, f'gs;swap open {beta.mention}')
         self.assertEqual(instance.fetchone(
             'select state from proxies where proxid = ?', (alphaid,))[0],
             gestalt.ProxyState.inactive)
@@ -662,7 +661,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotProxied(alpha, chan, 'sw no swap')
         # beta opens swap
         self.assertCommand(
-                beta, chan, 'gs;swap open %s sw text' % alpha.mention)
+                beta, chan, f'gs;swap open {alpha.mention} sw text')
         self.assertIsNotNone(self.get_proxid(alpha ,beta))
         self.assertIsNotNone(self.get_proxid(beta, alpha))
         # alpha and beta test the swap; it should work now
@@ -670,8 +669,8 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(beta, chan, 'sw swap')
 
         # try to redundantly open another swap; it should fail
-        self.assertNotCommand(alpha, chan, 'gs;swap open %s' % beta.mention)
-        self.assertNotCommand(beta, chan, 'gs;swap open %s' % alpha.mention)
+        self.assertNotCommand(alpha, chan, f'gs;swap open {beta.mention}')
+        self.assertNotCommand(beta, chan, f'gs;swap open {alpha.mention}')
         self.assertEqual(instance.fetchone(
             'select count() from proxies where (userid, otherid) = (?, ?)',
             (alpha.id, beta.id))[0], 1)
@@ -682,13 +681,13 @@ class GestaltTest(unittest.TestCase):
         # now, with the alpha-beta swap active, alpha opens swap with gamma
         # this one should fail due to tags conflict
         self.assertNotCommand(
-                alpha, chan, 'gs;swap open %s sw text' % gamma.mention)
+                alpha, chan, f'gs;swap open {gamma.mention} sw text')
         # but this one should work
         self.assertCommand(
-                alpha, chan, 'gs;swap open %s sww text' % gamma.mention)
+                alpha, chan, f'gs;swap open {gamma.mention} sww text')
         # gamma opens the swap
         self.assertCommand(
-                gamma, chan, 'gs;swap open %s sww text' % alpha.mention)
+                gamma, chan, f'gs;swap open {alpha.mention} sww text')
         self.assertIsNotNone(self.get_proxid(alpha, gamma))
         gammaid = self.get_proxid(gamma, alpha)
         self.assertIsNotNone(gammaid)
@@ -707,24 +706,24 @@ class GestaltTest(unittest.TestCase):
                 send(beta, chan, 'sw swap').author.name.index(alpha.name) != -1)
 
         # close the swaps
-        self.assertCommand(alpha, chan, 'gs;swap close %s' % alphaid)
+        self.assertCommand(alpha, chan, f'gs;swap close {alphaid}')
         self.assertIsNone(self.get_proxid(alpha, beta))
         self.assertIsNone(self.get_proxid(beta, alpha))
         self.assertIsNotNone(self.get_proxid(alpha, gamma))
         self.assertIsNotNone(self.get_proxid(gamma, alpha))
-        self.assertCommand(gamma, chan, 'gs;swap close %s' % gammaid)
+        self.assertCommand(gamma, chan, f'gs;swap close {gammaid}')
         self.assertIsNone(self.get_proxid(alpha, gamma))
         self.assertIsNone(self.get_proxid(gamma, alpha))
         self.assertNotProxied(beta, chan, 'sw no swap')
         self.assertNotProxied(gamma, chan, 'sww no swap')
 
         # test self-swaps
-        self.assertCommand(alpha, chan, 'gs;swap open %s' % alpha.mention)
+        self.assertCommand(alpha, chan, f'gs;swap open {alpha.mention}')
         self.assertIsNotNone(self.get_proxid(alpha, alpha))
         self.assertCommand(alpha, chan, 'gs;p test-alpha tags me:text')
         self.assertProxied(alpha, chan, 'me:self-swap')
         self.assertEqual(chan[-1].author.name, 'test-alpha')
-        self.assertNotCommand(alpha, chan, 'gs;swap open %s' % alpha.mention)
+        self.assertNotCommand(alpha, chan, f'gs;swap open {alpha.mention}')
         self.assertEqual(instance.fetchone(
             'select count() from proxies where (userid, otherid) = (?, ?)',
             (alpha.id, alpha.id))[0], 1)
@@ -751,7 +750,7 @@ class GestaltTest(unittest.TestCase):
         proxid = self.get_proxid(alpha, g.default_role)
         self.assertIsNotNone(proxid)
         # set the tags
-        self.assertCommand(alpha, g['main'], 'gs;p %s tags e:text' % proxid)
+        self.assertCommand(alpha, g['main'], f'gs;p {proxid} tags e:text')
         # test the proxy
         self.assertProxied(alpha, g['main'], 'e:test')
         # this proxy will be used in later tests
@@ -762,12 +761,12 @@ class GestaltTest(unittest.TestCase):
         # add the role to alpha, then create collective
         member = g.get_member(alpha.id)
         member._add_role(role)
-        self.assertCommand(alpha, g['main'], 'gs;c new %s' % role.mention)
+        self.assertCommand(alpha, g['main'], f'gs;c new {role.mention}')
         proxid = self.get_proxid(alpha, role)
         self.assertIsNotNone(proxid)
 
         # set tags and test it
-        self.assertCommand(alpha, g['main'], 'gs;p %s tags d:text' % proxid)
+        self.assertCommand(alpha, g['main'], f'gs;p {proxid} tags d:text')
         self.assertProxied(alpha, g['main'], 'd:test')
 
         # try removing the role from alpha
@@ -778,12 +777,12 @@ class GestaltTest(unittest.TestCase):
 
         # delete the collective normally
         collid = self.get_collid(role)
-        self.assertCommand(alpha, g['main'], 'gs;c %s delete' % collid)
+        self.assertCommand(alpha, g['main'], f'gs;c {collid} delete')
         self.assertIsNone(self.get_collid(role))
         self.assertIsNone(self.get_proxid(alpha, collid))
 
         # recreate the collective, then delete the role
-        self.assertCommand(alpha, g['main'], 'gs;c new %s' % role.mention)
+        self.assertCommand(alpha, g['main'], f'gs;c new {role.mention}')
         collid = self.get_collid(role)
         self.assertIsNotNone(collid)
         proxid = self.get_proxid(alpha, collid)
@@ -796,7 +795,7 @@ class GestaltTest(unittest.TestCase):
     def test_04_permissions(self):
         # users shouldn't be able to change another's proxy
         alphaid = self.get_proxid(alpha, None)
-        self.assertNotCommand(beta, g['main'], 'gs;p %s tags no:text' % alphaid)
+        self.assertNotCommand(beta, g['main'], f'gs;p {alphaid} tags no:text')
 
     def test_05_tags_auto(self):
         # test every combo of auto, tags, and also the switches thereof
@@ -809,36 +808,36 @@ class GestaltTest(unittest.TestCase):
         self.assertNotProxied(alpha, chan, 'no tags, no auto')
         self.assertProxied(alpha, chan, 'E:Tags')
         self.assertEqual(chan[-1].content, 'Tags')
-        self.assertCommand(alpha, chan, 'gs;p %s tags "= text"' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} tags "= text"')
         self.assertProxied(alpha, chan, '= tags, no auto')
         self.assertEqual(chan[-1].content, 'tags, no auto')
-        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
+        self.assertCommand(alpha, chan, f'gs;ap {proxid}')
         self.assertProxied(alpha, chan, '= tags, auto')
         self.assertEqual(chan[-1].content, 'tags, auto')
         self.assertProxied(alpha, chan, 'no tags, auto')
         self.assertEqual(chan[-1].content, 'no tags, auto')
         self.assertCommand(alpha, chan, 'gs;ap off')
-        self.assertCommand(alpha, chan, 'gs;p %s tags #text#' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} tags #text#')
         self.assertProxied(alpha, chan, '#tags, no auto#')
         self.assertEqual(chan[-1].content, 'tags, no auto')
-        self.assertCommand(alpha, chan, 'gs;p %s tags text]' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} tags text]')
         self.assertProxied(alpha, chan, 'postfix tag]')
-        self.assertCommand(alpha, chan, 'gs;p %s tags -clear' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} tags -clear')
         self.assertNotProxied(alpha, chan, 'postfix tag]')
-        self.assertNotCommand(alpha, chan, 'gs;p %s tags -clean' % proxid)
+        self.assertNotCommand(alpha, chan, f'gs;p {proxid} tags -clean')
 
         # test keepproxy
-        self.assertCommand(alpha, chan, 'gs;p %s tags [text]' % proxid)
-        self.assertCommand(alpha, chan, 'gs;p %s keepproxy on' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} tags [text]')
+        self.assertCommand(alpha, chan, f'gs;p {proxid} keepproxy on')
         self.assertProxied(alpha, chan, '[message]')
         self.assertEqual(chan[-1].content, '[message]')
-        self.assertCommand(alpha, chan, 'gs;p %s keepproxy off' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} keepproxy off')
         self.assertProxied(alpha, chan, '[message]')
         self.assertEqual(chan[-1].content, 'message')
-        self.assertCommand(alpha, chan, 'gs;p %s tags e:text' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} tags e:text')
 
         # test echo
-        self.assertCommand(alpha, chan, 'gs;p %s echo on' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} echo on')
         (msg, proxied) = (send(alpha, chan, 'e:echo!'), chan[-1])
         self.assertFalse(msg._deleted)
         self.assertGreater(proxied.id, msg.id)
@@ -846,32 +845,32 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(proxied.content, 'echo!')
 
         # echo and keepproxy
-        self.assertCommand(alpha, chan, 'gs;p %s keepproxy on' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} keepproxy on')
         (msg, proxied) = (send(alpha, chan, 'e:echo!'), chan[-1])
         self.assertFalse(msg._deleted)
         self.assertGreater(proxied.id, msg.id)
         self.assertIsNotNone(proxied.webhook_id)
         self.assertEqual(proxied.content, 'e:echo!')
-        self.assertCommand(alpha, chan, 'gs;p %s keepproxy off' % proxid)
-        self.assertCommand(alpha, chan, 'gs;p %s echo off' % proxid)
+        self.assertCommand(alpha, chan, f'gs;p {proxid} keepproxy off')
+        self.assertCommand(alpha, chan, f'gs;p {proxid} echo off')
 
         # invalid tags. these should fail
-        self.assertNotCommand(alpha, chan, 'gs;p %s tags' % proxid)
-        self.assertNotCommand(alpha, chan, 'gs;p %s tags text' % proxid)
-        self.assertNotCommand(alpha, chan, 'gs;p %s tags txet' % proxid)
+        self.assertNotCommand(alpha, chan, f'gs;p {proxid} tags')
+        self.assertNotCommand(alpha, chan, f'gs;p {proxid} tags text')
+        self.assertNotCommand(alpha, chan, f'gs;p {proxid} tags txet')
 
         # test autoproxy without tags
         # also test proxies added on role add
         self.assertVote(alpha, chan, 'gs;m new notags')
         interact(chan[-1], alpha, 'no')
         proxid = self.get_proxid(alpha, name = 'notags')
-        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
+        self.assertCommand(alpha, chan, f'gs;ap {proxid}')
         self.assertProxied(alpha, chan, 'no tags, auto')
         self.assertCommand(alpha, chan, 'gs;ap off')
         self.assertNotProxied(alpha, chan, 'no tags, no auto')
 
         # test tag precedence over auto
-        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
+        self.assertCommand(alpha, chan, f'gs;ap {proxid}')
         self.assertEqual(send(alpha, chan, 'auto').author.name, 'notags')
         self.assertEqual(send(alpha, chan, 'e: tags').author.name, 'test')
 
@@ -889,8 +888,7 @@ class GestaltTest(unittest.TestCase):
     def test_06_query_delete(self):
         g._add_member(deleteme := User(name = 'deleteme'))
         chan = g['main']
-        self.assertCommand(deleteme, chan, 'gs;swap open %s'
-            % deleteme.mention)
+        self.assertCommand(deleteme, chan, f'gs;swap open {deleteme.mention}')
         self.assertCommand(deleteme, chan, 'gs;p deleteme tags e:text')
         msg = send(deleteme, chan, 'e:reaction test')
         msg._react(gestalt.REACT_QUERY, beta)
@@ -915,8 +913,8 @@ class GestaltTest(unittest.TestCase):
 
         # in swaps, sender or swapee may delete message
         self.assertCommand(alpha, chan,
-                'gs;swap open %s swap:text' % beta.mention)
-        self.assertCommand(beta, chan, 'gs;swap open %s' % alpha.mention)
+                f'gs;swap open {beta.mention} swap:text')
+        self.assertCommand(beta, chan, f'gs;swap open {alpha.mention}')
         msg = self.assertProxied(alpha, chan, 'swap:delete me')
         msg._react(gestalt.REACT_DELETE, gamma)
         self.assertFalse(msg._deleted)
@@ -926,7 +924,7 @@ class GestaltTest(unittest.TestCase):
         msg._react(gestalt.REACT_DELETE, beta)
         self.assertTrue(msg._deleted)
         self.assertCommand(alpha, chan,
-                'gs;swap close %s' % self.get_proxid(alpha, beta))
+                f'gs;swap close {self.get_proxid(alpha, beta)}')
 
         # test DMs
         msg1 = beta.dm_channel[-1]
@@ -982,9 +980,9 @@ class GestaltTest(unittest.TestCase):
 
         # open a swap. swaps are global so alpha will use it to test conflicts
         self.assertCommand(
-                alpha, g['main'], 'gs;swap open %s :text' % beta.mention)
+                alpha, g['main'], f'gs;swap open {beta.mention} :text')
         self.assertCommand(
-                beta, g['main'], 'gs;swap open %s :text' % alpha.mention)
+                beta, g['main'], f'gs;swap open {alpha.mention} :text')
         proxswap = self.get_proxid(alpha, beta)
         self.assertIsNotNone(proxswap)
 
@@ -1004,32 +1002,32 @@ class GestaltTest(unittest.TestCase):
 
         # now alpha can test tags and auto stuff
         self.assertCommand(
-                alpha, g['main'], 'gs;p %s tags same:text' % proxfirst)
+                alpha, g['main'], f'gs;p {proxfirst} tags same:text')
         # this shouldn't work even though the masks are in different guilds
         self.assertNotCommand(
-                alpha, g2['main'], 'gs;p %s tags same:text' % proxsecond)
+                alpha, g2['main'], f'gs;p {proxsecond} tags same:text')
         self.assertProxied(alpha, g['main'], 'same: no auto')
         # alpha should be able to set both to auto; different guilds
-        self.assertCommand(alpha, g['main'], 'gs;ap %s' % proxfirst)
-        self.assertCommand(alpha, g2['main'], 'gs;ap %s' % proxsecond)
+        self.assertCommand(alpha, g['main'], f'gs;ap {proxfirst}')
+        self.assertCommand(alpha, g2['main'], f'gs;ap {proxsecond}')
         self.assertProxied(alpha, g['main'], 'auto on')
         self.assertProxied(alpha, g2['main'], 'auto on')
 
         # test global tags conflict; this should fail
         self.assertNotCommand(
-                alpha, g['main'], 'gs;p %s tags same:text' % proxswap)
+                alpha, g['main'], f'gs;p {proxswap} tags same:text')
         # no conflict; this should work
         self.assertCommand(
-                alpha, g['main'], 'gs;p %s tags swap:text' % proxswap)
+                alpha, g['main'], f'gs;p {proxswap} tags swap:text')
         # make a conflict with a mask
         self.assertNotCommand(
-                alpha, g['main'], 'gs;p %s tags swap:text' % proxfirst)
+                alpha, g['main'], f'gs;p {proxfirst} tags swap:text')
         # now turning on auto on the swap should deactivate the other autos
         self.assertProxied(alpha, g['main'], 'auto on')
         self.assertNotEqual(
                 send(alpha, g['main'], 'mask has auto').author.name.index(
                     'conflict'), -1)
-        self.assertCommand(alpha, g['main'], 'gs;ap %s' % proxswap)
+        self.assertCommand(alpha, g['main'], f'gs;ap {proxswap}')
         self.assertNotEqual(
                 send(alpha, g['main'], 'swap has auto').author.name.index(
                     beta.name), -1)
@@ -1038,60 +1036,60 @@ class GestaltTest(unittest.TestCase):
         # this should be exhaustive
 
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 123text456' % proxswap)
+                f'gs;p {proxswap} tags 123text456')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 1234text56' % proxfirst)
+                f'gs;p {proxfirst} tags 1234text56')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 1234text' % proxfirst)
+                f'gs;p {proxfirst} tags 1234text')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 12text3456' % proxfirst)
+                f'gs;p {proxfirst} tags 12text3456')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags text3456' % proxfirst)
+                f'gs;p {proxfirst} tags text3456')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 12text56' % proxfirst)
+                f'gs;p {proxfirst} tags 12text56')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 1234text3456' % proxfirst)
+                f'gs;p {proxfirst} tags 1234text3456')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 123text456' % proxfirst)
+                f'gs;p {proxfirst} tags 123text456')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 123text' % proxfirst)
+                f'gs;p {proxfirst} tags 123text')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags text456' % proxfirst)
+                f'gs;p {proxfirst} tags text456')
 
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 123text' % proxswap)
+                f'gs;p {proxswap} tags 123text')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags text456' % proxfirst)
+                f'gs;p {proxfirst} tags text456')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 12text456' % proxfirst)
+                f'gs;p {proxfirst} tags 12text456')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 12text' % proxfirst)
+                f'gs;p {proxfirst} tags 12text')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 1234text' % proxfirst)
+                f'gs;p {proxfirst} tags 1234text')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 1234text456' % proxfirst)
+                f'gs;p {proxfirst} tags 1234text456')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 123text' % proxfirst)
+                f'gs;p {proxfirst} tags 123text')
 
-        self.assertCommand(alpha, g['main'], 'gs;p %s tags [text]' % proxfirst)
+        self.assertCommand(alpha, g['main'], f'gs;p {proxfirst} tags [text]')
 
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags text456' % proxswap)
+                f'gs;p {proxswap} tags text456')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 123text' % proxfirst)
+                f'gs;p {proxfirst} tags 123text')
         self.assertCommand(alpha, g['main'],
-                'gs;p %s tags 123text56' % proxfirst)
+                f'gs;p {proxfirst} tags 123text56')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags text56' % proxfirst)
+                f'gs;p {proxfirst} tags text56')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags text3456' % proxfirst)
+                f'gs;p {proxfirst} tags text3456')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags 123text3456' % proxfirst)
+                f'gs;p {proxfirst} tags 123text3456')
         self.assertNotCommand(alpha, g['main'],
-                'gs;p %s tags text456' % proxfirst)
+                f'gs;p {proxfirst} tags text456')
 
         # done. close the swap
-        self.assertCommand(alpha, g['main'], 'gs;swap close %s' % proxswap)
+        self.assertCommand(alpha, g['main'], f'gs;swap close {proxswap}')
 
     def test_09_override(self):
         overid = self.get_proxid(alpha, None)
@@ -1102,10 +1100,10 @@ class GestaltTest(unittest.TestCase):
 
         chan = g['main']
         self.assertProxied(alpha, chan, 'e: proxy')
-        self.assertCommand(alpha, chan, 'gs;ap %s' % proxid)
+        self.assertCommand(alpha, chan, f'gs;ap {proxid}')
         self.assertProxied(alpha, chan, 'proxy')
         # set the override tags. this should activate it
-        self.assertCommand(alpha, chan, 'gs;p %s tags x:text' % overid)
+        self.assertCommand(alpha, chan, f'gs;p {overid} tags x:text')
         self.assertNotProxied(alpha, chan, 'x: not proxies')
 
         # turn autoproxy off
@@ -1142,10 +1140,10 @@ class GestaltTest(unittest.TestCase):
             Attachment('a cat')])
         self.assertNotCommand(alpha, chan, 'gs;m url avatar', files = [
             Attachment(range(999999999), content_type = 'image/png')])
-        self.assertNotCommand(alpha, chan, 'gs;m url avatar %s' %
-                Attachment('a cat', content_type = 'image/png').url)
-        self.assertNotCommand(alpha, chan, 'gs;m url avatar %s' %
-                (gestalt.AVATAR_URL_BASE + '/avatar.png'))
+        avatar = Attachment('a cat', content_type = 'image/png').url
+        self.assertNotCommand(alpha, chan, f'gs;m url avatar {avatar}')
+        avatar = gestalt.AVATAR_URL_BASE + '/avatar.png'
+        self.assertNotCommand(alpha, chan, f'gs;m url avatar {avatar}')
         self.assertCommand(alpha, chan, 'gs;m url leave')
 
         def embed(url):
@@ -1259,11 +1257,11 @@ class GestaltTest(unittest.TestCase):
 
     def test_15_case(self):
         self.assertIsNotNone(self.get_proxid(alpha, None).upper())
-        self.assertCommand(alpha, g['main'], 'gs;swap open %s' % beta.mention)
-        self.assertCommand(beta, g['main'], 'gs;swap open %s' % alpha.mention)
+        self.assertCommand(alpha, g['main'], f'gs;swap open {beta.mention}')
+        self.assertCommand(beta, g['main'], f'gs;swap open {alpha.mention}')
         proxid = self.get_proxid(alpha, beta).upper()
-        self.assertCommand(alpha, g['main'], 'gs;p %s keepproxy on' % proxid)
-        self.assertCommand(alpha, g['main'], 'gs;swap close %s' % proxid)
+        self.assertCommand(alpha, g['main'], f'gs;p {proxid} keepproxy on')
+        self.assertCommand(alpha, g['main'], f'gs;swap close {proxid}')
 
     def test_16_replies(self):
         chan = g['main']
@@ -1272,14 +1270,12 @@ class GestaltTest(unittest.TestCase):
         reply = self.assertProxied(alpha, chan, 'e: reply',
                 Object(cached_message = msg))
         self.assertEqual(len(reply.embeds), 1)
-        self.assertEqual(self.desc(reply),
-                '**[Reply to:](%s)** no reply' % msg.jump_url)
+        self.assertEqual(self.desc(reply), f'**[Reply to:]({msg.jump_url})** no reply')
         # again, but this time the message isn't in cache
         reply = self.assertProxied(alpha, chan, 'e: reply',
                 Object(cached_message = None, message_id = msg.id))
         self.assertEqual(len(reply.embeds), 1)
-        self.assertEqual(self.desc(reply),
-                '**[Reply to:](%s)** no reply' % msg.jump_url)
+        self.assertEqual(self.desc(reply), f'**[Reply to:]({msg.jump_url})** no reply')
         # now with attachments
         attach = Attachment('file goes here')
         msg = self.assertProxied(alpha, chan, 'e: content', files = [attach])
@@ -1290,6 +1286,7 @@ class GestaltTest(unittest.TestCase):
         reply = self.assertProxied(alpha, chan, 'e: reply.',
                 Object(cached_message = msg))
         self.assertIn('click to see attachment', self.desc(reply))
+        self.assertIn(msg.jump_url, self.desc(reply))
         # test message truncation
         self.assertEqual(instance.truncate('short', 100), 'short')
         self.assertEqual(instance.truncate('short', 4),
@@ -1380,36 +1377,32 @@ class GestaltTest(unittest.TestCase):
     def test_18_become(self):
         chan = g['main']
         # can't Become override
-        self.assertNotCommand(alpha, chan, 'gs;become %s'
-                % self.get_proxid(alpha, None))
+        self.assertNotCommand(alpha, chan, f'gs;become {self.get_proxid(alpha, None)}')
         # can't Become someone else's proxy
-        self.assertCommand(alpha, chan, 'gs;swap open %s' % beta.mention)
-        self.assertCommand(beta, chan, 'gs;swap open %s' % alpha.mention)
+        self.assertCommand(alpha, chan, f'gs;swap open {beta.mention}')
+        self.assertCommand(beta, chan, f'gs;swap open {alpha.mention}')
         proxid = self.get_proxid(alpha, beta)
-        self.assertNotCommand(beta, chan, 'gs;become %s' % proxid)
+        self.assertNotCommand(beta, chan, f'gs;become {proxid}')
 
-        self.assertCommand(alpha, chan, 'gs;become %s' % proxid)
+        self.assertCommand(alpha, chan, f'gs;become {proxid}')
         self.assertNotProxied(alpha, chan, 'not proxied')
         self.assertProxied(alpha, chan, 'proxied')
-        self.assertCommand(alpha, chan, 'gs;swap close %s' % proxid)
+        self.assertCommand(alpha, chan, f'gs;swap close {proxid}')
 
     def test_19_swap_close(self):
         chan = g['main']
-        self.assertCommand(alpha, chan, 'gs;swap open %s' % beta.mention)
-        self.assertCommand(alpha, chan, 'gs;swap close %s'
-            % self.get_proxid(alpha, beta))
-        self.assertCommand(alpha, chan, 'gs;swap open %s' % beta.mention)
-        self.assertCommand(beta, chan, 'gs;swap open %s' % alpha.mention)
-        self.assertNotCommand(alpha, chan, 'gs;swap close %s'
-            % self.get_proxid(alpha, None))
+        self.assertCommand(alpha, chan, f'gs;swap open {beta.mention}')
+        self.assertCommand(alpha, chan, f'gs;swap close {self.get_proxid(alpha, beta)}')
+        self.assertCommand(alpha, chan, f'gs;swap open {beta.mention}')
+        self.assertCommand(beta, chan, f'gs;swap open {alpha.mention}')
+        self.assertNotCommand(alpha, chan, f'gs;swap close {self.get_proxid(alpha, None)}')
         self.assertVote(alpha, chan, 'gs;m new close')
         interact(chan[-1], alpha, 'no')
         self.assertNotCommand(alpha, chan, 'gs;swap close close')
         instance.get_user_proxy(chan[-1], 'close')
         self.assertCommand(alpha, chan, 'gs;m close leave')
         self.assertNotCommand(alpha, chan, 'gs;swap close aaaaaa')
-        self.assertCommand(alpha, chan, 'gs;swap close %s'
-            % self.get_proxid(alpha, beta))
+        self.assertCommand(alpha, chan, f'gs;swap close {self.get_proxid(alpha, beta)}')
 
     def test_20_collective_delete(self):
         """
@@ -1498,13 +1491,13 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c, 'proxied')
         self.assertCommand(alpha, c, 'gs;ap off')
 
-        send(alpha, c, 'gs;swap open %s' % beta.mention)
-        send(beta, c, 'gs;swap open %s' % alpha.mention)
+        send(alpha, c, f'gs;swap open {beta.mention}')
+        send(beta, c, f'gs;swap open {alpha.mention}')
         self.assertCommand(alpha, c, 'gs;p test-beta tags b:text')
         self.assertNotCommand(beta, c, 'gs;swap close test-beta')
         self.assertCommand(alpha, c, 'gs;swap close test-beta')
 
-        self.assertVote(alpha, c, 'gs;m guild invite %s' % beta.mention)
+        self.assertVote(alpha, c, f'gs;m guild invite {beta.mention}')
         interact(c[-1], beta, 'yes')
         self.assertNotCommand(beta, c, 'gs;p guild tags g:text')
         self.assertCommand(beta, c, 'gs;p guildy tags g:text')
@@ -1515,7 +1508,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(send(alpha, c, '[proxied').author.display_avatar,
                 'http://newavatar')
         instance.get_user_proxy(send(alpha, c, 'command'), 'guild')
-        self.assertCommand(alpha, c, 'gs;m guild leave %s' % beta.mention)
+        self.assertCommand(alpha, c, f'gs;m guild leave {beta.mention}')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(c[-1], 'guild')
         self.assertCommand(beta, c, 'gs;m guildy leave')
@@ -1537,7 +1530,7 @@ class GestaltTest(unittest.TestCase):
         # also swaps used to make a hidden proxy for the other user so this is
         # a bit anachronistic now but there'll probably be more uses for hidden
         # proxies in the future so yeah
-        # send(alpha, c, 'gs;swap open %s' % beta.mention)
+        # send(alpha, c, f'gs;swap open {beta.mention}')
         proxid = instance.mkproxy(beta.id, gestalt.ProxyType.swap,
                 cmdname = 'test-alpha', state = gestalt.ProxyState.hidden)
         # self.assertIsNotNone(self.get_proxid(beta, alpha))
@@ -1563,22 +1556,22 @@ class GestaltTest(unittest.TestCase):
                 '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
                 '"color": "123456"}')
 
-        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertVote(alpha, c, f'gs;pk swap {beta.mention} aaaaa')
         interact(c[-1], alpha, 'yes')
-        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertVote(alpha, c, f'gs;pk swap {beta.mention} aaaaa')
         interact(c[-1], beta, 'no')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, 'a'), 'member!')
-        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertVote(alpha, c, f'gs;pk swap {beta.mention} aaaaa')
         interact(c[-1], beta, 'yes')
         instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         # shouldn't work twice
-        self.assertNotVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertNotVote(alpha, c, f'gs;pk swap {beta.mention} aaaaa')
         # should be able to send to two users
-        self.assertCommand(alpha, c, 'gs;swap open %s' % gamma.mention)
-        self.assertCommand(gamma, c, 'gs;swap open %s' % alpha.mention)
-        msg = self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % gamma.mention)
-        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % gamma.mention)
+        self.assertCommand(alpha, c, f'gs;swap open {gamma.mention}')
+        self.assertCommand(gamma, c, f'gs;swap open {alpha.mention}')
+        msg = self.assertVote(alpha, c, f'gs;pk swap {gamma.mention} aaaaa')
+        self.assertVote(alpha, c, f'gs;pk swap {gamma.mention} aaaaa')
         interact(msg, gamma, 'yes')
         interact(c[-1], gamma, 'yes')
         instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
@@ -1588,14 +1581,14 @@ class GestaltTest(unittest.TestCase):
         instance.get_user_proxy(send(gamma, c, 'a'), 'member!')
         # handle PluralKit linked accounts
         instance.session._pk('/systems/' + str(gamma.id), '{"id": "exmpl"}')
-        self.assertCommand(beta, c, 'gs;swap open %s' % gamma.mention)
-        self.assertCommand(gamma, c, 'gs;swap open %s' % beta.mention)
-        self.assertNotVote(gamma, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertCommand(beta, c, f'gs;swap open {gamma.mention}')
+        self.assertCommand(gamma, c, f'gs;swap open {beta.mention}')
+        self.assertNotVote(gamma, c, f'gs;pk swap {beta.mention} aaaaa')
 
         # test sending to self
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(alpha, c, 'a'), 'member!')
-        self.assertCommand(alpha, c, 'gs;pk swap %s aaaaa' % alpha.mention)
+        self.assertCommand(alpha, c, f'gs;pk swap {alpha.mention} aaaaa')
         instance.get_user_proxy(send(alpha, c, 'a'), 'member!')
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(alpha, c, 'a'),
@@ -1663,7 +1656,7 @@ class GestaltTest(unittest.TestCase):
             instance.get_user_proxy(send(alpha, c, 'a'), 'test-beta\'s member!')
 
         # then by pkswap
-        self.assertVote(alpha, c, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertVote(alpha, c, f'gs;pk swap {beta.mention} aaaaa')
         interact(c[-1], beta, 'yes')
         instance.get_user_proxy(send(beta, c, 'a'), 'member!')
         self.assertCommand(beta, c, 'gs;pk close member!')
@@ -1678,7 +1671,7 @@ class GestaltTest(unittest.TestCase):
         instance.session._pk('/members/lon-gid',
                 '{"system": "exmpl", "uuid": "l-o-o-n-g", "name": "long", '
                 '"color": "123456"}')
-        self.assertVote(alpha, c, 'gs;pk swap %s lon-gid' % beta.mention)
+        self.assertVote(alpha, c, f'gs;pk swap {beta.mention} lon-gid')
         interact(c[-1], beta, 'yes')
         self.assertCommand(beta, c, 'gs;pk close long')
 
@@ -1692,7 +1685,7 @@ class GestaltTest(unittest.TestCase):
         self.assertVote(alpha, c, 'gs;m new logged')
         interact(c[-1], alpha, 'no')
         self.assertCommand(alpha, c, 'gs;p logged tags g:text')
-        self.assertCommand(alpha, c, 'gs;log channel %s ' % log.mention)
+        self.assertCommand(alpha, c, f'gs;log channel {log.mention} ')
 
         # just check that the log messages exist for now
         self.assertEqual(len(log._messages), 0)
@@ -1720,8 +1713,8 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(beta)
         th = Thread(c, name = 'the best thread')
 
-        self.assertCommand(alpha, c, 'gs;swap open %s' % beta.mention)
-        self.assertCommand(beta, c, 'gs;swap open %s' % alpha.mention)
+        self.assertCommand(alpha, c, f'gs;swap open {beta.mention}')
+        self.assertCommand(beta, c, f'gs;swap open {alpha.mention}')
         self.assertCommand(alpha, c, 'gs;p test-beta tags beta:text')
         self.assertCommand(beta, c, 'gs;p test-alpha tags alpha:text')
 
@@ -1764,7 +1757,7 @@ class GestaltTest(unittest.TestCase):
                 (th2.id,))
 
         log = g1._add_channel('log')
-        self.assertCommand(alpha, th, 'gs;log channel %s ' % log.mention)
+        self.assertCommand(alpha, th, f'gs;log channel {log.mention} ')
         self.assertEqual(len(log._messages), 0)
         msg = self.assertProxied(alpha, th, 'beta:logg')
         self.assertEqual(len(log._messages), 1)
@@ -1785,9 +1778,8 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(beta)
 
         # pk swap colors are already tested
-        self.assertCommand(alpha, c, 'gs;swap open %s beta:text'
-                % beta.mention)
-        self.assertCommand(beta, c, 'gs;swap open %s' % alpha.mention)
+        self.assertCommand(alpha, c, f'gs;swap open {beta.mention} beta:text')
+        self.assertCommand(beta, c, f'gs;swap open {alpha.mention}')
 
         # masks
         self.assertVote(alpha, c, 'gs;m new colorful')
@@ -1837,25 +1829,20 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(alpha)
         g1._add_member(beta)
 
-        self.assertNotCommand(alpha, cmds, 'gs;channel %s mode irl' %
-            Guild()._add_channel('channel').mention)
+        tempchan = Guild()._add_channel('channel')
+        self.assertNotCommand(alpha, cmds, f'gs;channel {tempchan.mention} mode irl')
         # channel needs to be in the same guild
-        self.assertNotCommand(alpha, cmds, 'gs;channel %s mode mandatory' %
-            Guild()._add_channel('channel').mention)
+        self.assertNotCommand(alpha, cmds, f'gs;channel {tempchan.mention} mode mandatory')
 
-        self.assertCommand(alpha, cmds, 'gs;swap open %s alpha:text'
-                % alpha.mention)
+        self.assertCommand(alpha, cmds, f'gs;swap open {alpha.mention} alpha:text')
         self.assertProxied(alpha, main, 'alpha:self swap')
-        self.assertCommand(alpha, cmds, 'gs;channel %s mode mandatory'
-                % main.mention)
+        self.assertCommand(alpha, cmds, f'gs;channel {main.mention} mode mandatory')
         # self-swap should be deleted
         self.assertDeleted(alpha, main, 'alpha:self swap')
-        self.assertCommand(alpha, cmds, 'gs;swap open %s beta:text'
-                % beta.mention)
+        self.assertCommand(alpha, cmds, f'gs;swap open {beta.mention} beta:text')
         # inactive swap should be deleted
         self.assertDeleted(alpha, main, 'beta:test')
-        self.assertCommand(beta, cmds, 'gs;swap open %s alpha:text'
-                % alpha.mention)
+        self.assertCommand(beta, cmds, f'gs;swap open {alpha.mention} alpha:text')
         # swap with present member should be fine
         self.assertProxied(alpha, main, 'beta:test')
         g1._remove_member(beta)
@@ -1871,8 +1858,7 @@ class GestaltTest(unittest.TestCase):
         # message without a proxy should be deleted
         self.assertDeleted(alpha, main, 'no proxy')
 
-        self.assertCommand(alpha, cmds, 'gs;p %s tags x:text'
-                % self.get_proxid(alpha, None))
+        self.assertCommand(alpha, cmds, f'gs;p {self.get_proxid(alpha, None)} tags x:text')
         # message with override should be deleted
         self.assertDeleted(alpha, main, 'x:test')
 
@@ -1891,7 +1877,7 @@ class GestaltTest(unittest.TestCase):
         pkmsg = run(pkhook.send('member!', '', content = 'new message'))
         instance.session._pk('/messages/' + str(pkmsg.id),
                 '{"member": {"uuid": "a-a-a-a-a"}}')
-        self.assertVote(alpha, cmds, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertVote(alpha, cmds, f'gs;pk swap {beta.mention} aaaaa')
         interact(cmds[-1], beta, 'yes')
         self.assertCommand(beta, cmds, 'gs;p member! tags memb:text')
         # unsynced pkswap should be deleted
@@ -1909,8 +1895,7 @@ class GestaltTest(unittest.TestCase):
         self.assertDeleted(alpha, main, 'gs;swap close test-beta')
 
         # change it back and everything should be fine
-        self.assertCommand(alpha, cmds, 'gs;channel %s mode default'
-                % main.mention)
+        self.assertCommand(alpha, cmds, f'gs;channel {main.mention} mode default')
         self.assertCommand(alpha, main, 'gs;swap close test-beta')
         self.assertCommand(alpha, main, 'gs;swap close test-alpha')
         self.assertCommand(alpha, main, 'gs;pk close "test-beta\'s member!"')
@@ -1922,7 +1907,7 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(instance.user)
         g1._add_member(alpha)
 
-        self.assertCommand(alpha, c, 'gs;swap open %s a:text' % alpha.mention)
+        self.assertCommand(alpha, c, f'gs;swap open {alpha.mention} a:text')
         self.assertIsNone(self.assertProxied(alpha, c, 'a:no emojis').edited_at)
         msg = self.assertProxied(alpha, c, 'a:<:emoji:1234>')
         self.assertIsNotNone(msg.edited_at)
@@ -1943,8 +1928,8 @@ class GestaltTest(unittest.TestCase):
 
         # check handling an ap'd swap when other member leaves guild
         g1._add_member(beta)
-        self.assertCommand(alpha, c1, 'gs;swap open %s b:text' % beta.mention)
-        self.assertCommand(beta, c1, 'gs;swap open %s a:text' % alpha.mention)
+        self.assertCommand(alpha, c1, f'gs;swap open {beta.mention} b:text')
+        self.assertCommand(beta, c1, f'gs;swap open {alpha.mention} a:text')
         self.assertCommand(alpha, c1, 'gs;autoproxy test-beta')
         self.assertProxied(alpha, c1, 'beta')
         g1._remove_member(beta)
@@ -1980,27 +1965,25 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, c1, 'gs;ap "manual guild"')
         self.assertNotCommand(alpha, c2, 'gs;ap test-beta')
         self.assertCommand(alpha, c1, 'gs;swap close test-beta')
-        self.assertCommand(alpha, c1, 'gs;swap open %s b:text' % beta.mention)
+        self.assertCommand(alpha, c1, f'gs;swap open {beta.mention} b:text')
         self.assertNotCommand(alpha, c1, 'gs;ap test-beta')
-        self.assertCommand(beta, c1, 'gs;swap open %s a:text' % alpha.mention)
+        self.assertCommand(beta, c1, f'gs;swap open {alpha.mention} a:text')
         self.assertCommand(alpha, c1, 'gs;ap test-beta')
-        self.assertNotCommand(alpha, c1, 'gs;ap %s'
-                % (overid := self.get_proxid(alpha, None)))
+        overid = self.get_proxid(alpha, None)
+        self.assertNotCommand(alpha, c1, f'gs;ap {overid}')
         instance.session._pk('/systems/' + str(alpha.id), '{"id": "exmpl"}')
         instance.session._pk('/members/aaaaa',
                 '{"system": "exmpl", "uuid": "a-a-a-a-a", "name": "member!", '
                 '"color": "123456"}')
-        self.assertVote(alpha, c1, 'gs;pk swap %s aaaaa' % beta.mention)
+        self.assertVote(alpha, c1, f'gs;pk swap {beta.mention} aaaaa')
         interact(c1[-1], beta, 'yes')
         self.assertCommand(beta, c1, 'gs;ap member!')
         self.assertNotCommand(alpha, c1, 'gs;ap "test-beta\'s member!"')
         g1._remove_member(alpha)
         self.assertNotCommand(beta, c1, 'gs;ap member!')
         g1._add_member(alpha)
-        self.assertCommand(alpha, c1, 'gs;ap %s'
-                % self.get_proxid(alpha, beta))
-        self.assertNotCommand(alpha, c1, 'gs;ap %s'
-                % self.get_proxid(beta, alpha))
+        self.assertCommand(alpha, c1, f'gs;ap {self.get_proxid(alpha, beta)}')
+        self.assertNotCommand(alpha, c1, f'gs;ap {self.get_proxid(beta, alpha)}')
 
         # check that checks are checks
         self.assertEqual(gestalt.REACT_CONFIRM, gestalt.REACT_CONFIRM)
@@ -2051,7 +2034,7 @@ class GestaltTest(unittest.TestCase):
                     self.assertProxied(alpha, c2, 'proxied')
 
         # test actually using latch against the command output
-        self.assertCommand(alpha, c1, 'gs;p %s tags x:text' % overid)
+        self.assertCommand(alpha, c1, f'gs;p {overid} tags x:text')
         self.assertCommand(alpha, c1, 'gs;ap off')
         self.assertCommand(alpha, c1, 'gs;ap l')
         self.assertNotProxied(alpha, c1, 'not proxied')
@@ -2098,7 +2081,7 @@ class GestaltTest(unittest.TestCase):
 
         self.assertVote(alpha, c1, 'gs;m new listed')
         interact(c1[-1], alpha, 'no')
-        self.assertCommand(alpha, c1, 'gs;swap open %s' % beta.mention)
+        self.assertCommand(alpha, c1, f'gs;swap open {beta.mention}')
         token = discord.utils.escape_markdown(str(beta))
         for cmd in ['gs;proxy list', 'gs;proxy list -all']:
             send(alpha, c1, cmd)
@@ -2128,8 +2111,7 @@ class GestaltTest(unittest.TestCase):
     def test_31_quotes(self):
         c = alpha.dm_channel
         send(alpha, c, 'gs;p') # create override
-        self.assertCommand(alpha, c, 'gs;p %s rename "1 1"'
-                % self.get_proxid(alpha, None))
+        self.assertCommand(alpha, c, f'gs;p {self.get_proxid(alpha, None)} rename "1 1"')
 
         self.assertCommand(alpha, c, 'gs;p "1 1" rename "2 2"')
         self.assertCommand(alpha, c, 'gs;p \'2 2\' rename \'3 3\'')
@@ -2158,7 +2140,7 @@ class GestaltTest(unittest.TestCase):
         for arg in ['on', 'off']:
             g._add_member(alpha, perms = discord.Permissions(
                 embed_links = False, mention_everyone = False))
-            self.assertCommand(alpha, c, 'gs;p links replace %s' % arg)
+            self.assertCommand(alpha, c, f'gs;p links replace {arg}')
             self.assertEqual(self.assertProxied(alpha, c,
                 'a: hi https://discord.com').content,
                 'hi <https://discord.com>')
@@ -2442,7 +2424,7 @@ class GestaltTest(unittest.TestCase):
                 'select maskid from proxies where cmdname = "mask"')[0]
         self.assertCommand(alpha, c, 'gs;p mask tags mask:text')
         self.assertNotProxied(alpha, c, 'mask:test')
-        self.assertNotVote(beta, c, 'gs;m %s add' % maskid)
+        self.assertNotVote(beta, c, f'gs;m {maskid} add')
         self.assertNotProxied(alpha, c, 'mask:test')
         self.assertCommand(alpha, c, 'gs;m mask add')
         self.assertProxied(alpha, c, 'mask:test')
@@ -2461,7 +2443,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotIn('**mask**', self.desc(c2[-1]))
         self.assertNotProxied(alpha, c2, 'mask:test')
 
-        self.assertCommand(alpha, c2, 'gs;swap open %s' % alpha.mention)
+        self.assertCommand(alpha, c2, f'gs;swap open {alpha.mention}')
         self.assertNotCommand(alpha, c2, 'gs;p test-alpha autoadd on')
         self.assertCommand(alpha, c2, 'gs;p mask autoadd on')
         self.assertVote(alpha, c2, 'gs;m new onlyhere')
@@ -2492,15 +2474,14 @@ class GestaltTest(unittest.TestCase):
         # test invite, remove, and that (auto)add fails according to rules
         maaskid = instance.fetchone(
                 'select maskid from proxies where cmdname = "maask"')[0]
-        self.assertNotVote(beta, c, 'gs;m maask invite %s' % beta.mention)
-        self.assertNotVote(beta, c, 'gs;m %s invite %s'
-                % (maaskid, beta.mention))
-        self.assertVote(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertNotVote(beta, c, f'gs;m maask invite {beta.mention}')
+        self.assertNotVote(beta, c, f'gs;m {maaskid} invite {beta.mention}')
+        self.assertVote(alpha, c, f'gs;m maask invite {beta.mention}')
         interact(c[-1], alpha, 'yes')
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, beta.id))
-        self.assertNotVote(alpha, c, 'gs;m maask invite %s' % beta.mention)
+        self.assertNotVote(alpha, c, f'gs;m maask invite {beta.mention}')
         self.assertCommand(beta, c, 'gs;p maask autoadd true')
         (gb, cb) = mkguild('beta guild', instance.user, beta)
         self.assertCommand(beta, cb, 'gs;p maask tags maask:text')
@@ -2508,19 +2489,19 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(beta, cb, 'gs;p maask autoadd true')
         self.assertNotProxied(beta, cb, 'maask:text')
         self.assertProxied(beta, c, 'maask:text')
-        self.assertCommand(alpha, c, 'gs;m maask remove %s' % beta.mention)
+        self.assertCommand(alpha, c, f'gs;m maask remove {beta.mention}')
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
-        self.assertNotVote(alpha, c, 'gs;m maask remove %s' % beta.mention)
+        self.assertNotVote(alpha, c, f'gs;m maask remove {beta.mention}')
         # test join, rules
-        self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
+        self.assertNotVote(beta, c, f'gs;m {maaskid} join')
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         self.assertCommand(alpha, c, 'gs;m maask rules unanimous')
         self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesUnanimous)
-        self.assertVote(beta, c, 'gs;m %s join' % maaskid)
+        self.assertVote(beta, c, f'gs;m {maaskid} join')
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         interact(c[-1], alpha, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, beta.id))
-        self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
+        self.assertNotVote(beta, c, f'gs;m {maaskid} join')
         self.assertVote(alpha, c, 'gs;m maask rules handsoff')
         self.assertEqual(type(instance.get_rules(maaskid)), gesp.RulesUnanimous)
         interact(c[-1], alpha, 'yes')
@@ -2534,39 +2515,38 @@ class GestaltTest(unittest.TestCase):
         # test the handsoff clause that the dictator can't be removed
         # this is the only time that (candidate) is used in the default rules
         # comment out action.add_context(context) to see this fail
-        self.assertNotVote(beta, c, 'gs;m maask remove %s' % alpha.mention)
+        self.assertNotVote(beta, c, f'gs;m maask remove {alpha.mention}')
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
         # test leave, nominate
         self.assertNotCommand(alpha, c, 'gs;m maask leave')
-        self.assertNotCommand(alpha, c, 'gs;m maask leave %s' % alpha.mention)
-        self.assertCommand(alpha, c, 'gs;m maask leave %s' % beta.mention)
+        self.assertNotCommand(alpha, c, f'gs;m maask leave {alpha.mention}')
+        self.assertCommand(alpha, c, f'gs;m maask leave {beta.mention}')
         self.assertFalse(instance.is_member_of(maaskid, alpha.id))
-        self.assertNotCommand(beta, c, 'gs;m maask leave %s' % alpha.mention)
-        self.assertVote(beta, c, 'gs;m maask invite %s' % alpha.mention)
+        self.assertNotCommand(beta, c, f'gs;m maask leave {alpha.mention}')
+        self.assertVote(beta, c, f'gs;m maask invite {alpha.mention}')
         vote = c[-1]
-        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
+        self.assertNotCommand(beta, c, f'gs;m maask nominate {alpha.mention}')
         interact(vote, alpha, 'yes')
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
-        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % beta.mention)
-        self.assertCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
-        self.assertNotCommand(beta, c, 'gs;m maask nominate %s' % alpha.mention)
+        self.assertNotCommand(beta, c, f'gs;m maask nominate {beta.mention}')
+        self.assertCommand(beta, c, f'gs;m maask nominate {alpha.mention}')
+        self.assertNotCommand(beta, c, f'gs;m maask nominate {alpha.mention}')
         self.assertCommand(beta, c, 'gs;m maask leave')
-        self.assertVote(beta, c, 'gs;m %s join' % maaskid)
+        self.assertVote(beta, c, f'gs;m {maaskid} join')
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         self.assertCommand(alpha, c, 'gs;m maask leave')
-        self.assertNotVote(alpha, c, 'gs;m %s join' % maaskid)
-        self.assertNotVote(beta, c, 'gs;m %s join' % maaskid)
+        self.assertNotVote(alpha, c, f'gs;m {maaskid} join')
+        self.assertNotVote(beta, c, f'gs;m {maaskid} join')
 
-        self.assertNotVote(beta, c, 'gs;m %s name newname' % maskid)
-        self.assertNotVote(beta, c, 'gs;m %s avatar https://newname'
-                % maskid)
-        self.assertNotVote(beta, c, 'gs;m %s color #012345' % maskid)
+        self.assertNotVote(beta, c, f'gs;m {maskid} name newname')
+        self.assertNotVote(beta, c, f'gs;m {maskid} avatar https://newname')
+        self.assertNotVote(beta, c, f'gs;m {maskid} color #012345')
         self.assertProxied(alpha, c, 'mask:text')
         self.assertEqual(c[-1].author.display_name, 'mask')
-        self.assertCommand(alpha, c, 'gs;m %s name newname' % maskid)
-        self.assertCommand(alpha, c, 'gs;m %s avatar https://image' % maskid)
+        self.assertCommand(alpha, c, f'gs;m {maskid} name newname')
+        self.assertCommand(alpha, c, f'gs;m {maskid} avatar https://image')
         self.assertCommand(alpha, c, 'gs;m mask colour #012345')
         self.assertProxied(alpha, c, 'mask:text',
                 Object(cached_message = c[-1]))
@@ -2582,13 +2562,13 @@ class GestaltTest(unittest.TestCase):
         interact(dm[-1], alpha, 'no')
         maskid = instance.fetchone(
                 'select maskid from proxies where cmdname = "dm"')[0]
-        self.assertNotVote(beta, beta.dm_channel, 'gs;m %s join' % maskid)
+        self.assertNotVote(beta, beta.dm_channel, f'gs;m {maskid} join')
         self.assertFalse(instance.is_member_of(maskid, beta.id))
-        self.assertNotVote(alpha, dm, 'gs;m dm invite %s' % beta.mention)
-        self.assertVote(alpha, c, 'gs;m dm invite %s' % beta.mention)
+        self.assertNotVote(alpha, dm, f'gs;m dm invite {beta.mention}')
+        self.assertVote(alpha, c, f'gs;m dm invite {beta.mention}')
         interact(c[-1], beta, 'yes')
         self.assertTrue(instance.is_member_of(maskid, beta.id))
-        self.assertNotVote(alpha, dm, 'gs;m dm remove %s' % beta.mention)
+        self.assertNotVote(alpha, dm, f'gs;m dm remove {beta.mention}')
         invites['1nv1t3'] = g
         self.assertNotVote(alpha, dm, 'gs;m dm add')
         self.assertNotVote(alpha, dm, 'gs;m dm add not_an_invite')
@@ -2596,8 +2576,8 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, dm, 'gs;m dm nick dmmask')
         self.assertCommand(alpha, dm, 'gs;m dm avatar http://dmmask.png')
         self.assertCommand(alpha, dm, 'gs;m dm color #999999')
-        self.assertNotCommand(alpha, dm, 'gs;m dm nominate %s' % beta.mention)
-        self.assertNotCommand(alpha, dm, 'gs;m dm leave %s' % beta.mention)
+        self.assertNotCommand(alpha, dm, f'gs;m dm nominate {beta.mention}')
+        self.assertNotCommand(alpha, dm, f'gs;m dm leave {beta.mention}')
 
         # test that votes in dms are an error
         self.assertCommand(alpha, dm, 'gs;m dm rules unanimous')
@@ -2613,8 +2593,7 @@ class GestaltTest(unittest.TestCase):
         # test different case maskid
         g._add_member(gamma)
         self.assertFalse(instance.is_member_of(maskid, gamma.id))
-        self.assertVote(alpha, c, 'gs;m %s invite %s' % (maskid.upper(),
-            gamma.mention))
+        self.assertVote(alpha, c, f'gs;m {maskid.upper()} invite {gamma.mention}')
         preinvite = c[-1]
         interact(preinvite, gamma, 'yes')
         # now the vote is happening
@@ -2634,7 +2613,7 @@ class GestaltTest(unittest.TestCase):
         # test conflicts
         self.assertVote(alpha, c, 'gs;m new rugpull')
         interact(c[-1], alpha, 'yes')
-        send(alpha, c, 'gs;m rugpull invite %s' % beta.mention)
+        send(alpha, c, f'gs;m rugpull invite {beta.mention}')
         vote = c[-1]
         self.assertCommand(alpha, c, 'gs;m rugpull leave')
         interact(vote, beta, 'yes')
@@ -2643,9 +2622,9 @@ class GestaltTest(unittest.TestCase):
 
         self.assertVote(alpha, c, 'gs;m new rugpull')
         interact(c[-1], alpha, 'yes')
-        self.assertVote(alpha, c, 'gs;m rugpull invite %s' % beta.mention)
+        self.assertVote(alpha, c, f'gs;m rugpull invite {beta.mention}')
         interact(c[-1], beta, 'yes')
-        self.assertVote(alpha, c, 'gs;m rugpull invite %s' % gamma.mention)
+        self.assertVote(alpha, c, f'gs;m rugpull invite {gamma.mention}')
         interact(c[-1], gamma, 'yes')
         self.assertCommand(alpha, c, 'gs;m rugpull rules majority')
         self.assertVote(alpha, c, 'gs;m rugpull rules dictator')
@@ -2664,7 +2643,7 @@ class GestaltTest(unittest.TestCase):
         interact(c[-1], alpha, 'no')
         maskid = instance.fetchone(
                 'select maskid from proxies where cmdname = "ghost"')[0]
-        self.assertVote(alpha, c, 'gs;m ghost invite %s' % beta.mention)
+        self.assertVote(alpha, c, f'gs;m ghost invite {beta.mention}')
         interact(c[-1], beta, 'yes')
         self.assertCommand(alpha, c, 'gs;m ghost rules unanimous')
         self.assertVote(alpha, c2, 'gs;m ghost add')
@@ -2687,7 +2666,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;p invisible tags invisible:text')
         self.assertProxied(alpha, c, 'invisible: test')
         self.assertEqual(c[-1].author.display_avatar, 'http://image')
-        self.assertVote(alpha, c, 'gs;m invisible invite %s' % beta.mention)
+        self.assertVote(alpha, c, f'gs;m invisible invite {beta.mention}')
         interact(c[-1], beta, 'yes')
         self.assertCommand(alpha, c, 'gs;m invisible rules unanimous')
         self.assertVote(alpha, c, 'gs;m invisible color -clear')
@@ -2708,10 +2687,9 @@ class GestaltTest(unittest.TestCase):
         self.assertVote(alpha, c, 'gs;m new replies')
         interact(c[-1], alpha, 'no')
         self.assertCommand(alpha, c, 'gs;m replies rules unanimous')
-        self.assertVote(alpha, c, 'gs;m replies invite %s' % beta.mention)
+        self.assertVote(alpha, c, f'gs;m replies invite {beta.mention}')
         interact(c[-1], beta, 'yes')
-        run(self.assertVote(alpha, c, 'gs;m replies invite %s'
-            % gamma.mention).delete())
+        run(self.assertVote(alpha, c, f'gs;m replies invite {gamma.mention}').delete())
         self.assertIsNotNone(c[-1].reference)
         interact(c[-1], gamma, 'yes')
         self.assertIsNone(c[-1].reference)
@@ -2730,7 +2708,7 @@ class GestaltTest(unittest.TestCase):
 
         self.assertVote(alpha, c, 'gs;m new nomerge')
         interact(c[-1], alpha, 'no')
-        self.assertVote(alpha, c, 'gs;m nomerge invite %s' % beta.mention)
+        self.assertVote(alpha, c, f'gs;m nomerge invite {beta.mention}')
         interact(c[-1], beta, 'yes')
         self.assertVote(alpha, c, 'gs;m new other')
         interact(c[-1], alpha, 'no')
@@ -2778,14 +2756,14 @@ class GestaltTest(unittest.TestCase):
         # unprivileged member can't join
         self.assertNotCommand(beta, c, 'gs;m legacy join')
         self.assertNotCommand(beta, c, 'gs;m legacy nick legacy')
-        self.assertNotVote(beta, c, 'gs;m legacy invite %s' % alpha.mention)
+        self.assertNotVote(beta, c, f'gs;m legacy invite {alpha.mention}')
         self.assertIsNone(self.get_proxid(beta, 'legacy'))
         g._remove_member(beta)
         g._add_member(beta)
         # privileged member can join
         self.assertCommand(beta, c, 'gs;m legacy join')
         self.assertCommand(beta, c, 'gs;m legacy nick legacy')
-        self.assertVote(beta, c, 'gs;m legacy invite %s' % alpha.mention)
+        self.assertVote(beta, c, f'gs;m legacy invite {alpha.mention}')
         interact(c[-1], alpha, 'yes')
         self.assertIsNotNone(self.get_proxid(beta, 'legacy'))
         self.assertIsNotNone(self.get_proxid(alpha, 'legacy'))
@@ -2852,7 +2830,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(field(c[-1], 0, 'Message Count'))
         self.assertIsNone(field(c[-1], 1, 'Message Count'))
         self.assertEqual(field(c[-1], 1, 'Members').value, '1')
-        self.assertVote(alpha, c, 'gs;m cards invite %s' % beta.mention)
+        self.assertVote(alpha, c, f'gs;m cards invite {beta.mention}')
         interact(c[-1], beta, 'yes')
         self.assertCommand(beta, c, 'gs;p cards tags cards:text')
         self.assertProxied(beta, c, 'cards:first')
@@ -2885,15 +2863,15 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(beta, c, 'gs;m cards leave')
         self.assertCommand(alpha, c, 'gs;m cards leave')
 
-        send(alpha, c, 'gs;p %s' % self.get_proxid(alpha, None))
+        send(alpha, c, f'gs;p {self.get_proxid(alpha, None)}')
         self.assertEqual(field(c[-1], 0, 'Type').value, 'Override')
 
-        self.assertCommand(alpha, c, 'gs;swap open %s' % beta.mention)
+        self.assertCommand(alpha, c, f'gs;swap open {beta.mention}')
         send(alpha, c, 'gs;p test-beta')
         self.assertEqual(len(c[-1].embeds), 1)
         self.assertEqual(field(c[-1], 0, 'Type').value, 'Swap')
         self.assertIn('inactive', c[-1].embeds[0].description)
-        self.assertCommand(beta, c, 'gs;swap open %s' % alpha.mention)
+        self.assertCommand(beta, c, f'gs;swap open {alpha.mention}')
         send(alpha, c, 'gs;p test-beta')
         msg = c[-1]
         self.assertEqual(len(msg.embeds), 2)
@@ -2902,7 +2880,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(field(c[-1], 1, 'Partner').value, alpha.mention)
         send(beta, c, 'gs;p test-alpha')
         self.assertEqual(msg.embeds, list(reversed(c[-1].embeds)))
-        # self.assertCommand(alpha, c, 'gs;swap open %s' % alpha.mention)
+        # self.assertCommand(alpha, c, f'gs;swap open {alpha.mention}')
         send(alpha, c, 'gs;p test-alpha')
         self.assertEqual(len(c[-1].embeds), 1)
         self.assertIsNone(c[-1].embeds[0].description)
@@ -2937,7 +2915,7 @@ class GestaltTest(unittest.TestCase):
         instance.session._pk('/members/' + vriska['uuid'], json.dumps(vriska))
         instance.session._pk('/systems/' + str(alpha.id), '{"id": "serket"}')
 
-        self.assertVote(alpha, c, 'gs;pk swap %s vriska' % beta.mention)
+        self.assertVote(alpha, c, f'gs;pk swap {beta.mention} vriska')
         interact(c[-1], beta, 'yes')
         send(beta, c, 'gs;p vriska')
         msg = c[-1]
