@@ -1757,6 +1757,7 @@ class GestaltTest(unittest.TestCase):
                 'alpha:what if the first proxied message is in a thread')
         msg = self.assertProxied(alpha, c2, 'beta:everything still works right')
         self.assertEqual(run(instance.get_webhook(c2)).id, msg.webhook_id)
+        self.assertEqual(run(instance.get_webhook(th2)).id, msg.webhook_id)
         # get_webhook() converts Thread to parent, so need to query directly
         self.assertRowNotExists(
                 'select 1 from webhooks where chanid = ?',

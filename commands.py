@@ -679,9 +679,6 @@ class GestaltCommands:
         if not content:
             raise UserError('We need a message here!')
         channel = message.channel
-        (thread, channel) = ((channel, channel.parent)
-                if type(channel) == discord.Thread
-                else (discord.utils.MISSING, channel))
         if message.reference:
             proxied = self.fetchone(
                     'select msgid, authid from history where msgid = ?',
@@ -690,10 +687,10 @@ class GestaltCommands:
                 return await self.mark_success(message, False)
         else:
             proxied = self.fetchone(
+                    # redundant chanid != 0 to enable use of index
                     'select max(msgid) as msgid, authid from history '
-                    'where (chanid, threadid, authid) = (?, ?, ?)',
-                    (channel.id, thread.id if thread else 0,
-                        message.author.id))
+                    'where (chanid, authid) = (?, ?) and chanid != 0',
+                    (channel.id, message.author.id))
             if not proxied['msgid']:
                 return await self.mark_success(message, False)
             then = discord.utils.snowflake_time(proxied['msgid'])
@@ -701,7 +698,7 @@ class GestaltCommands:
             if then <= now and (now - then).seconds > TIMEOUT_EDIT:
                 raise UserError('Could not find a recent message to edit.')
         try:
-            proxied = await (thread or channel).fetch_message(proxied['msgid'])
+            proxied = await channel.fetch_message(proxied['msgid'])
         except discord.errors.NotFound:
             return await self.mark_success(message, False)
 
@@ -712,7 +709,8 @@ class GestaltCommands:
         try:
             edited = await hook.edit_message(proxied.id,
                     content = self.fix_content(message, content),
-                    thread = thread,
+                    thread = (channel if type(channel) == discord.Thread
+                        else discord.utils.MISSING),
                     allowed_mentions = discord.AllowedMentions(
                         everyone = channel.permissions_for(
                             message.author).mention_everyone))

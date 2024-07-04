@@ -52,8 +52,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'create table if not exists history('
                 'msgid integer primary key,'
                 'origid integer,'
-                'threadid integer,'
                 'chanid integer,'
+                'parentid integer,'
                 'guildid integer,'
                 'authid integer,'
                 'otherid integer,'
@@ -61,9 +61,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'maskid text)')
         # for gs;edit
         # to quickly find the last message sent by a user in a channel
+        # chanid = 0 are commands and do not need to be included
         self.execute(
-                'create index if not exists history_threadid_chanid_authid '
-                'on history(threadid, chanid, authid)')
+                'create index if not exists history_chanid_authid '
+                'on history(chanid, authid) where chanid != 0')
         self.execute(
                 'create table if not exists members('
                 'userid integer,'
@@ -364,15 +365,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     def mkhistory(self, message, authid, channel = None, orig = None,
             proxy = {'otherid': None, 'proxid': None, 'maskid': None}):
+        chanid = parentid = guildid = 0
         if channel:
-            (threadid, chanid) = ((channel.id, channel.parent.id)
-                    if type(channel) == discord.Thread
-                    else (0, channel.id))
-            guildid = channel.guild.id
-        else:
-            (threadid, chanid, guildid) = (0, 0, 0)
+            (chanid, guildid) = (channel.id, channel.guild.id)
+            if type(channel) == discord.Thread:
+                parentid = channel.parent.id
         self.execute('insert into history values (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (message.id, orig, threadid, chanid, guildid, authid,
+                (message.id, orig, chanid, parentid, guildid, authid,
                     proxy['otherid'], proxy['proxid'], proxy['maskid']))
 
 
