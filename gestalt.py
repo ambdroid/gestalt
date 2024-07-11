@@ -232,7 +232,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     async def on_ready(self):
         self.log('In %i guild(s).', len(self.guilds))
-        self.owner = (await self.application_info()).owner.id
+        info = await self.application_info()
+        if info.team:
+            self.admins = [m.id for m in info.team.members
+                           if m.role == discord.TeamMemberRole.admin]
+        else:
+            self.admins = [info.owner.id]
         await self.update_status()
 
 
