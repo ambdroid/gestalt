@@ -1197,7 +1197,7 @@ class GestaltCommands:
             return await self.reply(message, plain = EXPLAIN)
 
         elif arg == 'motd':
-            if message.author.id == self.owner:
+            if message.author.id in self.admins:
                 self.execute('update meta set motd = ?',
                         (reader.read_remainder(),))
                 await self.update_status()
