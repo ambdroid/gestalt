@@ -524,14 +524,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     async def execute_webhook(self, channel, **kwargs):
         hook = await self.get_webhook(channel, create = True)
         try:
-            return (await hook.send(wait = True, **kwargs), hook)
+            return await hook.send(wait = True, **kwargs)
         except discord.errors.NotFound:
             if await self.confirm_webhook_deletion(hook):
                 # webhook is deleted
                 hook = await self.get_webhook(channel, create = True)
-                return (await hook.send(wait = True, **kwargs), hook)
+                return await hook.send(wait = True, **kwargs)
             else:
                 self.log('False NotFound for webhook %i', hook.id)
+        except discord.errors.Forbidden:
+            raise UserError('I need `Manage Webhooks` permission to proxy.')
+        except discord.errors.HTTPException:
+            return None # not our problem
 
 
     async def make_log_message(self, message, orig, proxy = None, old = None):
@@ -651,14 +655,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 else discord.utils.MISSING)
         am = discord.AllowedMentions(everyone = channel.permissions_for(
             message.author).mention_everyone)
-        try:
-            (new, hook) = await self.execute_webhook(channel, thread = thread,
-                    files = msgfiles and [i async for i in msgfiles],
-                    embed = embed, allowed_mentions = am,
-                    content = self.fix_content(message, content, proxy),
-                    **present)
-        except discord.errors.Forbidden:
-            raise UserError('I need `Manage Webhooks` permission to proxy.')
+        if not (new := await self.execute_webhook(channel, thread = thread,
+                files = msgfiles and [i async for i in msgfiles],
+                embed = embed, allowed_mentions = am,
+                content = self.fix_content(message, content, proxy),
+                **present)):
+            return
 
         self.mkhistory(new, message.author.id, channel = message.channel,
                 orig = message.id, proxy = proxy)
