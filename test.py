@@ -173,6 +173,8 @@ class Message(Object):
         return (discord.MessageType.reply if self.reference
                 else discord.MessageType.default)
     async def delete(self, delay = None):
+        if not (self.guild or self.author.bot): # guild or own dm message
+            raise Forbidden()
         self.channel._messages.remove(self)
         self._deleted = True
         await instance.on_raw_message_delete(
@@ -224,6 +226,22 @@ class PartialMessage:
         return self._truemsg
     async def remove_reaction(self, emoji, member):
         await self._truemsg.remove_reaction(emoji, member)
+
+class MessageReference:
+    def __init__(self, message, cached):
+        self.message, self.cached = message, cached
+    @property
+    def cached_message(self):
+        return self.message if self.cached else None
+    @property
+    def channel_id(self):
+        return self.message.channel.id
+    @property
+    def guild_id(self):
+        return self.message.guild.id
+    @property
+    def message_id(self):
+        return self.message.id
 
 class Webhook(Object):
     hooks = {}
@@ -518,6 +536,10 @@ class HTTPException(discord.errors.HTTPException):
     def __init__(self, code):
         self.code = code
 
+class Forbidden(discord.errors.Forbidden):
+    def __init__(self):
+        pass
+
 class NotFound(discord.errors.NotFound):
     def __init__(self):
         pass
@@ -577,6 +599,7 @@ class GestaltTest(unittest.TestCase):
 
     def assertCommand(self, *args, **kwargs):
         msg = send(*args, **kwargs)
+        self.assertFalse(msg._deleted)
         self.assertReacted(msg)
         return msg
 
@@ -616,7 +639,14 @@ class GestaltTest(unittest.TestCase):
         # test that the message was deleted with none others sent
         msg = send(*args, **kwargs, orig = True)
         self.assertTrue(msg._deleted)
-        self.assertLess(msg.channel[-1].id, msg.id)
+        if msg.channel._messages:
+            self.assertLess(msg.channel[-1].id, msg.id)
+        return msg
+
+    def assertNotDeleted(self, *args, **kwargs):
+        msg = send(*args, **kwargs, orig = True)
+        self.assertFalse(msg._deleted)
+        return msg
 
     def assertEditedContent(self, message, content):
         self.assertEqual(
@@ -1267,24 +1297,22 @@ class GestaltTest(unittest.TestCase):
         chan = g['main']
         msg = self.assertProxied(alpha, chan, 'e: no reply')
         self.assertEqual(len(msg.embeds), 0)
-        reply = self.assertProxied(alpha, chan, 'e: reply',
-                Object(cached_message = msg))
+        reply = self.assertProxied(alpha, chan, 'e: reply', MessageReference(msg, True))
         self.assertEqual(len(reply.embeds), 1)
         self.assertEqual(self.desc(reply), f'**[Reply to:]({msg.jump_url})** no reply')
         # again, but this time the message isn't in cache
-        reply = self.assertProxied(alpha, chan, 'e: reply',
-                Object(cached_message = None, message_id = msg.id))
+        reply = self.assertProxied(alpha, chan, 'e: reply', MessageReference(msg, False))
         self.assertEqual(len(reply.embeds), 1)
         self.assertEqual(self.desc(reply), f'**[Reply to:]({msg.jump_url})** no reply')
         # now with attachments
         attach = Attachment('file goes here')
         msg = self.assertProxied(alpha, chan, 'e: content', files = [attach])
         reply = self.assertProxied(alpha, chan, 'e: reply.',
-                Object(cached_message = msg))
+                MessageReference(msg, True))
         self.assertIn('content', self.desc(reply))
         msg = self.assertProxied(alpha, chan, 'e:', files = [attach])
         reply = self.assertProxied(alpha, chan, 'e: reply.',
-                Object(cached_message = msg))
+                MessageReference(msg, True))
         self.assertIn('click to see attachment', self.desc(reply))
         self.assertIn(msg.jump_url, self.desc(reply))
         # test message truncation
@@ -1310,20 +1338,24 @@ class GestaltTest(unittest.TestCase):
         msg = send(beta, chan, 'gs;edit second')
         self.assertReacted(msg, gestalt.REACT_DELETE)
         self.assertEditedContent(second, 'secnod')
-        msg = send(beta, chan, 'gs;edit first', Object(message_id = first.id))
+        msg = send(beta, chan, 'gs;edit first', MessageReference(first, False))
+        self.assertReacted(msg, gestalt.REACT_DELETE)
+        self.assertEditedContent(first, 'fisrt')
+        msg = send(beta, chan, f'gs;edit {first.jump_url} first')
         self.assertReacted(msg, gestalt.REACT_DELETE)
         self.assertEditedContent(first, 'fisrt')
 
         # test successful edits
         self.assertDeleted(alpha, chan, 'gs;edit second')
         self.assertEditedContent(second, 'second')
-        self.assertDeleted(alpha, chan, 'gs;edit first',
-                Object(message_id = first.id))
+        self.assertDeleted(alpha, chan, 'gs;edit first', MessageReference(first, False))
         self.assertEditedContent(first, 'first')
         self.assertDeleted(alpha, chan, 'gs;edit\nnewline')
         self.assertEditedContent(second, 'newline')
         self.assertDeleted(alpha, chan, 'gs;edit "quote" unquote')
         self.assertEditedContent(second, '"quote" unquote')
+        send(alpha, chan, f'gs;edit {second.jump_url} new\nline')
+        self.assertEditedContent(second, 'new\nline')
 
         # make sure that the correct most recent msgid is pulled from db
         self.assertVote(beta, chan, 'gs;m new edit')
@@ -1354,9 +1386,13 @@ class GestaltTest(unittest.TestCase):
         warptime.warp += 2
         self.assertFalse(send(alpha, chan, 'gs;edit edit me')._deleted)
         self.assertEditedContent(msg, 'editme')
-        self.assertDeleted(alpha, chan, 'gs;edit edit me',
-                Object(message_id = msg.id))
+        self.assertDeleted(alpha, chan, 'gs;edit edit me', MessageReference(msg, False))
         self.assertEditedContent(msg, 'edit me')
+
+        # yeah so i used .seconds instead of .total_seconds()
+        msg = self.assertProxied(alpha, chan, 'e: ancient history')
+        warptime.warp += 60 * 60 * 24
+        self.assertNotDeleted(alpha, chan, 'gs;edit omg the future')
 
         # make sure that gs;edit on a non-webhook message doesn't cause problems
         # delete "or proxied.webhook_id != hook[1]" to see this be a problem
@@ -1367,12 +1403,63 @@ class GestaltTest(unittest.TestCase):
         send(alpha, chan, 'gs;help')
         second = chan[-1]
         self.assertEqual(second.author.id, instance.user.id)
-        third = send(alpha, chan, 'gs;edit lol', Object(message_id = second.id))
+        third = send(alpha, chan, 'gs;edit lol', MessageReference(second, False))
         self.assertEditedContent(third, 'gs;edit lol')
         self.assertReacted(third, gestalt.REACT_DELETE)
         self.assertProxied(alpha, chan, 'e: another')
-        send(alpha, chan, 'gs;edit first', Object(message_id = first.id))
+        send(alpha, chan, 'gs;edit first', MessageReference(first, False))
         self.assertEditedContent(first, 'first')
+
+        g1 = Guild(name = 'first guild')
+        g1._add_member(instance.user)
+        g1._add_member(alpha, perms = discord.Permissions(embed_links = False))
+        g1._add_member(beta)
+        c1 = g1._add_channel('general')
+        th1 = Thread(c1, name = 'thread')
+        log = g1._add_channel('log')
+        self.assertCommand(beta, c1, f'gs;log channel {log.mention}')
+        g2 = Guild(name = 'second guild')
+        g2._add_member(instance.user)
+        g2._add_member(alpha)
+        g2._add_member(beta)
+        c2 = g2._add_channel('specific')
+        th2 = Thread(c2, name = 'yarn')
+
+        for origin in [c1, th1]:
+            msg = self.assertProxied(alpha, origin, 'e: proxy')
+            msg2 = self.assertNotProxied(alpha, origin, 'unproxy')
+            self.assertNotProxied(beta, origin, 'i am also here')
+            for command in [c1, th1, c2, th2, alpha.dm_channel]:
+                content = f'https://website.gov/{command.id}'
+                deleted = (self.assertDeleted if command.guild else self.assertCommand)(alpha, command, f'gs;edit {msg.jump_url}\n{content}')
+                self.assertEditedContent(msg, f'<{content}>')
+                self.assertNotDeleted(alpha, command, f'gs;edit {msg2.jump_url} lol')
+                if command.guild:
+                    self.assertNotDeleted(beta, command, f'gs;edit {msg.jump_url} lol')
+
+                self.assertEqual(log[-1].content, msg.jump_url)
+                self.assertEqual(log[-1].embeds[0].to_dict(), {
+                    'footer': {
+                        'text': f'Sender: {str(alpha)} ({alpha.id}) | Message ID: {msg.id} | Original Message ID: {deleted.id}'
+                        },
+                    'author': {
+                        'name': f'[Edited] #{origin.name}: test'
+                        },
+                    'fields': [
+                        {
+                            'inline': False,
+                            'name': 'Old message',
+                            'value': run(origin.fetch_message(msg.id))._prev.content
+                        }
+                        ],
+                    'timestamp': discord.utils.snowflake_time(deleted.id).isoformat(),
+                    'type': 'rich',
+                    'description': f'<{content}>'
+                    })
+
+        self.assertNotDeleted(alpha, alpha.dm_channel, f'gs;edit {c1[-1].jump_url}9999999999999 overflow')
+        c1.id = 99999999999999999999999999999999999
+        self.assertNotDeleted(alpha, alpha.dm_channel, f'gs;edit {c1[-1].jump_url} overflow')
 
     def test_18_become(self):
         chan = g['main']
@@ -1608,14 +1695,10 @@ class GestaltTest(unittest.TestCase):
         instance.session._pk('/messages/' + str(nope.id),
                 '{"member": {"uuid": "z-z-z-z-z"}}')
         self.assertNotCommand(beta, c, 'gs;pk sync')
-        self.assertNotCommand(beta, c, 'gs;pk sync',
-            Object(cached_message = None, message_id = nope.id))
-        self.assertCommand(beta, c, 'gs;pk sync',
-            Object(cached_message = None, message_id = new.id))
-        self.assertNotCommand(beta, c, 'gs;pk sync',
-            Object(cached_message = None, message_id = old.id))
-        msg = self.assertProxied(beta, c, '[test]',
-            Object(cached_message = None, message_id = new.id))
+        self.assertNotCommand(beta, c, 'gs;pk sync', MessageReference(nope, False))
+        self.assertCommand(beta, c, 'gs;pk sync', MessageReference(new, False))
+        self.assertNotCommand(beta, c, 'gs;pk sync', MessageReference(old, False))
+        msg = self.assertProxied(beta, c, '[test]', MessageReference(new, False))
         self.assertEqual(msg.author.name, 'member!')
         self.assertEqual(str(msg.embeds[0].color), '#123456')
         # test other member not being present
@@ -1624,23 +1707,18 @@ class GestaltTest(unittest.TestCase):
         g1._add_member(alpha)
         # test a message with no pk entry
         instance.session._pk('/messages/' + str(c[-1].id), 404)
-        self.assertNotCommand(beta, c, 'gs;pk sync',
-                Object(cached_message = c[-1]))
+        self.assertNotCommand(beta, c, 'gs;pk sync', MessageReference(c[-1], True))
         # change the color
         instance.session._pk('/messages/' + str(new.id),
                 '{"member": {"uuid": "a-a-a-a-a", "color": "654321"}}')
-        self.assertCommand(beta, c, 'gs;pk sync',
-            Object(cached_message = None, message_id = new.id))
-        msg = self.assertProxied(beta, c, '[test]',
-            Object(cached_message = None, message_id = new.id))
+        self.assertCommand(beta, c, 'gs;pk sync', MessageReference(new, False))
+        msg = self.assertProxied(beta, c, '[test]', MessageReference(new, False))
         self.assertEqual(str(msg.embeds[0].color), '#654321')
         # delete the color
         instance.session._pk('/messages/' + str(new.id),
                 '{"member": {"uuid": "a-a-a-a-a", "color": null}}')
-        self.assertCommand(beta, c, 'gs;pk sync',
-            Object(cached_message = None, message_id = new.id))
-        msg = self.assertProxied(beta, c, '[test]',
-            Object(cached_message = None, message_id = new.id))
+        self.assertCommand(beta, c, 'gs;pk sync', MessageReference(new, False))
+        msg = self.assertProxied(beta, c, '[test]', MessageReference(new, False))
         self.assertEqual(msg.embeds[0].color, None)
 
         # test closing specific pkswap
@@ -1693,8 +1771,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(log._messages), 1)
         send(alpha, c, 'gs;edit edited message')
         self.assertEqual(len(log._messages), 2)
-        send(alpha, c, 'g:this is truly a panopticon',
-            Object(cached_message = msg))
+        send(alpha, c, 'g:this is truly a panopticon', MessageReference(msg, True))
         self.assertEqual(len(log._messages), 3)
 
         self.assertCommand(alpha, c, 'gs;log disable')
@@ -1731,8 +1808,7 @@ class GestaltTest(unittest.TestCase):
         msg = send(alpha, th, 'beta:newerer message')
         send(alpha, c, 'gs;edit older message')
         self.assertEditedContent(newer, 'older message')
-        send(alpha, th, 'gs;edit ancient message',
-            Object(message_id = msg.id))
+        send(alpha, th, 'gs;edit ancient message', MessageReference(msg, False))
         self.assertEditedContent(msg, 'ancient message')
 
         msg = send(alpha, th, 'beta: delete me')
@@ -1786,36 +1862,30 @@ class GestaltTest(unittest.TestCase):
         interact(c[-1], alpha, 'no')
         self.assertCommand(alpha, c, 'gs;p colorful tags c:text')
         target = self.assertProxied(alpha, c, 'c:message')
-        msg = self.assertProxied(alpha, c, 'c:reply',
-            Object(cached_message = None, message_id = target.id))
+        ref = MessageReference(target, False)
+        msg = self.assertProxied(alpha, c, 'c:reply', ref)
         self.assertIsNone(msg.embeds[0].color)
         self.assertCommand(alpha, c, 'gs;m colorful colour rose')
-        msg = self.assertProxied(alpha, c, 'c:reply',
-            Object(cached_message = None, message_id = target.id))
+        msg = self.assertProxied(alpha, c, 'c:reply', ref)
         self.assertEqual(str(msg.embeds[0].color).upper(),
                 gestalt.NAMED_COLORS['rose'])
         self.assertNotCommand(beta, c, 'gs;m colorful color john')
-        msg = self.assertProxied(alpha, c, 'c:reply',
-            Object(cached_message = None, message_id = target.id))
+        msg = self.assertProxied(alpha, c, 'c:reply', ref)
         self.assertEqual(str(msg.embeds[0].color).upper(),
                 gestalt.NAMED_COLORS['rose'])
         self.assertCommand(alpha, c, 'gs;m colorful color -clear')
-        msg = self.assertProxied(alpha, c, 'c:reply',
-            Object(cached_message = None, message_id = target.id))
+        msg = self.assertProxied(alpha, c, 'c:reply', ref)
         self.assertIsNone(msg.embeds[0].color)
 
         # swaps
         target = self.assertProxied(alpha, c, 'beta:message')
-        msg = self.assertProxied(alpha, c, 'beta:reply',
-            Object(cached_message = None, message_id = target.id))
+        msg = self.assertProxied(alpha, c, 'beta:reply', ref)
         self.assertIsNone(msg.embeds[0].color)
         self.assertCommand(beta, c, 'gs;account colour #888888')
-        msg = self.assertProxied(alpha, c, 'beta:reply',
-            Object(cached_message = None, message_id = target.id))
+        msg = self.assertProxied(alpha, c, 'beta:reply', ref)
         self.assertEqual(str(msg.embeds[0].color), '#888888')
         self.assertCommand(beta, c, 'gs;account color -clear')
-        msg = self.assertProxied(alpha, c, 'beta:reply',
-            Object(cached_message = None, message_id = target.id))
+        msg = self.assertProxied(alpha, c, 'beta:reply', ref)
         self.assertIsNone(msg.embeds[0].color)
 
         self.assertCommand(beta, c, 'gs;swap close test-alpha')
@@ -1882,8 +1952,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(beta, cmds, 'gs;p member! tags memb:text')
         # unsynced pkswap should be deleted
         self.assertDeleted(beta, main, 'memb:not synced')
-        self.assertCommand(beta, cmds, 'gs;pk sync',
-            Object(cached_message = None, message_id = pkmsg.id))
+        self.assertCommand(beta, cmds, 'gs;pk sync', MessageReference(pkmsg, False))
         # synced pkswap should be fine
         self.assertProxied(beta, main, 'memb:synced')
         g1._remove_member(alpha)
@@ -2548,8 +2617,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, f'gs;m {maskid} name newname')
         self.assertCommand(alpha, c, f'gs;m {maskid} avatar https://image')
         self.assertCommand(alpha, c, 'gs;m mask colour #012345')
-        self.assertProxied(alpha, c, 'mask:text',
-                Object(cached_message = c[-1]))
+        self.assertProxied(alpha, c, 'mask:text', MessageReference(c[-1], True))
         self.assertEqual(c[-1].author.display_name, 'newname')
         self.assertEqual(c[-1].author.display_avatar, 'https://image')
         self.assertEqual(str(c[-1].embeds[0].color), '#012345')
@@ -2965,6 +3033,7 @@ def main():
 # monkey patch. this probably violates the Geneva Conventions
 discord.utils.utcnow = warptime.now
 discord.Webhook.partial = Webhook.partial
+discord.PartialMessage = PartialMessage
 discord.Thread = Thread
 
 

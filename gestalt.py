@@ -478,9 +478,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     'color': mask['color']}
 
 
-    def fix_content(self, message, content, proxy = None):
+    def fix_content(self, author, channel, content, proxy = None):
         embedded = (content
-                if message.channel.permissions_for(message.author).embed_links
+                if channel.permissions_for(author).embed_links
                 else LINK_REGEX.sub(
                     lambda match: match.group(0)
                     if (match.group(0).startswith('<')
@@ -544,15 +544,16 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
 
     async def make_log_message(self, message, orig, proxy = None, old = None):
+        # for edits, command might be sent from different guild
         logchan = self.fetchone('select logchan from guilds where guildid = ?',
-                (orig.guild.id,))
+                ((old or orig).guild.id,))
         if not logchan:
             return
 
         embed = discord.Embed(description = message.content,
                 timestamp = discord.utils.snowflake_time(orig.id))
         embed.set_author(name = '%s#%s: %s' %
-                ('[Edited] ' if old else '', orig.channel.name,
+                ('[Edited] ' if old else '', (old or orig).channel.name,
                     message.author.display_name.removesuffix(MERGE_PADDING)),
                 icon_url = message.author.display_avatar)
         if old:
@@ -663,7 +664,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if not (new := await self.execute_webhook(channel, thread = thread,
                 files = msgfiles and [i async for i in msgfiles],
                 embed = embed, allowed_mentions = am,
-                content = self.fix_content(message, content, proxy),
+                content = self.fix_content(message.author, channel, content, proxy),
                 **present)):
             return
 

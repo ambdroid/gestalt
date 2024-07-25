@@ -116,6 +116,22 @@ class CommandReader:
             self.cmd = self.cmd.removeprefix(m[0]).strip()
             return m[1] # excluding <...> if present
 
+    def read_message(self, bot):
+        if ref := self.msg.reference:
+            if ref.cached_message:
+                return ref.cached_message
+            msgid, chanid = ref.message_id, ref.channel_id
+            cmd = self.cmd
+        elif m := MESSAGE_LINK_REGEX.match(self.cmd):
+            msgid, chanid = int(m[2]), int(m[1])
+            cmd = self.cmd.removeprefix(m[0]).strip()
+        else:
+            return None
+        if chan := bot.get_channel(chanid):
+            self.cmd = cmd
+            return discord.PartialMessage(channel = chan, id = msgid)
+        return None
+
     def read_color(self):
         name = self.read_word()
         try:
@@ -675,14 +691,17 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
-    async def cmd_edit(self, message, content):
+    async def cmd_edit(self, message, target, content):
         if not content:
             raise UserError('We need a message here!')
         channel = message.channel
-        if message.reference:
-            proxied = self.fetchone(
-                    'select msgid, authid from history where msgid = ?',
-                    (message.reference.message_id,))
+        if target:
+            try:
+                proxied = self.fetchone(
+                        'select authid from history where msgid = ?',
+                        (target.id,))
+            except OverflowError: # malformed message link
+                return await self.mark_success(message, False)
             if not proxied or proxied['authid'] != message.author.id:
                 return await self.mark_success(message, False)
         else:
@@ -695,20 +714,25 @@ class GestaltCommands:
                 return await self.mark_success(message, False)
             then = discord.utils.snowflake_time(proxied['msgid'])
             now = discord.utils.utcnow()
-            if then <= now and (now - then).seconds > TIMEOUT_EDIT:
+            if then <= now and (now - then).total_seconds() > TIMEOUT_EDIT:
                 raise UserError('Could not find a recent message to edit.')
-        try:
-            proxied = await channel.fetch_message(proxied['msgid'])
-        except discord.errors.NotFound:
-            return await self.mark_success(message, False)
+            target = channel.get_partial_message(proxied['msgid'])
+
+        if isinstance(target, discord.PartialMessage):
+            try:
+                target = await target.fetch()
+            except discord.errors.NotFound:
+                return await self.mark_success(message, False)
+        channel = target.channel
 
         hook = await self.get_webhook(channel)
-        if not hook or proxied.webhook_id != hook.id:
+        if not hook or target.webhook_id != hook.id:
             return await self.mark_success(message, False)
 
         try:
-            edited = await hook.edit_message(proxied.id,
-                    content = self.fix_content(message, content),
+            edited = await hook.edit_message(target.id,
+                    # possible channel mismatch
+                    content = self.fix_content(message.author, channel, content),
                     thread = (channel if type(channel) == discord.Thread
                         else discord.utils.MISSING),
                     allowed_mentions = discord.AllowedMentions(
@@ -718,9 +742,12 @@ class GestaltCommands:
             await self.confirm_webhook_deletion(hook)
             return await self.mark_success(message, False)
 
-        await self.try_delete(message)
+        if message.guild:
+            await self.try_delete(message)
+        else:
+            await self.mark_success(message, True)
 
-        await self.make_log_message(edited, message, old = proxied)
+        await self.make_log_message(edited, message, old = target)
 
 
     async def cmd_become(self, message, proxy):
@@ -1120,7 +1147,8 @@ class GestaltCommands:
                     return await self.cmd_mask_leave(message, row, member)
 
         elif arg in ['edit', 'e']:
-            return await self.cmd_edit(message, reader.cmd) # no parsing
+            return await self.cmd_edit(message, reader.read_message(self),
+                    reader.cmd)
 
         elif arg in ['become', 'bc']:
             proxy = self.get_user_proxy(message, reader.read_quote())

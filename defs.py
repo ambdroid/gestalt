@@ -13,6 +13,8 @@ LINK_REGEX = re.compile(r'<?(https?:\/\/[^\s<]+[^<.,:;"\')\]\s])>?')
 # such as avatars. hopefully used with consent...
 # but reuploading is trivial so there isn't much point to blocking that
 CDN_REGEX = re.compile(r'.*ex=[0-9a-f]+&is=[0-9a-f]+&hm=[0-9a-f]+&?')
+MESSAGE_LINK_REGEX = re.compile(
+        r'https://discord\.com/channels/[0-9]+/([0-9]+)/([0-9]+)')
 
 
 QUOTE_REGEXES = [
