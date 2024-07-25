@@ -868,16 +868,14 @@ class GestaltTest(unittest.TestCase):
 
         # test echo
         self.assertCommand(alpha, chan, f'gs;p {proxid} echo on')
-        (msg, proxied) = (send(alpha, chan, 'e:echo!'), chan[-1])
-        self.assertFalse(msg._deleted)
+        (msg, proxied) = (self.assertNotDeleted(alpha, chan, 'e:echo!'), chan[-1])
         self.assertGreater(proxied.id, msg.id)
         self.assertIsNotNone(proxied.webhook_id)
         self.assertEqual(proxied.content, 'echo!')
 
         # echo and keepproxy
         self.assertCommand(alpha, chan, f'gs;p {proxid} keepproxy on')
-        (msg, proxied) = (send(alpha, chan, 'e:echo!'), chan[-1])
-        self.assertFalse(msg._deleted)
+        (msg, proxied) = (self.assertNotDeleted(alpha, chan, 'e:echo!'), chan[-1])
         self.assertGreater(proxied.id, msg.id)
         self.assertIsNotNone(proxied.webhook_id)
         self.assertEqual(proxied.content, 'e:echo!')
@@ -1374,7 +1372,7 @@ class GestaltTest(unittest.TestCase):
         # test new user
         new = User(name = 'new')
         g._add_member(new)
-        self.assertFalse(send(new, chan, 'gs;edit hoohoo')._deleted)
+        self.assertNotDeleted(new, chan, 'gs;edit hoohoo')
 
         # test old message
         msg = self.assertProxied(alpha, chan, 'e: edit me')
@@ -1384,7 +1382,7 @@ class GestaltTest(unittest.TestCase):
         self.assertDeleted(alpha, chan, 'gs;edit editme')
         self.assertEditedContent(msg, 'editme')
         warptime.warp += 2
-        self.assertFalse(send(alpha, chan, 'gs;edit edit me')._deleted)
+        self.assertNotDeleted(alpha, chan, 'gs;edit edit me')
         self.assertEditedContent(msg, 'editme')
         self.assertDeleted(alpha, chan, 'gs;edit edit me', MessageReference(msg, False))
         self.assertEditedContent(msg, 'edit me')
