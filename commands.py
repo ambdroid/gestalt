@@ -50,9 +50,9 @@ class CommandReader:
         if reader.read_token(COMMAND_PREFIX) or not message.guild:
             return reader
 
-    def __init__(self, message):
+    def __init__(self, message, command = None):
         self.msg = message
-        self.cmd = message.content
+        self.cmd = command or message.content
 
     def is_empty(self):
         return self.cmd == ''
@@ -883,8 +883,27 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
+    async def do_pk_edit(self, reader):
+        if not (target := reader.read_message(self)):
+            return
+        message = reader.msg
+        chanid = message.channel.id
+        self.expected_pk_errors[chanid] = None
+
+        try:
+            await self.cmd_edit(message, target, reader.cmd)
+        except UserError:
+            self.expected_pk_errors.pop(chanid, None)
+        else:
+            await asyncio.sleep(0.5) # pk can be slow to respond
+            if error := self.expected_pk_errors.pop(chanid, None):
+                if error.id > message.id: # in case something went wrong
+                    await self.try_delete(error)
+
+
     # parse, convert, and validate arguments, then call the relevant function
-    async def do_command(self, message, reader):
+    async def do_command(self, reader):
+        message = reader.msg
         arg = reader.read_word().lower()
         authid = message.author.id
 

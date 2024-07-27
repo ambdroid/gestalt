@@ -4,12 +4,15 @@ AVATAR_URL_BASE = ''
 
 AVATAR_MAX_SIZE_MB = 2
 
+PK_ID = 466378653216014359
 PK_ENDPOINT = 'https://api.pluralkit.me/v2'
 PK_USER_AGENT = 'Gestalt Vulpine Cooperation Initiative'
 # see https://pluralkit.me/api/#rate-limiting; 2/s but may change
 PK_RATELIMIT = 2
 PK_WINDOW = 1.0
 PK_DASH = 'https://dash.pluralkit.me/profile/m/%s'
+PK_EDIT = r'pk;\s*e(dit)?'
+PK_EDIT_ERROR = '\N{CROSS MARK} This is not a message proxied by PluralKit.'
 
 DELETE_DELAY = 0.4
 
