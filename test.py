@@ -590,17 +590,14 @@ class GestaltTest(unittest.TestCase):
     def assertRowNotExists(self, *args):
         self.assertIsNone(instance.fetchone(*args))
 
-    def assertReacted(self, msg, reaction = gestalt.REACT_CONFIRM):
-        self.assertNotEqual(len(msg.reactions), 0)
-        self.assertEqual(msg.reactions[0].emoji, reaction)
-
     def assertNotReacted(self, msg):
         self.assertEqual(len(msg.reactions), 0)
 
     def assertCommand(self, *args, **kwargs):
         msg = send(*args, **kwargs)
         self.assertFalse(msg._deleted)
-        self.assertReacted(msg)
+        self.assertNotEqual(len(msg.reactions), 0)
+        self.assertEqual(msg.reactions[0].emoji, gestalt.REACT_CONFIRM)
         return msg
 
     def assertNotCommand(self, *args, **kwargs):
@@ -764,7 +761,6 @@ class GestaltTest(unittest.TestCase):
         send(alpha, g['main'], 'GS; help')
         msg = g['main'][-1]
         self.assertEqual(len(msg.embeds), 1)
-        self.assertReacted(msg, gestalt.REACT_DELETE)
         msg._react(gestalt.REACT_DELETE, alpha)
         self.assertTrue(msg._deleted)
 
@@ -984,11 +980,10 @@ class GestaltTest(unittest.TestCase):
         self.assertNotEqual(hookid, newhook)
         self.assertEqual(run(instance.get_webhook(g['main'])).id, newhook)
 
-        send(alpha, g['main'], 'gs;e nice edit')
+        self.assertDeleted(alpha, g['main'], 'gs;e nice edit')
         self.assertEditedContent(msg, 'nice edit')
         Webhook.hooks[newhook]._deleted = True
-        self.assertReacted(send(alpha, g['main'], 'gs;e evil edit!'),
-                gestalt.REACT_DELETE)
+        self.assertNotDeleted(alpha, g['main'], 'gs;e evil edit!')
         self.assertEditedContent(msg, 'nice edit')
         self.assertIsNone(run(instance.get_webhook(g['main'])))
 
@@ -1329,18 +1324,15 @@ class GestaltTest(unittest.TestCase):
     def test_17_edit(self):
         chan = g._add_channel('edit')
         first = self.assertProxied(alpha, chan, 'e: fisrt')
-        self.assertNotCommand(alpha, chan, 'gs;e')
+        self.assertNotDeleted(alpha, chan, 'gs;e')
         second = self.assertProxied(alpha, chan, 'e: secnod')
 
         # test edit attempt by non-author
-        msg = send(beta, chan, 'gs;edit second')
-        self.assertReacted(msg, gestalt.REACT_DELETE)
+        self.assertNotDeleted(beta, chan, 'gs;edit second')
         self.assertEditedContent(second, 'secnod')
-        msg = send(beta, chan, 'gs;edit first', MessageReference(first, False))
-        self.assertReacted(msg, gestalt.REACT_DELETE)
+        self.assertNotDeleted(beta, chan, 'gs;edit first', MessageReference(first, False))
         self.assertEditedContent(first, 'fisrt')
-        msg = send(beta, chan, f'gs;edit {first.jump_url} first')
-        self.assertReacted(msg, gestalt.REACT_DELETE)
+        self.assertNotDeleted(beta, chan, f'gs;edit {first.jump_url} first')
         self.assertEditedContent(first, 'fisrt')
 
         # test successful edits
@@ -1352,7 +1344,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEditedContent(second, 'newline')
         self.assertDeleted(alpha, chan, 'gs;edit "quote" unquote')
         self.assertEditedContent(second, '"quote" unquote')
-        send(alpha, chan, f'gs;edit {second.jump_url} new\nline')
+        self.assertDeleted(alpha, chan, f'gs;edit {second.jump_url} new\nline')
         self.assertEditedContent(second, 'new\nline')
 
         # make sure that the correct most recent msgid is pulled from db
@@ -1401,11 +1393,9 @@ class GestaltTest(unittest.TestCase):
         send(alpha, chan, 'gs;help')
         second = chan[-1]
         self.assertEqual(second.author.id, instance.user.id)
-        third = send(alpha, chan, 'gs;edit lol', MessageReference(second, False))
-        self.assertEditedContent(third, 'gs;edit lol')
-        self.assertReacted(third, gestalt.REACT_DELETE)
+        self.assertNotDeleted(alpha, chan, 'gs;edit lol', MessageReference(second, False))
         self.assertProxied(alpha, chan, 'e: another')
-        send(alpha, chan, 'gs;edit first', MessageReference(first, False))
+        self.assertDeleted(alpha, chan, 'gs;edit first', MessageReference(first, False))
         self.assertEditedContent(first, 'first')
 
         g1 = Guild(name = 'first guild')
@@ -1767,15 +1757,15 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(log._messages), 0)
         msg = self.assertProxied(alpha, c, 'g:proxied message')
         self.assertEqual(len(log._messages), 1)
-        send(alpha, c, 'gs;edit edited message')
+        self.assertDeleted(alpha, c, 'gs;edit edited message')
         self.assertEqual(len(log._messages), 2)
-        send(alpha, c, 'g:this is truly a panopticon', MessageReference(msg, True))
+        self.assertProxied(alpha, c, 'g:this is truly a panopticon', MessageReference(msg, True))
         self.assertEqual(len(log._messages), 3)
 
         self.assertCommand(alpha, c, 'gs;log disable')
         self.assertProxied(alpha, c, 'g:secret message!')
         self.assertEqual(len(log._messages), 3)
-        send(alpha, c, 'gs;edit spooky message')
+        self.assertDeleted(alpha, c, 'gs;edit spooky message')
         self.assertEqual(len(log._messages), 3)
 
         self.assertCommand(alpha, c, 'gs;m logged leave')
@@ -1799,14 +1789,14 @@ class GestaltTest(unittest.TestCase):
         send(alpha, th, 'gs;help')
         cmd = th[-1]
         send(alpha, c, 'gs;help')
-        send(beta, th, 'alpha:unrelated message')
-        send(alpha, th, 'gs;edit one giant leap for proxykind')
+        self.assertProxied(beta, th, 'alpha:unrelated message')
+        self.assertDeleted(alpha, th, 'gs;edit one giant leap for proxykind')
         self.assertEditedContent(msg, 'one giant leap for proxykind')
 
-        msg = send(alpha, th, 'beta:newerer message')
-        send(alpha, c, 'gs;edit older message')
+        msg = self.assertProxied(alpha, th, 'beta:newerer message')
+        self.assertDeleted(alpha, c, 'gs;edit older message')
         self.assertEditedContent(newer, 'older message')
-        send(alpha, th, 'gs;edit ancient message', MessageReference(msg, False))
+        self.assertDeleted(alpha, th, 'gs;edit ancient message', MessageReference(msg, False))
         self.assertEditedContent(msg, 'ancient message')
 
         msg = send(alpha, th, 'beta: delete me')
@@ -1818,8 +1808,7 @@ class GestaltTest(unittest.TestCase):
 
         c2 = g1._add_channel('general')
         th2 = Thread(c2, name = 'epic thread')
-        self.assertReacted(send(alpha, th2, 'gs;edit no messages yet'),
-                gestalt.REACT_DELETE)
+        self.assertNotDeleted(alpha, th2, 'gs;edit no messages yet')
         msg = self.assertProxied(beta, th2,
                 'alpha:what if the first proxied message is in a thread')
         msg = self.assertProxied(alpha, c2, 'beta:everything still works right')
@@ -1838,7 +1827,7 @@ class GestaltTest(unittest.TestCase):
         # make sure it's the thread and not the parent channel
         url = Message(id = msg.id, channel = th, guild = g1).jump_url
         self.assertEqual(log[0].content, url)
-        send(alpha, th, 'gs;edit log')
+        self.assertDeleted(alpha, th, 'gs;edit log')
         self.assertEqual(len(log._messages), 2)
         self.assertEqual(log[1].content, url)
 

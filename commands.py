@@ -701,9 +701,9 @@ class GestaltCommands:
                         'select authid from history where msgid = ?',
                         (target.id,))
             except OverflowError: # malformed message link
-                return await self.mark_success(message, False)
+                raise UserError('That message link is invalid.')
             if not proxied or proxied['authid'] != message.author.id:
-                return await self.mark_success(message, False)
+                return UserError('You did not proxy that message.')
         else:
             proxied = self.fetchone(
                     # redundant chanid != 0 to enable use of index
@@ -711,7 +711,7 @@ class GestaltCommands:
                     'where (chanid, authid) = (?, ?) and chanid != 0',
                     (channel.id, message.author.id))
             if not proxied['msgid']:
-                return await self.mark_success(message, False)
+                raise UserError('Could not find a recent message to edit.')
             then = discord.utils.snowflake_time(proxied['msgid'])
             now = discord.utils.utcnow()
             if then <= now and (now - then).total_seconds() > TIMEOUT_EDIT:
@@ -722,12 +722,12 @@ class GestaltCommands:
             try:
                 target = await target.fetch()
             except discord.errors.NotFound:
-                return await self.mark_success(message, False)
+                raise UserError('That message has been deleted.')
         channel = target.channel
 
         hook = await self.get_webhook(channel)
         if not hook or target.webhook_id != hook.id:
-            return await self.mark_success(message, False)
+            raise UserError('That message could not be edited because it was proxied with a different webhook.')
 
         try:
             edited = await hook.edit_message(target.id,
@@ -740,7 +740,7 @@ class GestaltCommands:
                             message.author).mention_everyone))
         except discord.errors.NotFound:
             await self.confirm_webhook_deletion(hook)
-            return await self.mark_success(message, False)
+            raise UserError('That message could not be edited.')
 
         if message.guild:
             await self.try_delete(message)
