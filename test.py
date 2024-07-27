@@ -302,6 +302,10 @@ class Channel(Object):
         Channel.channels[self.id] = self
     def __getitem__(self, key):
         return self._messages[key]
+    def __len__(self):
+        return len(self._messages)
+    def __bool__(self):
+        return True
     @property
     def jump_url(self):
         return discord.PartialMessageable(None, self.id,
@@ -636,7 +640,7 @@ class GestaltTest(unittest.TestCase):
         # test that the message was deleted with none others sent
         msg = send(*args, **kwargs, orig = True)
         self.assertTrue(msg._deleted)
-        if msg.channel._messages:
+        if len(msg.channel):
             self.assertLess(msg.channel[-1].id, msg.id)
         return msg
 
@@ -1754,19 +1758,19 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, f'gs;log channel {log.mention} ')
 
         # just check that the log messages exist for now
-        self.assertEqual(len(log._messages), 0)
+        self.assertEqual(len(log), 0)
         msg = self.assertProxied(alpha, c, 'g:proxied message')
-        self.assertEqual(len(log._messages), 1)
+        self.assertEqual(len(log), 1)
         self.assertDeleted(alpha, c, 'gs;edit edited message')
-        self.assertEqual(len(log._messages), 2)
+        self.assertEqual(len(log), 2)
         self.assertProxied(alpha, c, 'g:this is truly a panopticon', MessageReference(msg, True))
-        self.assertEqual(len(log._messages), 3)
+        self.assertEqual(len(log), 3)
 
         self.assertCommand(alpha, c, 'gs;log disable')
         self.assertProxied(alpha, c, 'g:secret message!')
-        self.assertEqual(len(log._messages), 3)
+        self.assertEqual(len(log), 3)
         self.assertDeleted(alpha, c, 'gs;edit spooky message')
-        self.assertEqual(len(log._messages), 3)
+        self.assertEqual(len(log), 3)
 
         self.assertCommand(alpha, c, 'gs;m logged leave')
 
@@ -1821,14 +1825,14 @@ class GestaltTest(unittest.TestCase):
 
         log = g1._add_channel('log')
         self.assertCommand(alpha, th, f'gs;log channel {log.mention} ')
-        self.assertEqual(len(log._messages), 0)
+        self.assertEqual(len(log), 0)
         msg = self.assertProxied(alpha, th, 'beta:logg')
-        self.assertEqual(len(log._messages), 1)
+        self.assertEqual(len(log), 1)
         # make sure it's the thread and not the parent channel
         url = Message(id = msg.id, channel = th, guild = g1).jump_url
         self.assertEqual(log[0].content, url)
         self.assertDeleted(alpha, th, 'gs;edit log')
-        self.assertEqual(len(log._messages), 2)
+        self.assertEqual(len(log), 2)
         self.assertEqual(log[1].content, url)
 
         self.assertCommand(beta, c, 'gs;swap close test-alpha')
