@@ -2,9 +2,9 @@
 
 from tempfile import TemporaryDirectory
 from functools import reduce, partial
-from asyncio import new_event_loop
 from datetime import timedelta
 import unittest
+import asyncio
 import json
 import math
 import os
@@ -495,7 +495,7 @@ class TestBot(gestalt.Gestalt):
         self._user = User(name = 'Gestalt', bot = True)
         super().__init__(dbfile = ':memory:')
         # discord.py complains about Client.loop in this harness
-        self.loop = new_event_loop()
+        self.loop = asyncio.new_event_loop()
         self.session = ClientSession()
         self.pk_ratelimit = discord.gateway.GatewayRatelimiter(count = 1000,
                 per = 1.0)
@@ -3000,6 +3000,65 @@ class GestaltTest(unittest.TestCase):
         self.assertNotIn('Created on', c[-1].embeds[1].footer.text)
 
         send(alpha, c, 'gs;pk close "test-beta\'s vriska"')
+
+    def test_40_pk_edit(self):
+        pk = User(name = 'PluralKit', bot = True, id = defs.PK_ID)
+        g = Guild(name = 'plural guild')
+        c = g._add_channel('main')
+        g._add_member(alpha)
+        g._add_member(instance.user)
+        g._add_member(pk)
+
+        self.assertVote(alpha, c, 'gs;m new notpk')
+        interact(c[-1], alpha, 'no')
+        self.assertCommand(alpha, c, 'gs;p notpk tags notpk:text')
+
+        def sleep(messages = None, channel = None):
+            async def inner(_):
+                if not channel:
+                    return
+                # can't use send() because this is already async
+                msg = Message(author = channel.guild.get_member(pk.id), content = defs.PK_EDIT_ERROR)
+                await channel._add(msg)
+                self.assertEqual(channel[-1], msg)
+                messages.append(msg)
+            asyncio.sleep = inner
+        pkmsgs = []
+
+        sleep()
+        proxied = self.assertProxied(alpha, c, 'notpk: test')
+        self.assertCommand(alpha, alpha.dm_channel, f'pk;e {proxied.jump_url} test!!')
+        self.assertEditedContent(proxied, 'test!!')
+
+        sleep(pkmsgs, c)
+        self.assertDeleted(alpha, c, f'pk;e {proxied.jump_url} te\nst!')
+        self.assertEditedContent(proxied, 'te\nst!')
+        self.assertEqual(len(pkmsgs), 1)
+        self.assertEqual(c[-1].id, proxied.id)
+
+        self.assertDeleted(alpha, c, f'pk; edit {proxied.jump_url} test')
+        self.assertEditedContent(proxied, 'test')
+        self.assertEqual(len(pkmsgs), 2)
+        self.assertEqual(c[-1].id, proxied.id)
+
+        self.assertDeleted(alpha, c, f'pk;e test!!', MessageReference(proxied, False))
+        self.assertEditedContent(proxied, 'test!!')
+        self.assertEqual(len(pkmsgs), 3)
+        self.assertEqual(c[-1].id, proxied.id)
+
+        self.assertNotDeleted(alpha, c, f'pk;e test...')
+        self.assertEditedContent(proxied, 'test!!')
+        self.assertEqual(len(pkmsgs), 3)
+
+        c2 = g._add_channel('2nd')
+        sleep(pkmsgs, c2)
+        proxied = self.assertProxied(alpha, c, 'notpk: test')
+        self.assertDeleted(alpha, c2, f'pk;e {proxied.jump_url} test!!!')
+        self.assertEditedContent(proxied, 'test!!!')
+        self.assertEqual(len(pkmsgs), 4)
+        self.assertEqual(c[-1].id, proxied.id)
+
+        self.assertCommand(alpha, c, 'gs;m notpk leave')
 
 
 def main():

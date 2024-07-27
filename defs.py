@@ -242,6 +242,7 @@ class RuleType(enum.IntEnum):
     unanimous       = 5
 
 
+PK_EDIT = re.compile(PK_EDIT, re.IGNORECASE)
 BE_REGEX = re.compile(r'\\?> ?Be (.*?)\.?', re.IGNORECASE)
 # convert into dict of single opening char : regex matching all ending chars
 QUOTE_REGEXES = reduce(dict.__or__, map(

@@ -171,6 +171,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 'id text unique collate nocase'
                 ')')
 
+        self.expected_pk_errors = {} # chanid: message?
         self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()
         self.load()
@@ -747,6 +748,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     async def on_user_message(self, message, user):
         authid = message.author.id
         content = message.content
+
+        if match := PK_EDIT.match(content):
+            command = content.removeprefix(match[0]).strip()
+            reader = commands.CommandReader(message, command)
+            return await self.do_pk_edit(reader)
+
         chan = self.fetchone('select * from channels where chanid = ?',
                 (message.channel.id,))
         mandatory = chan and chan['mode'] == ChannelMode.mandatory
@@ -761,7 +768,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             # it's impossible for the row to matter before they use a command
             if not user:
                 self.init_user(message.author)
-            await self.do_command(message, reader)
+            await self.do_command(reader)
             return
 
         if not user:
@@ -815,12 +822,17 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
 
     async def on_message(self, message):
+        authid = message.author.id # if webhook then webhook id
+        if (authid == PK_ID and message.channel.id in self.expected_pk_errors
+            and message.content == PK_EDIT_ERROR):
+            self.expected_pk_errors[message.channel.id] = message
+            return
+
         if (message.channel.type not in ALLOWED_CHANNELS
                 or message.author.id == self.user.id):
             return
         # save a db call in on_raw_message_delete for messages that aren't ours
         # (this could be significant with other delete-heavy bots like PK)
-        authid = message.author.id # if webhook then webhook id
         if self.user.id not in (authid, message.application_id):
             self.ignore_delete_cache.add(message.id)
         if (message.type in (discord.MessageType.default,
