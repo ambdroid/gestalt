@@ -148,10 +148,12 @@ class GestaltCommands:
 
         # can't do 'and ? in (proxid, cmdname)'; breaks case insensitivity
         proxies = self.fetchall(
-                'select * from proxies where userid = ? '
-                'and (proxid = ? or cmdname = ?) '
-                'and state != ?',
-                (message.author.id, name, name, ProxyState.hidden))
+                'select proxies.*, guildmasks.guildid from proxies '
+                'left join guildmasks on ('
+                    '(guildmasks.guildid, guildmasks.maskid) = (?, proxies.maskid)'
+                ') where userid = ? and (proxid = ? or cmdname = ?) and state != ?',
+                (message.guild.id if message.guild else 0, message.author.id,
+                    name, name, ProxyState.hidden))
 
         if not proxies:
             raise UserError('You have no proxy with that name/ID.')
@@ -234,11 +236,14 @@ class GestaltCommands:
 
 
     async def cmd_proxy_list(self, message, all_):
+        guild = message.guild
         rows = sorted(self.fetchall(
-                'select proxies.*, masks.nick from proxies '
-                'left join masks using (maskid) '
-                'where proxies.userid = ?',
-                (message.author.id,)),
+                'select proxies.*, guildmasks.guildid, masks.nick from proxies '
+                'left join guildmasks on ('
+                    '(guildmasks.guildid, guildmasks.maskid) = (?, proxies.maskid)'
+                ') left join masks using (maskid) '
+                'where userid = ?',
+                (guild.id if guild else 0, message.author.id)),
                 key = lambda row: (
                     # randomize so it's not just in order of account creation
                     1000 + abs(hash(str(row['otherid'])))
@@ -250,8 +255,7 @@ class GestaltCommands:
         omit = False
         # must be at least one: the override
         for proxy in rows:
-            if message.guild and not (all_
-                    or self.proxy_visible_in(proxy, message.guild)):
+            if guild and not (all_ or self.proxy_visible_in(proxy, guild)):
                 omit = True
             elif line := self.proxy_string(proxy):
                 lines.append(line)
@@ -415,9 +419,10 @@ class GestaltCommands:
 
     async def cmd_autoproxy_view(self, message):
         ap = self.fetchone(
-                'select members.latch, members.become, proxies.*, masks.nick '
+                'select latch, become, proxies.*, guildmasks.guildid, masks.nick '
                 'from members '
                     'left join proxies using (proxid) '
+                    'left join guildmasks using (guildid, maskid) '
                     'left join masks using (maskid) '
                 'where (members.userid, members.guildid) = (?, ?)',
                 (message.author.id, message.guild.id))
@@ -611,7 +616,7 @@ class GestaltCommands:
         guild = (invite and invite.guild) or message.guild
         if not guild.get_member(authid):
             raise UserError('You are not a member of that server.')
-        if guild.id in self.mask_presence[maskid]:
+        if self.is_mask_in(maskid, guild.id):
             raise UserError('That mask is already in that guild.')
         if await self.initiate_action(
                 gesp.ProgramContext.from_message(message),
@@ -675,8 +680,6 @@ class GestaltCommands:
                         '...Sorry, I lost a race condition. Don\'t panic, '
                         'I\'m looking into it. Try again?')
             self.execute('delete from guildmasks where maskid = ?', (maskid,))
-            if maskid in self.mask_presence:
-                del self.mask_presence[maskid]
             if self.is_hosted_avatar(mask['avatar']):
                 os.remove(self.hosted_avatar_local_path(mask['avatar']))
         elif authid in gesp.Rules.from_json(mask['rules']).named:
@@ -855,14 +858,14 @@ class GestaltCommands:
         mask = self.fetchone(
                 'select color, updated from guildmasks '
                 'where (maskid, guildid) = (?, ?)',
-                ('pk-' + pkuuid, message.guild.id))
+                (pkuuid, message.guild.id))
         if mask and mask['updated'] > ref.id:
             raise UserError('Please use a more recent proxied message.')
 
         self.execute(
                 'insert or replace into guildmasks values '
                 '(?, ?, ?, ?, ?, ?, ?, ?)',
-                ('pk-' + pkuuid, message.guild.id,
+                (pkuuid, message.guild.id,
                     ref.author.display_name.removesuffix(MERGE_PADDING),
                     str(ref.author.display_avatar),
                     mask['color'] if mask else None,
@@ -876,7 +879,7 @@ class GestaltCommands:
                 # colors aren't set per-server, so set it everywhere
                 # (even if the message is older, pk returns the current color)
                 self.execute('update guildmasks set color = ? where maskid = ?',
-                        (color, 'pk-' + pkuuid))
+                        (color, pkuuid))
         except (KeyError, ValueError, TypeError):
             pass
 

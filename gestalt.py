@@ -446,14 +446,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     def get_proxy_pkswap(self, message, proxy):
         if not message.guild.get_member(proxy['otherid']):
             return
-        mask = self.fetchone(
-                'select * from guildmasks where (guildid, maskid) = (?, ?)',
-                (message.guild.id, 'pk-' + proxy['maskid']))
-        if mask:
-            return {'username': mask['nick'],
-                    'avatar_url': mask['avatar'],
-                    'color': mask['color']}
-        raise UserError('That proxy has not been synced yet.')
+        if proxy['guildid'] != message.guild.id:
+            raise UserError('That proxy has not been synced yet.')
+        return {'username': proxy['nick'],
+                'avatar_url': proxy['avatar'],
+                'color': proxy['color']}
 
 
     def is_hosted_avatar(self, url):
@@ -469,11 +466,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
 
     def get_proxy_mask(self, message, proxy):
+        if proxy['guildid'] != message.guild.id:
+            return
         if mask := self.fetchone(
-                'select masks.nick, masks.avatar, masks.color '
-                'from guildmasks left join masks using (maskid) '
-                'where (guildid, maskid) = (?, ?)',
-                (message.guild.id, proxy['maskid'])):
+                'select nick, avatar, color from masks where maskid = ?',
+                (proxy['maskid'],)):
             return {'username': mask['nick'],
                     'avatar_url': self.hosted_avatar_fix(mask['avatar']),
                     'color': mask['color']}
@@ -697,7 +694,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 ProxyType.pkreceipt):
             return bool(guild.get_member(proxy['otherid']))
         elif proxy['type'] == ProxyType.mask:
-            return guild.id in self.mask_presence[proxy['maskid']]
+            return proxy['guildid'] == guild.id
         return False
 
 
@@ -716,8 +713,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         # inactive proxies get matched but only to bypass the current autoproxy
         lower = message.content.lower()
         proxies = self.fetchall(
-                'select * from proxies where userid = ?',
-                (message.author.id,))
+                'select proxies.*, guildid, nick, avatar, color from proxies '
+                'left join guildmasks on ('
+                    '(guildmasks.guildid, guildmasks.maskid) = (?, proxies.maskid)'
+                ') where userid = ?',
+                (message.guild.id, message.author.id))
         # this can't be a join because we need it even if there's no proxy set
         while not (member := self.fetchone(
             'select proxid as ap, latch, become from members '
