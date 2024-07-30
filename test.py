@@ -659,7 +659,7 @@ class GestaltTest(unittest.TestCase):
         return msg.embeds[0].description
 
     def assertReload(self):
-        attrs = ('votes', 'mask_presence')
+        attrs = ('votes',) # used to be more lol
         origs = [getattr(instance, attr) for attr in attrs]
         instance.save()
         [setattr(instance, attr, None) for attr in attrs]
@@ -1675,10 +1675,11 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, 'gs;pk close member!')
 
         # test using it!
+        avatar = 'https://avatar.gov/member.png'
         self.assertCommand(beta, c, 'gs;p member! tags [text]')
         self.assertNotProxied(beta, c, '[test]')
-        old = run(pkhook.send('member!', '', content = 'old message'))
-        new = run(pkhook.send('member!', '', content = 'new message'))
+        old = run(pkhook.send('member!', avatar, content = 'old message'))
+        new = run(pkhook.send('member!', avatar, content = 'new message'))
         nope = run(pkhook.send('someone else', '', content = 'irrelevant'))
         instance.session._pk('/messages/' + str(old.id),
                 '{"member": {"uuid": "a-a-a-a-a"}}')
@@ -1692,6 +1693,7 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(beta, c, 'gs;pk sync', MessageReference(old, False))
         msg = self.assertProxied(beta, c, '[test]', MessageReference(new, False))
         self.assertEqual(msg.author.name, 'member!')
+        self.assertEqual(msg.author.display_avatar, avatar)
         self.assertEqual(str(msg.embeds[0].color), '#123456')
         # test other member not being present
         g1._remove_member(alpha)
@@ -2155,15 +2157,27 @@ class GestaltTest(unittest.TestCase):
         self.assertNotIn(token, text)
         send(alpha, c2, 'gs;proxy list -all')
         text = self.desc(c2[-1])
-        self.assertIn('listed', text)
+        self.assertEqual(text.count('listed'), 2)
         self.assertIn(token, text)
+
+        # test that each proxy is only listed once (masks named twice/line)
+        g2._add_member(beta)
+        self.assertCommand(alpha, c2, 'gs;m listed add')
+        send(alpha, c2, 'gs;proxy list')
+        text = self.desc(c2[-1])
+        self.assertEqual(text.count('listed'), 2)
+        self.assertEqual(text.count(token), 1)
+        send(alpha, c2, 'gs;proxy list -all')
+        text = self.desc(c2[-1])
+        self.assertEqual(text.count('listed'), 2)
+        self.assertEqual(text.count(token), 1)
 
         send(alpha, alpha.dm_channel, 'gs;proxy list')
         msg = alpha.dm_channel[-1]
         self.assertEqual(msg.author, instance.user)
         text = self.desc(msg)
-        self.assertIn('listed', text)
-        self.assertIn(token, text)
+        self.assertEqual(text.count('listed'), 2)
+        self.assertEqual(text.count(token), 1)
 
         self.assertCommand(alpha, c1, 'gs;swap close test-beta')
         self.assertCommand(alpha, c1, 'gs;m listed leave')
@@ -2643,7 +2657,7 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(instance.is_member_of(maskid, beta.id))
         invites['1nv1t3_2'] = mkguild('another guild', instance.user, alpha)[0]
         self.assertNotVote(alpha, dm, 'gs;m dm add 1nv1t3_2')
-        self.assertNotIn(invites['1nv1t3_2'].id, instance.mask_presence[maskid])
+        self.assertFalse(instance.is_mask_in(maskid, invites['1nv1t3_2'].id))
         self.assertNotVote(alpha, dm, 'gs;m dm nick badname')
         self.assertNotVote(alpha, dm, 'gs;m dm avatar http://badavatar.png')
         self.assertNotVote(alpha, dm, 'gs;m dm color #666666')

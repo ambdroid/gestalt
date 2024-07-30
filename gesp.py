@@ -292,13 +292,11 @@ class ActionServer(VotableAction, _type = ActionType.server):
     server: int
     def execute(self, bot):
         if bot.fetchone('select 1 from masks where maskid = ?', (self.mask,)):
-            guilds = bot.mask_presence[self.mask]
-            if bot.get_guild(self.server) and self.server not in guilds:
+            if bot.get_guild(self.server) and not bot.is_mask_in(self.mask, self.server):
                 bot.execute('insert into guildmasks values'
                         '(?, ?, NULL, NULL, NULL, ?, ?, NULL)',
                         (self.mask, self.server, ProxyType.mask,
                             int(time.time())))
-                guilds.add(self.server)
 
 
 @dc.dataclass
@@ -822,15 +820,6 @@ class GestaltVoting:
     def load(self):
         self.votes = {row['msgid']: Vote.from_json(row['state'])
                 for row in self.fetchall('select * from votes')}
-        # paying for past decisions in RAM. sigh.
-        # maybe i'll remove this later but rn i don't care
-        # (we all know i won't)
-        self.mask_presence = defaultdict(set)
-        for row in self.fetchall(
-                # TODO optimize this too maybe? not as important
-                'select maskid, guildid from guildmasks where type = ?',
-                (ProxyType.mask,)):
-            self.mask_presence[row['maskid']].add(row['guildid'])
 
 
     def save(self):
@@ -880,6 +869,12 @@ class GestaltVoting:
             self.votes[msg.id] = vote
 
 
+    def is_mask_in(self, maskid, guildid):
+        return bool(self.fetchone(
+                'select 1 from guildmasks where (guildid, maskid) = (?, ?)',
+                (guildid, maskid)))
+
+
     def is_member_of(self, maskid, userid):
         return bool(self.fetchone(
                 'select 1 from proxies where (userid, maskid) = (?, ?)',
@@ -887,7 +882,7 @@ class GestaltVoting:
 
 
     async def try_auto_add(self, userid, guildid, maskid):
-        if guildid not in self.mask_presence[maskid]:
+        if not self.is_mask_in(maskid, guildid):
             # there's no chance of anything async actually happening here
             # (the only async outcome is creating a vote, which can't happen)
             # but there's also no point in optimizing that away
