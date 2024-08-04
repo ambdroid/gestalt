@@ -607,7 +607,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 msgfiles = (await attach.to_file(spoiler = attach.is_spoiler())
                         for attach in message.attachments)
         # avoid error when user proxies empty message with invalid attachments
-        if msgfiles == [] and content == '':
+        if not any((msgfiles, content, message.poll)):
             return
 
         proxtype = proxy['type']
@@ -663,6 +663,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 files = msgfiles and [i async for i in msgfiles],
                 embed = embed, allowed_mentions = am,
                 content = self.fix_content(message.author, channel, content, proxy),
+                poll = message.poll or discord.utils.MISSING,
                 **present)):
             return
 
