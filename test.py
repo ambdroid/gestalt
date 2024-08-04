@@ -136,6 +136,7 @@ class Message(Object):
         self.embeds = [embed] if embed else embeds
         self.components = view.children if view else []
         self.guild = None
+        self.poll = None
         super().__init__(**kwargs)
     @property
     def channel_mentions(self):
@@ -551,10 +552,11 @@ class NotFound(discord.errors.NotFound):
 def run(coro):
     return instance.loop.run_until_complete(coro)
 
-def send(user, channel, content, reference = None, files = [], orig = False):
+def send(user, channel, content, reference = None, files = [], orig = False,
+         **kwargs):
     author = channel.guild.get_member(user.id) if channel.guild else user
     msg = Message(author = author, content = content, reference = reference,
-            attachments = files)
+            attachments = files, **kwargs)
     run(channel._add(msg))
     return channel[-1] if msg._deleted and not orig else msg
 
@@ -3073,6 +3075,19 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(c[-1].id, proxied.id)
 
         self.assertCommand(alpha, c, 'gs;m notpk leave')
+
+    def test_41_polls(self):
+        # awww so smol
+        g = Guild(name = 'poles')
+        c = g._add_channel('pauls')
+        g._add_member(alpha)
+        g._add_member(instance.user)
+        self.assertVote(alpha, c, 'gs;m new polll')
+        interact(c[-1], alpha, 'no')
+        self.assertCommand(alpha, c, 'gs;ap polll')
+        self.assertProxied(alpha, c, '',
+                poll = discord.Poll('do you like me', timedelta(weeks = 9999)))
+        self.assertCommand(alpha, c, 'gs;m polll leave')
 
 
 def main():
