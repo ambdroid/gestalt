@@ -655,6 +655,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                         icon_url = reference.author.display_avatar)
         del present['color']
 
+        # temporary workaround for discord.py calculating durations incorrectly
+        # TODO delete this
+        if message.poll:
+            from datetime import timedelta
+            message.poll.duration = timedelta(hours = round(
+                message.poll.duration.total_seconds() / 3600))
+
         thread = (channel if type(channel) == discord.Thread
                 else discord.utils.MISSING)
         am = discord.AllowedMentions(everyone = channel.permissions_for(
