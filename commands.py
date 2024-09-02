@@ -137,7 +137,7 @@ class CommandReader:
         try:
             return str(discord.Color.from_str(
                 NAMED_COLORS.get(name.lower(), name)))
-        except (ValueError, IndexError):
+        except ValueError:
             pass
 
 
