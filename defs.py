@@ -133,6 +133,9 @@ PERMS = discord.permissions.Permissions(
         )
 
 
+MAX_WEBHOOK_NAME_LENGTH = 80
+
+
 # limits for non-Nitro users by boost level
 MAX_FILE_SIZE = [
         25*1024*1024,

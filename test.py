@@ -2621,6 +2621,8 @@ class GestaltTest(unittest.TestCase):
         self.assertNotVote(beta, c, f'gs;m {maskid} color #012345')
         self.assertProxied(alpha, c, 'mask:text')
         self.assertEqual(c[-1].author.display_name, 'mask')
+        self.assertCommand(alpha, c, f'gs;m {maskid} name {"A" * 80}')
+        self.assertNotCommand(alpha, c, f'gs;m {maskid} name {"A" * 81}')
         self.assertCommand(alpha, c, f'gs;m {maskid} name newname')
         self.assertCommand(alpha, c, f'gs;m {maskid} avatar https://image')
         self.assertCommand(alpha, c, 'gs;m mask colour #012345')

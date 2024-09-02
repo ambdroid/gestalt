@@ -1107,6 +1107,9 @@ class GestaltCommands:
                     if newaction == 'nick':
                         if not (arg := reader.read_remainder()):
                             raise UserError('Please provide a new name.')
+                        if len(arg) > MAX_WEBHOOK_NAME_LENGTH:
+                            raise UserError(
+                                    f'That name is too long ({len(arg)}>{MAX_WEBHOOK_NAME_LENGTH}).')
                     if newaction == 'avatar':
                         arg = reader.read_clear() or reader.read_link()
                         if AVATAR_URL_BASE and str(arg).startswith(
