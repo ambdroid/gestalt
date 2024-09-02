@@ -2776,6 +2776,9 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(beta, c, 'gs;m replies leave')
         self.assertCommand(gamma, c, 'gs;m replies leave')
 
+        self.assertVote(alpha, c, f'gs;m new {"A" * 80}')
+        self.assertNotVote(alpha, c, f'gs;m new {"A" * 81}')
+
     def test_37_nomerge(self):
         g = Guild(name = 'merge guild')
         c = g._add_channel('main')

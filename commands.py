@@ -1028,6 +1028,9 @@ class GestaltCommands:
             if reader.read_token('new'):
                 if not (name := reader.read_remainder()):
                     raise UserError('Please provide a name.')
+                if len(name) > MAX_WEBHOOK_NAME_LENGTH:
+                    raise UserError(
+                            f'That name is too long ({len(name)}>{MAX_WEBHOOK_NAME_LENGTH}).')
 
                 return await self.cmd_mask_new(message, name)
 
