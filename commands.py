@@ -1011,7 +1011,7 @@ class GestaltCommands:
 
                 if member.id == self.user.id:
                     raise UserError(ERROR_BLURSED)
-                if member.bot:
+                if not self.can_use_gestalt(member):
                     raise UserError(ERROR_CURSED)
 
                 return await self.cmd_swap_open(message, member, tags)
@@ -1070,7 +1070,7 @@ class GestaltCommands:
                     # this bit again
                     if member.id == self.user.id:
                         raise UserError(ERROR_BLURSED)
-                    if member.bot:
+                    if not self.can_use_gestalt(member):
                         raise UserError(ERROR_CURSED)
                     return await self.cmd_mask_invite(message, maskid, member)
 

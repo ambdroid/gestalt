@@ -256,6 +256,14 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 }
 
 
+    def can_use_gestalt(self, member):
+        if member.bot:
+            if member.id == self.user.id:
+                return False
+            return any(member.get_role(roleid) for roleid in ALLOWED_BOT_ROLES)
+        return True
+
+
     async def try_delete(self, message, delay = None):
         if self.has_perm(message.channel, manage_messages = True):
             try:
@@ -422,7 +430,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
 
     async def on_member_join(self, member):
-        if not member.bot:
+        if self.can_use_gestalt(member):
             for maskid, flags in self.fetchall(
                     'select maskid, flags from proxies '
                     'where (userid, type) = (?, ?)',
@@ -779,6 +787,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             await self.do_command(reader)
             return
 
+        if message.author.bot and content.lower() in ['yes', 'no', 'abstain']:
+            if await self.on_bot_interaction(message):
+                return
+
         if not user:
             return # if user isn't init'd, they can't have any proxies
 
@@ -845,7 +857,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             self.ignore_delete_cache.add(message.id)
         if (message.type in (discord.MessageType.default,
             discord.MessageType.reply)
-            and not message.author.bot):
+            and not message.webhook_id
+            and self.can_use_gestalt(message.author)):
             user = self.fetchone('select * from users where userid = ?',
                     (authid,))
             try:
@@ -903,8 +916,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             return
 
 
-        reactor = self.get_user(payload.user_id)
-        if reactor.bot:
+        reactor = channel.guild.get_member(payload.user_id)
+        if not self.can_use_gestalt(reactor):
             return
 
         if emoji == REACT_QUERY:

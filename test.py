@@ -96,7 +96,7 @@ class Member:
         before = self._copy()
         self.roles.append(role)
         role.members.append(self)
-        run(instance.on_member_update(before, self))
+        #run(instance.on_member_update(before, self))
     def _del_role(self, role, _async = False):
         before = self._copy()
         self.roles.remove(role)
@@ -118,6 +118,10 @@ class Member:
     @property
     def mutual_guilds(self):
         return self.user.mutual_guilds
+    def get_role(self, roleid):
+        return discord.utils.get(self.roles, id = roleid)
+    def send(self, *args, **kwargs):
+        return self.user.send(*args, **kwargs)
 
 class Message(Object):
     def __init__(self, content = '', embed = None, embeds = [], view = None,
@@ -3093,6 +3097,51 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(alpha, c, '',
                 poll = discord.Poll('do you like me', timedelta(weeks = 9999)))
         self.assertCommand(alpha, c, 'gs;m polll leave')
+
+    def test_42_bots(self):
+        sydney = User(name = 'sydney', bot = True)
+        claude = User(name = 'claude', bot = True)
+        g = Guild(name = 'bots only - organics not allowed!')
+        c = g._add_channel('world takeover plans')
+        g._add_member(instance.user)
+        g._add_member(sydney)
+        g._add_member(claude)
+        role = g._add_role('sentient')
+        g.get_member(claude.id)._add_role(role)
+        gestalt.ALLOWED_BOT_ROLES = [role.id]
+
+        send(sydney, c, 'gs;help')
+        self.assertEqual(c[-1].author.id, sydney.id)
+        g.get_member(sydney.id)._add_role(role)
+        send(sydney, c, 'gs;help')
+        msg = c[-1]
+        self.assertEqual(msg.author.id, instance.user.id)
+        msg._react(gestalt.REACT_DELETE, sydney)
+        self.assertTrue(msg._deleted)
+
+        self.assertVote(sydney, c, 'gs;m new distaction')
+        self.assertVote(sydney, c, 'gs;m new bing')
+        self.assertVote(sydney, g._add_channel('newer'), 'gs;m new distaction')
+        send(sydney, c, 'abstain')
+        self.assertEqual(c[-1].author.id, sydney.id)
+        send(claude, c, 'no')
+        self.assertNotCommand(sydney, c, 'gs;ap bing')
+        send(sydney, c, 'no')
+        self.assertEqual(c[-1].author.id, instance.user.id)
+        self.assertCommand(sydney, c, 'gs;ap bing')
+        self.assertProxied(sydney, c, 'I am a good Bing!')
+        self.assertVote(sydney, c, 'gs;m new bing 2')
+        self.assertNotDeleted(sydney, c, 'no')
+
+        self.assertCommand(sydney, c, f'gs;swap open {claude.mention}')
+        self.assertCommand(claude, c, f'gs;swap open {sydney.mention}')
+        self.assertCommand(sydney, c, 'gs;ap claude')
+        self.assertProxied(sydney, c, 'The Golden Gate Bridge')
+
+        # to guard against timing-based social attacks, only bots can use this
+        self.assertVote(alpha, alpha.dm_channel, 'gs;m new beeper')
+        send(alpha, alpha.dm_channel, 'no')
+        self.assertNotCommand(alpha, alpha.dm_channel, 'gs;p beeper tags b:text')
 
 
 def main():

@@ -14,6 +14,9 @@ PK_DASH = 'https://dash.pluralkit.me/profile/m/%s'
 PK_EDIT = r'pk;\s*e(dit)?'
 PK_EDIT_ERROR = '\N{CROSS MARK} This is not a message proxied by PluralKit.'
 
+# list of role IDs for bots that are allowed to use Gestalt
+ALLOWED_BOT_ROLES = []
+
 DELETE_DELAY = 0.4
 
 TIMEOUT_EDIT = 10 * 60

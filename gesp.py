@@ -568,7 +568,7 @@ class Vote(metaclass = serializable):
                 else:
                     src.discard(userid)
                     dest.add(userid)
-                    desc = 'You voted %s.' % button
+                    desc = 'You chose %s.' % button
         else:
             desc = 'You are not eligible for this vote.'
         return self.after_interaction(interaction, desc, bot) # return coro
@@ -923,4 +923,33 @@ class GestaltVoting:
             del self.votes[msgid]
             await vote.on_done(self)
         await coro
+
+
+    async def on_bot_interaction(self, message):
+        # trying to keep this as self-contained as possible
+        class BotInteraction:
+            def __init__(self, bot, trigger, msg):
+                self.bot, self.trigger, self.message = bot, trigger, msg
+                self.data = {'custom_id': trigger.content.lower()}
+                self.response = self
+                self.user = trigger.author
+            async def send_message(self, embed, ephemeral):
+                await self.bot.reply(self.trigger, embeds = [embed])
+
+        button = message.content.lower()
+        if not (votes := [
+                msgid for (msgid, vote) in self.votes.items()
+                if vote.context.channel == message.channel.id
+                and message.author.id in vote.eligible
+                and discord.utils.get(vote.view().children, custom_id = button)
+                ]):
+            return False
+
+        try:
+            vmessage = await message.channel.fetch_message(max(votes))
+        except discord.errors.NotFound:
+            return False
+
+        await self.on_interaction(BotInteraction(self, message, vmessage))
+        return True
 
