@@ -1259,11 +1259,3 @@ class GestaltCommands:
                 await self.update_status()
                 await self.mark_success(message, True)
 
-        elif arg == 'eval':
-            program = reader.read_remainder()
-            try:
-                result = gesp.eval(program)
-            except Exception as e:
-                raise UserError(e.args[0])
-            await self.program_finished(message.channel, result)
-
