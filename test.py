@@ -2356,6 +2356,7 @@ class GestaltTest(unittest.TestCase):
             gesp.ProgramContext.from_message(send(gamma, c, 'msg')),
             gesp.ActionJoin('mask2', gamma.id)))
         interact(c[-1], alpha, 'yes')
+        interact(c[-1], alpha, 'yes')
         self.assertIsNone(self.get_proxid(gamma, 'mask2'))
         interact(c[-1], beta, 'yes')
         self.assertIsNotNone(self.get_proxid(gamma, 'mask2'))

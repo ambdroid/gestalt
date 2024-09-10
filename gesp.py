@@ -548,29 +548,37 @@ class Vote(metaclass = serializable):
     threshold: int = 0
     yes: set[int] = dc.field(default_factory = set)
     no: set[int] = dc.field(default_factory = set)
+    VOTE_YES = 'You chose yes.'
+    VOTE_NO = 'You chose no.'
+    VOTE_UNYES = 'You removed your yes vote.'
+    VOTE_UNNO = 'You removed your no vote.'
+    VOTE_REYES = 'You were already voting yes.'
+    VOTE_RENO = 'You were already voting no.'
+    VOTE_REABSTAIN = 'You were already abstaining.'
+    VOTE_INELIGIBLE = 'You are not eligible for this vote.'
     def on_interaction(self, interaction, bot):
         if (userid := interaction.user.id) in self.eligible:
             button = interaction.data['custom_id']
+            either = lambda yes, no: yes if button == 'yes' else no
             if button == 'abstain':
                 if userid in self.yes:
                     self.yes.remove(userid)
-                    desc = 'You removed your yes vote.'
+                    desc = self.VOTE_UNYES
                 elif userid in self.no:
                     self.no.remove(userid)
-                    desc = 'You removed your no vote.'
+                    desc = self.VOTE_UNNO
                 else:
-                    desc = 'You were already abstaining.'
+                    desc = self.VOTE_REABSTAIN
             else:
-                (dest, src) = ((self.yes, self.no) if button == 'yes'
-                        else (self.no, self.yes))
+                (dest, src) = either((self.yes, self.no), (self.no, self.yes))
                 if userid in dest:
-                    desc = 'You were already voting %s.' % button
+                    desc = either(self.VOTE_REYES, self.VOTE_RENO)
                 else:
                     src.discard(userid)
                     dest.add(userid)
-                    desc = 'You chose %s.' % button
+                    desc = either(self.VOTE_YES, self.VOTE_NO)
         else:
-            desc = 'You are not eligible for this vote.'
+            desc = self.VOTE_INELIGIBLE
         return self.after_interaction(interaction, desc, bot) # return coro
     async def after_interaction(self, interaction, desc, bot):
         await respond(interaction, desc)
