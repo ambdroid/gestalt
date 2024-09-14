@@ -138,10 +138,11 @@ MAX_WEBHOOK_NAME_LENGTH = 80
 
 # limits for non-Nitro users by boost level
 MAX_FILE_SIZE = [
-        25*1024*1024,
-        25*1024*1024,
+        10*1024*1024,
+        10*1024*1024,
         50*1024*1024,
-        100*1024*1024]
+        100*1024*1024
+        ]
 
 
 VALID_MIME_TYPES = [
