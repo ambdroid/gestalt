@@ -666,9 +666,10 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
 
-    async def cmd_mask_leave(self, message, mask, member):
+    async def cmd_mask_leave(self, message, maskid, member):
         authid = message.author.id
-        maskid = mask['maskid']
+        # avoid potential race conditions if a user joins at the same time
+        mask = self.fetchone('select * from masks where maskid = ?', (maskid,))
         if mask['members'] == 1:
             # triggers will delete mask and guildmasks
             if self.is_hosted_avatar(mask['avatar']):
@@ -1163,7 +1164,7 @@ class GestaltCommands:
                             raise UserError('That user is not a member.')
                         if member.id == authid:
                             raise UserError(ERROR_CURSED)
-                    return await self.cmd_mask_leave(message, row, member)
+                    return await self.cmd_mask_leave(message, maskid, member)
 
         elif arg in ['edit', 'e']:
             return await self.cmd_edit(message, reader.read_message(self),
