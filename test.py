@@ -2735,6 +2735,9 @@ class GestaltTest(unittest.TestCase):
         self.assertIsNone(instance.fetchone(
             'select 1 from guildmasks where maskid = ?',
             (maskid,)))
+        self.assertIsNone(instance.fetchone(
+            'select 1 from masks where maskid = ?',
+            (maskid,)))
         # TODO maybe ex-members shouldn't vote? eh.
         interact(c2[-1], alpha, 'yes')
         self.assertIsNone(instance.fetchone(

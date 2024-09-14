@@ -139,6 +139,12 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                     'where maskid = old.maskid;'
                 'end' % ProxyType.mask)
         self.execute(
+                'create trigger if not exists mask_delete '
+                'after update of members on masks when new.members = 0 begin '
+                    'delete from guildmasks where maskid = new.maskid;'
+                    'delete from masks where maskid = new.maskid;'
+                'end')
+        self.execute(
                 'create trigger if not exists mask_history_create '
                 'after insert on history when new.maskid not null begin '
                     'update masks set msgcount = msgcount + 1 '

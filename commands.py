@@ -670,16 +670,7 @@ class GestaltCommands:
         authid = message.author.id
         maskid = mask['maskid']
         if mask['members'] == 1:
-            # i doubt this can go wrong with await and stuff but
-            # make sure this operation is atomic, just in case
-            self.execute('delete from masks where (maskid, members) = (?, 1)',
-                    (maskid,))
-            if self.cur.rowcount == 0:
-                self.log('Bad delete for mask %s', maskid)
-                raise UserError(
-                        '...Sorry, I lost a race condition. Don\'t panic, '
-                        'I\'m looking into it. Try again?')
-            self.execute('delete from guildmasks where maskid = ?', (maskid,))
+            # triggers will delete mask and guildmasks
             if self.is_hosted_avatar(mask['avatar']):
                 os.remove(self.hosted_avatar_local_path(mask['avatar']))
         elif authid in gesp.Rules.from_json(mask['rules']).named:
