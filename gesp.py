@@ -2,6 +2,7 @@ from collections import ChainMap, namedtuple, defaultdict
 from functools import reduce, partial
 from datetime import timedelta
 import dataclasses as dc
+import asyncio
 import hashlib
 import json
 import math
@@ -336,8 +337,7 @@ class ActionChange(VotableAction, _type = ActionType.change):
                         image = await r.read()
                 except:
                     return
-                self.value = await bot.loop.run_in_executor(bot.threads,
-                        self.save_avatar, bot, image)
+                self.value = await asyncio.to_thread(self.save_avatar, bot, image)
                 bot.log('%i: saved %s', self.message, self.value)
             if self.value != prev and bot.is_hosted_avatar(prev):
                 os.remove(bot.hosted_avatar_local_path(prev))

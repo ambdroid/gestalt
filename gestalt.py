@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from functools import reduce
 import sqlite3 as sqlite
@@ -181,7 +180,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()
         self.load()
-        self.threads = ThreadPoolExecutor()
 
 
     def __del__(self):
