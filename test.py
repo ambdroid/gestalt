@@ -3024,7 +3024,7 @@ class GestaltTest(unittest.TestCase):
         vriska['created'] = None
         instance.session._pk('/members/' + vriska['uuid'], json.dumps(vriska))
         send(beta, c, 'gs;p vriska')
-        self.assertEqual(c[-1].embeds[1].color, discord.Color.light_gray())
+        self.assertEqual(c[-1].embeds[1].color, None)
         self.assertEqual(field(c[-1], 1, 'Birthdate').value, 'Jul 03')
         self.assertNotIn('Created on', c[-1].embeds[1].footer.text)
 

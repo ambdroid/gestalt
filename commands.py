@@ -358,10 +358,9 @@ class GestaltCommands:
             embed.add_field(name = 'Color', value = '#' + color)
             # according to pk source, color might sometimes be invalid
             try:
-                color = discord.Color.from_str('#' + color)
+                embed.color = discord.Color.from_str('#' + color)
             except ValueError:
-                color = None
-        embed.color = color or discord.Color.light_gray()
+                pass
 
         if description := member['description']:
             embed.add_field(name = 'Description', value = description,
