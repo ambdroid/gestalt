@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from contextlib import asynccontextmanager
 from collections import defaultdict
 from functools import reduce
 import sqlite3 as sqlite
@@ -297,18 +298,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 REACT_CONFIRM if success else REACT_DELETE)
 
 
-    class InProgress:
-        def __init__(self, client, message):
-            (self.client, self.message) = (client, message)
-        async def __aenter__(self):
-            await self.client.try_add_reaction(self.message, REACT_WAIT)
-        async def __aexit__(self, *args):
-            try:
-                await self.message.remove_reaction(REACT_WAIT, self.client.user)
-            except discord.errors.NotFound:
-                pass
-
-
     class LastMessageCache(defaultdict):
         def __init__(self):
             super().__init__(dict)
@@ -324,8 +313,16 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 return cache[next(reversed(cache))]
 
 
-    def in_progress(self, message):
-        return self.InProgress(self, message)
+    @asynccontextmanager
+    async def in_progress(self, message):
+        try:
+            await self.try_add_reaction(message, REACT_WAIT)
+            yield
+        finally:
+            try:
+                await message.remove_reaction(REACT_WAIT, self.user)
+            except discord.errors.NotFound:
+                pass
 
 
     async def send(self, channel, content = '', plain = '', embeds = [],
