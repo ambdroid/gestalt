@@ -611,7 +611,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
         if message.attachments:
             totalsize = sum((x.size for x in message.attachments))
-            if totalsize <= MAX_FILE_SIZE[message.guild.premium_tier]:
+            if totalsize <= message.guild.filesize_limit:
                 # defer downloading attachments until after other checks
                 msgfiles = (await attach.to_file(spoiler = attach.is_spoiler())
                         for attach in message.attachments)

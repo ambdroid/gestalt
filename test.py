@@ -399,8 +399,8 @@ class Guild(Object):
         self._channels = {}     # channel id -> channel
         self._roles = {}        # role id -> role
         self._members = {}      # user id -> member
+        self.filesize_limit = discord.Guild._PREMIUM_GUILD_LIMITS[0].filesize
         self.name = ''
-        self.premium_tier = 0
         super().__init__(**kwargs)
         self._roles[self.id] = RoleEveryone(self)
         Guild.guilds[self.id] = self
@@ -1450,6 +1450,7 @@ class GestaltTest(unittest.TestCase):
                             'value': run(origin.fetch_message(msg.id))._prev.content
                         }
                         ],
+                    'flags': 0,
                     'timestamp': discord.utils.snowflake_time(deleted.id).isoformat(),
                     'type': 'rich',
                     'description': f'<{content}>'
@@ -1543,7 +1544,7 @@ class GestaltTest(unittest.TestCase):
         # big file, no content
         self.assertNotProxied(alpha, c, '[', files = [
             Attachment(range(999999999))])
-        half = Attachment(b'a' * (gestalt.MAX_FILE_SIZE[0] >> 1))
+        half = Attachment(b'a' * (g1.filesize_limit >> 1))
         # files at the limit, no content
         self.assertProxied(alpha, c, '[', files = [half, half])
         # files too big, no content
