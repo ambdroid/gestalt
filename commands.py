@@ -966,6 +966,9 @@ class GestaltCommands:
                     context = gesp.ProgramContext.from_message(message)))
             raise UserError("Please use `gs;consent` to begin.")
 
+        elif arg == 'consent':
+            return await self.reply(message, WARNING)
+
         elif arg in ['proxy', 'p']:
             name = reader.read_quote()
 
