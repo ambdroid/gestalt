@@ -50,16 +50,18 @@ class Object:
 
 class User(Object):
     users = {}
-    def __init__(self, **kwargs):
+    def __init__(self, onboard = True, **kwargs):
         self._deleted = False
         self.bot = False
         self.dm_channel = None
         self.discriminator = '0001'
         super().__init__(**kwargs)
+        User.users[self.id] = self
         if not self.bot:
             self.dm_channel = Channel(type = discord.ChannelType.private,
                     members = [self, instance.user], recipient = self)
-        User.users[self.id] = self
+            if onboard:
+                self._onboard(self.dm_channel)
     @property
     def mention(self):
         return f'<@{self.id}>'
@@ -69,6 +71,17 @@ class User(Object):
             lambda guild : (guild.get_member(self.id)
                 and guild.get_member(instance.user.id)),
             Guild.guilds.values()))
+    def _onboard(self, chan):
+        # do the new user warning thing away from the actual tests
+        # (except for bot users, they need this to be called manually)
+        send(self, chan, 'gs;consent')
+        assert len(chan[-1].components) == 1
+        if self.bot:
+            send(self, chan, 'yes')
+        else:
+            interact(chan[-1], self, 'yes')
+        send(self, chan, 'gs;consent')
+        assert len(chan[-1].components) == 0
     def _delete(self):
         self._deleted = True
         del User.users[self.id]
@@ -187,6 +200,8 @@ class Message(Object):
                     'channel_id': self.channel.id,
                     'id': self.id}))
     async def edit(self, embed = None, embeds = [], view = None):
+        if self.author.id != instance.user.id:
+            raise Forbidden()
         if (newbeds := [embed] if embed else embeds):
             self.embeds = newbeds
         if view:
@@ -407,6 +422,9 @@ class Guild(Object):
     def __getitem__(self, key):
         return discord.utils.get(self._channels.values(), name = key)
     @property
+    def channels(self):
+        return list(self._channels.values())
+    @property
     def default_role(self):
         return self._roles[self.id]
     @property
@@ -506,6 +524,8 @@ class TestBot(gestalt.Gestalt):
                 per = 1.0)
     def log(*args):
         pass
+    async def application_info(self):
+        return Object(bot_public = True)
     @property
     def user(self):
         return self._user
@@ -3114,10 +3134,12 @@ class GestaltTest(unittest.TestCase):
         role = g._add_role('sentient')
         g.get_member(claude.id)._add_role(role)
         gestalt.ALLOWED_BOT_ROLES = [role.id]
+        claude._onboard(c)
 
         send(sydney, c, 'gs;help')
         self.assertEqual(c[-1].author.id, sydney.id)
         g.get_member(sydney.id)._add_role(role)
+        sydney._onboard(c)
         send(sydney, c, 'gs;help')
         msg = c[-1]
         self.assertEqual(msg.author.id, instance.user.id)
@@ -3147,6 +3169,57 @@ class GestaltTest(unittest.TestCase):
         self.assertVote(alpha, alpha.dm_channel, 'gs;m new beeper')
         send(alpha, alpha.dm_channel, 'no')
         self.assertNotCommand(alpha, alpha.dm_channel, 'gs;p beeper tags b:text')
+
+    def test_43_onboarding(self):
+        newbie = User(name = 'newbie', onboard = False)
+        g = Guild(name = 'new guild for new users')
+        c = g._add_channel('main')
+        g._add_member(instance.user)
+        g._add_member(newbie)
+
+        # info commands
+        for cmd in ['help', 'explain', 'invite', 'permcheck']:
+            self.assertNotVote(newbie, c, 'gs;' + cmd)
+            self.assertEqual(c[-1].author.id, instance.user.id)
+        # server admin commands
+        for cmd in ['log disable', f'channel {c.mention} mode default']:
+            self.assertCommand(newbie, c, 'gs;' + cmd)
+
+        # test errors without a user entry
+        self.assertNotVote(newbie, c, 'gs;log channel')
+        self.assertNotEqual(c[-1].author.id, instance.user.id)
+        old = gestalt.DEFAULT_PREFS
+        gestalt.DEFAULT_PREFS |= defs.Prefs.errors
+        self.assertNotVote(newbie, c, 'gs;log channel')
+        self.assertEqual(c[-1].author.id, instance.user.id)
+        self.assertNotVote(newbie, c, 'gs;m new mask')
+        self.assertEqual(c[-1].author.id, instance.user.id)
+        self.assertTrue('gs;consent' in self.desc(c[-1]))
+        gestalt.DEFAULT_PREFS = old
+
+        # be sneaky and do two at once
+        self.assertVote(newbie, c, 'gs;consent')
+        first = c[-1]
+        self.assertVote(newbie, c, 'gs;consent')
+        interact(c[-1], newbie, 'yes')
+        interact(first, newbie, 'yes')
+        self.assertCommand(newbie, c, 'gs;ap off')
+
+        # there are lots of ways to be sneaky it turns out
+        twobie = User(name = 'twobie', onboard = False)
+        g._add_member(twobie)
+        run(self.assertVote(twobie, c, 'gs;consent').delete())
+        interact(c[-1], twobie, 'yes')
+        self.assertCommand(twobie, c, 'gs;ap off')
+
+        # can't do it for someone else
+        twobie = User(name = 'twobie', onboard = False)
+        g._add_member(twobie)
+        self.assertVote(twobie, c, 'gs;consent')
+        interact(c[-1], newbie, 'yes')
+        self.assertVote(twobie, c, 'gs;consent')
+        interact(c[-1], twobie, 'yes')
+        self.assertNotVote(twobie, c, 'gs;consent')
 
 
 def main():

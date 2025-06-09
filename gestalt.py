@@ -689,12 +689,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         return new
 
 
-    def init_user(self, user):
-        self.execute('insert into users values (?, ?, ?, "", NULL)',
-                (user.id, str(user), DEFAULT_PREFS))
-        self.mkproxy(user.id, ProxyType.override)
-
-
     def proxy_visible_in(self, proxy, guild):
         if proxy['state'] == ProxyState.hidden:
             return False
@@ -759,7 +753,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         authid = message.author.id
         content = message.content
 
-        if match := PK_EDIT.match(content):
+        if user and (match := PK_EDIT.match(content)):
             command = content.removeprefix(match[0]).strip()
             reader = commands.CommandReader(message, command)
             return await self.do_pk_edit(reader)
@@ -774,11 +768,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 raise UserError(
                         'You cannot use commands in a Mandatory mode channel.')
 
-            # init user if hasn't been init'd yet
-            # it's impossible for the row to matter before they use a command
-            if not user:
-                self.init_user(message.author)
-            await self.do_command(reader)
+            await self.do_command(reader, user)
             return
 
         if message.author.bot and content.lower() in ['yes', 'no', 'abstain']:

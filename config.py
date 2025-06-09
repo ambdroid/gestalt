@@ -63,6 +63,8 @@ MERGE_PADDING = '\N{HAIR SPACE}\N{KHMER VOWEL INHERENT AA}'
 
 WEBHOOK_NAME = 'Gestalt webhook'
 
+WARNING = """:warning: It looks like you're new to Gestalt. Just a heads-up: Some users find that **Gestalt can be psychoactive**, especially for those prone to dissociation. Think of it like an empathogen, such as MDMA, and treat it with similar respect. The best experiences tend to happen with people you already know and trust, though it can also be a powerful bonding tool. However, **this can be exploited**, so stay mindful. By continuing to use Gestalt, you're accepting responsibility for your own safety."""
+
 HELPMSGS = {
         '':
         'Gestalt is a bot focused on social identity play. '
@@ -94,7 +96,9 @@ HELPMSGS = {
         '- pluralkit\n'
         '- account\n'
         '- utility\n'
-        '- server',
+        '- server\n'
+        '\n'
+        '**To get started, use `gs;consent`.**',
 
         'proxy':
         '**All proxies**: (shortcut `{p}p`)\n'

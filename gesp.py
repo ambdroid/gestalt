@@ -2,6 +2,7 @@ from collections import ChainMap, namedtuple, defaultdict
 from functools import reduce, partial
 from datetime import timedelta
 import dataclasses as dc
+import sqlite3 as sqlite
 import asyncio
 import hashlib
 import json
@@ -816,6 +817,29 @@ class VotePkswap(VoteConfirm, _type = VoteType.pkswap):
             'select 1 from proxies '
             'where (userid, maskid, type, state) = (?, ?, ?, ?)',
             (self.get_user(), self.uuid, ProxyType.pkswap, ProxyState.active)))
+
+
+class VoteNewUser(VoteConfirm, _type = VoteType.new_user):
+    VOTE_YES = 'Welcome to Gestalt!'
+    async def on_done(self, bot):
+        user = bot.get_user(self.get_user())
+        try:
+            bot.execute('insert into users values (?, ?, ?, "", NULL)',
+                        (user.id, str(user), DEFAULT_PREFS))
+            bot.mkproxy(user.id, ProxyType.override)
+        except sqlite.IntegrityError:
+            return # already registered; this is harmless
+    def description(self):
+        return WARNING
+    def view(self, disabled = False):
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(
+            custom_id = 'yes',
+            style = discord.ButtonStyle.primary,
+            label = 'I understand',
+            disabled = disabled,
+            ))
+        return view
 
 
 async def respond(interaction, content):

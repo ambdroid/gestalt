@@ -224,6 +224,7 @@ class VoteType(enum.IntEnum):
     preinvite   = 4
 #   swap        = 5
     pkswap      = 6
+    new_user    = 7
 
 
 @enum.unique

@@ -896,13 +896,17 @@ class GestaltCommands:
 
 
     # parse, convert, and validate arguments, then call the relevant function
-    async def do_command(self, reader):
+    async def do_command(self, reader, user):
         message = reader.msg
         arg = reader.read_word().lower()
         authid = message.author.id
 
+        # info and server management commands are always available
         if arg == 'help':
             return await self.cmd_help(message, reader.read_word().lower())
+
+        elif arg == 'explain':
+            return await self.reply(message, plain = EXPLAIN)
 
         elif arg == 'invite':
             return await self.cmd_invite(message)
@@ -912,6 +916,55 @@ class GestaltCommands:
             if re.search('[^0-9]', guildid) or not (guildid or message.guild):
                 raise UserError('Please provide a valid guild ID.')
             return await self.cmd_permcheck(message, guildid)
+
+        elif arg == 'log':
+            if not message.guild:
+                raise UserError(ERROR_DM)
+            if not message.author.guild_permissions.administrator:
+                raise UserError(
+                        'You need `Manage Server` permissions to do that.')
+
+            arg = reader.read_word().lower()
+            if arg == 'channel':
+                channel = reader.read_channel()
+                if not channel:
+                    raise UserError('Please mention a channel.')
+
+                return await self.cmd_log_channel(message, channel)
+
+            if arg == 'disable':
+                return await self.cmd_log_disable(message)
+
+            return
+
+        elif arg == 'channel':
+            if not message.guild:
+                raise UserError(ERROR_DM)
+            if not message.author.guild_permissions.manage_channels:
+                raise UserError(
+                        'You need `Manage Channels` permissions to do that.')
+
+            channel = reader.read_channel()
+            if not channel:
+                raise UserError('Please mention a channel.')
+
+            arg = reader.read_word()
+            if arg == 'mode':
+                mode = reader.read_word()
+                if mode not in ChannelMode.__members__.keys():
+                    raise UserError('Invalid channel mode.')
+
+                return await self.cmd_channel_mode(message, channel, mode)
+
+            return
+
+        #... these are not
+        if not user:
+            if arg == 'consent':
+                return await self.initiate_vote(gesp.VoteNewUser(
+                    user = authid,
+                    context = gesp.ProgramContext.from_message(message)))
+            raise UserError("Please use `gs;consent` to begin.")
 
         elif arg in ['proxy', 'p']:
             name = reader.read_quote()
@@ -964,10 +1017,6 @@ class GestaltCommands:
         elif arg in ['account', 'a']:
             arg = reader.read_word().lower()
             if arg == 'config':
-                # user must exist due to on_message
-                user = self.fetchone(
-                        'select * from users where userid = ?',
-                        (authid,))
                 arg = reader.read_word().lower()
                 if len(arg) == 0:
                     return await self.cmd_config_list(message, user)
@@ -1202,46 +1251,6 @@ class GestaltCommands:
                     raise UserError('Please reply to a proxied message.')
 
                 return await self.cmd_pk_sync(message)
-
-        elif arg == 'log':
-            if not message.guild:
-                raise UserError(ERROR_DM)
-            if not message.author.guild_permissions.administrator:
-                raise UserError(
-                        'You need `Manage Server` permissions to do that.')
-
-            arg = reader.read_word().lower()
-            if arg == 'channel':
-                channel = reader.read_channel()
-                if not channel:
-                    raise UserError('Please mention a channel.')
-
-                return await self.cmd_log_channel(message, channel)
-
-            if arg == 'disable':
-                return await self.cmd_log_disable(message)
-
-        elif arg == 'channel':
-            if not message.guild:
-                raise UserError(ERROR_DM)
-            if not message.author.guild_permissions.manage_channels:
-                raise UserError(
-                        'You need `Manage Channels` permissions to do that.')
-
-            channel = reader.read_channel()
-            if not channel:
-                raise UserError('Please mention a channel.')
-
-            arg = reader.read_word()
-            if arg == 'mode':
-                mode = reader.read_word()
-                if mode not in ChannelMode.__members__.keys():
-                    raise UserError('Invalid channel mode.')
-
-                return await self.cmd_channel_mode(message, channel, mode)
-
-        elif arg == 'explain':
-            return await self.reply(message, plain = EXPLAIN)
 
         elif arg == 'motd':
             if message.author.id in self.admins:
