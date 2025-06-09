@@ -62,7 +62,7 @@ def parse_args(args, pairs, offset):
         (parsed, end) = (m[0] == "true", len(m[0]))
     else:
         raise ValueError("Syntax error")
-    stripped = args[end:].strip()
+    stripped = args[end:].lstrip()
     return (parsed,) + parse_args(stripped, pairs, offset + len(args) - len(stripped))
 
 
@@ -70,13 +70,13 @@ Exp = namedtuple("Exp", ["op", "args"])
 
 
 def parse_paren(paren, pairs, offset):
-    if m := re.fullmatch("\(([a-z-]+)(\s*)(.*)\)", paren):
-        start = 1 + len(m[1]) + len(m[2])
-        return Exp(m[1], parse_args(m[3], pairs, offset + start))
+    if m := re.fullmatch("(\(([a-z-]+)\s*)(.*)\)", paren, re.DOTALL):
+        return Exp(m[2], parse_args(m[3], pairs, offset + len(m[1])))
 
 
 def parse_full(expr):
-    return parse_args(expr, get_pairs(expr), 0)
+    stripped = expr.lstrip()
+    return parse_args(stripped, get_pairs(stripped), 0)
 
 
 user = object()
@@ -463,7 +463,7 @@ class RulesLegacy(Rules, _type=RuleType.legacy):
 
 @dc.dataclass
 class RulesDictator(Rules, _type=RuleType.dictator):
-    rule = parse_full("(eq" "(initiator)" "(named 0)" ")")[0]
+    rule = parse_full("(eq (initiator) (named 0))")[0]
     user: dc.InitVar[int] = None
 
     def __post_init__(self, user=None):
@@ -480,22 +480,24 @@ class RulesDictator(Rules, _type=RuleType.dictator):
 
 class RulesHandsOff(RulesDictator, _type=RuleType.handsoff):
     rule_voting = parse_full(
-        "(vote-approval"
-        "(add"
-        "(floor"
-        "(div"
-        "(sub"
-        "(size-of"
-        "(members)"
-        ")"
-        "1)"
-        "2)"
-        ")"
-        "1)"
-        "(members)"
-        ")"
+        """
+        (vote-approval
+            (add
+                (floor
+                    (div
+                        (sub
+                            (size-of
+                                (members)
+                            )
+                        1)
+                    2)
+                )
+            1)
+            (members)
+        )
+        """
     )[0]
-    rule_immune = parse_full("(neq" "(candidate)" "(named 0)" ")")[0]
+    rule_immune = parse_full("(neq (candidate) (named 0))")[0]
 
     def for_action(self, atype):
         if atype == ActionType.rules:
@@ -514,24 +516,38 @@ class RulesHandsOff(RulesDictator, _type=RuleType.handsoff):
 
 
 rule_solo = parse_full(
-    "(and" "(eq" "(size-of" "(members)" ")" "1)" "(in" "(initiator)" "(members)" ")" ")"
+    """
+    (and
+        (eq
+            (size-of
+                (members)
+            )
+        1)
+        (in
+            (initiator)
+            (members)
+        )
+    )
+    """
 )[0]
 
 
 class RulesMajority(Rules, _type=RuleType.majority):
     rule = parse_full(
-        "(vote-approval"
-        "(add"
-        "(floor"
-        "(div"
-        "(size-of"
-        "(members)"
-        ")"
-        "2)"
-        ")"
-        "1)"
-        "(members)"
-        ")"
+        """
+        (vote-approval
+            (add
+                (floor
+                    (div
+                        (size-of
+                            (members)
+                        )
+                    2)
+                )
+            1)
+            (members)
+        )
+        """
     )[0]
 
     def for_action(self, atype):
@@ -539,10 +555,8 @@ class RulesMajority(Rules, _type=RuleType.majority):
 
 
 class RulesUnanimous(Rules, _type=RuleType.unanimous):
-    rule = parse_full("(vote-approval" "(size-of" "(members)" ")" "(members)" ")")[0]
-    rule_remove = parse_full(
-        "(vote-approval" "(sub" "(size-of" "(members)" ")" "1)" "(members)" ")"
-    )[0]
+    rule = parse_full("(vote-approval (size-of (members)) (members))")[0]
+    rule_remove = parse_full("(vote-approval (sub (size-of (members)) 1) (members))")[0]
 
     def for_action(self, atype):
         return Exp(

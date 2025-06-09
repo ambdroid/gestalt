@@ -2546,7 +2546,7 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(gesp.eval("(or (eq 1 1) (vote-approval 12 (members)))"), True)
         self.assertEqual(gesp.eval("(eq (eq 1 1) true)"), True)
         self.assertEqual(gesp.eval("(add (one) (one))"), 2)
-        self.assertEqual(gesp.eval("(add  (add  1  1)  1 )"), 3)
+        self.assertEqual(gesp.eval("(add  (add  1  1 )  (add  1  1  ) )"), 4)
         self.assertEqual(gesp.eval("(add (add 1 1)(add 1 1))"), 4)
         self.assertEqual(gesp.eval('(if true "foo" "bar")'), "foo")
         with self.assertRaises(TypeError):
