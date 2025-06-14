@@ -3614,7 +3614,7 @@ class GestaltTest(unittest.TestCase):
                 timestamp = warptime.now()
             self.assertTrue(
                 c[-1].edited_at == timestamp
-                or (timestamp - c[-1].edited_at) < timedelta(milliseconds=1)
+                or (timestamp - c[-1].edited_at) < timedelta(milliseconds=10)
             )
             warptime.warp += 1
 

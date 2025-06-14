@@ -104,7 +104,7 @@ HELPMSGS = {
     "**To get started, use `gs;consent`.**",
     "proxy": "**All proxies**: (shortcut `{p}p`)\n"
     "\n"
-    "`{p}proxy list`: list your proxies.\n"
+    "`{p}proxy list [-all]`: list your proxies.\n"
     "`{p}proxy (id/name)`: view proxy information\n"
     "`{p}proxy (id/name) tags ([tags]/-clear)`: set tags\n"
     "`{p}proxy (id/name) rename (new name)`: rename proxy\n"

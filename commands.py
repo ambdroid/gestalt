@@ -178,10 +178,8 @@ class GestaltCommands:
     async def cmd_permcheck(self, message, guildid):
         guildid = message.guild.id if guildid == "" else int(guildid)
         guild = self.get_guild(guildid)
-        if guild == None:
-            raise UserError("That guild does not exist or I am not in it.")
-        if guild.get_member(message.author.id) == None:
-            raise UserError("You are not a member of that guild.")
+        if guild == None or guild.get_member(message.author.id) == None:
+            raise UserError("That guild is unknown or you are not a member.")
 
         memberauth = guild.get_member(message.author.id)
         memberbot = guild.get_member(self.user.id)
@@ -243,6 +241,7 @@ class GestaltCommands:
 
     async def cmd_proxy_list(self, message, all_):
         guild = message.guild
+        all_ |= bool(not guild)
         rows = sorted(
             self.fetchall(
                 "select proxies.*, guildmasks.guildid, masks.nick from proxies "
@@ -262,12 +261,11 @@ class GestaltCommands:
         )
 
         lines = []
-        omit = False
         # must be at least one: the override
         for proxy in rows:
-            if guild and not (all_ or self.proxy_visible_in(proxy, guild)):
-                omit = True
-            elif line := self.proxy_string(proxy):
+            if (all_ or self.proxy_visible_in(proxy, guild)) and (
+                line := self.proxy_string(proxy)
+            ):
                 lines.append(line)
 
         await self.reply_lines(
@@ -275,11 +273,7 @@ class GestaltCommands:
             discord.Embed(
                 title=f"Proxies of {escape(message.author.display_name)}:"
             ).set_footer(
-                text=(
-                    "Proxies in other servers have been omitted.\nTo view all proxies, use the -all flag."
-                    if omit
-                    else None
-                )
+                text=None if all_ else "Proxies in other servers may have been omitted."
             ),
             lines,
         )
