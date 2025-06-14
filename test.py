@@ -2,6 +2,7 @@
 
 from tempfile import TemporaryDirectory
 from functools import reduce, partial
+from collections import defaultdict
 from datetime import timedelta
 import unittest
 import asyncio
@@ -51,6 +52,10 @@ class Object:
         Object.nextid += 1
         vars(self).update(kwargs)
 
+    @property
+    def created_at(self):
+        return discord.utils.snowflake_time(self.id)
+
 
 class User(Object):
     users = {}
@@ -70,6 +75,10 @@ class User(Object):
             )
             if onboard:
                 self._onboard(self.dm_channel)
+
+    @property
+    def display_name(self):
+        return self.name
 
     @property
     def mention(self):
@@ -182,7 +191,7 @@ class Message(Object):
         self.content = content
         self.webhook_id = None
         self.attachments = []
-        self.reactions = []
+        self.reactions = defaultdict(set)
         self.reference = None
         self.edited_at = None
         self.embeds = [embed] if embed else embeds
@@ -255,14 +264,12 @@ class Message(Object):
             self.embeds = newbeds
         if view:
             self.components = view.children
+        self.edited_at = warptime.now()
 
     def _react(self, emoji, user, _async=False):
-        react = discord.Reaction(
-            message=self, emoji=emoji, data={"count": 1, "me": None}
-        )
-        if react not in self.reactions:
-            # FIXME when more than one user adds the same reaction
-            self.reactions.append(react)
+        if user.id in self.reactions[emoji]:
+            return  # not an error
+        self.reactions[emoji].add(user.id)
         coro = instance.on_raw_reaction_add(
             discord.raw_models.RawReactionActionEvent(
                 data={
@@ -281,8 +288,20 @@ class Message(Object):
     async def add_reaction(self, emoji):
         await self._react(emoji, instance.user, _async=True)
 
+    async def clear_reaction(self, emoji):
+        if not self.guild:
+            raise Forbidden()
+        if emoji in self.reactions:
+            del self.reactions[emoji]
+
     async def remove_reaction(self, emoji, member):
-        del self.reactions[[x.emoji for x in self.reactions].index(emoji)]
+        if member.id != instance.user.id and not self.guild:
+            raise Forbidden()
+        users = self.reactions[emoji]
+        if member.id in users:
+            users.remove(member.id)
+            if len(users) == 0:
+                del self.reactions[emoji]
 
     async def _bulk_delete(self):
         self.channel._messages.remove(self)
@@ -452,8 +471,12 @@ class Channel(Object):
         return PartialMessage(channel=self, id=msgid)
 
     def permissions_for(self, user):
-        # TODO need channel-level permissions
-        return self.guild.get_member(user.id).guild_permissions
+        if self.guild:
+            # TODO need channel-level permissions
+            return self.guild.get_member(user.id).guild_permissions
+        perms = discord.Permissions.text()
+        perms.update(manage_messages=False)
+        return perms
 
     async def send(self, content=None, file=None, reference=None, **kwargs):
         if reference:
@@ -539,6 +562,10 @@ class Guild(Object):
     @property
     def default_role(self):
         return self._roles[self.id]
+
+    @property
+    def me(self):
+        return self.get_member(instance.user.id)
 
     @property
     def members(self):
@@ -797,7 +824,7 @@ class GestaltTest(unittest.TestCase):
         msg = send(*args, **kwargs)
         self.assertFalse(msg._deleted)
         self.assertNotEqual(len(msg.reactions), 0)
-        self.assertEqual(msg.reactions[0].emoji, gestalt.REACT_CONFIRM)
+        self.assertIn(gestalt.REACT_CONFIRM, msg.reactions)
         return msg
 
     def assertNotCommand(self, *args, **kwargs):
@@ -3522,6 +3549,111 @@ class GestaltTest(unittest.TestCase):
         self.assertVote(twobie, c, "gs;consent")
         interact(c[-1], twobie, "yes")
         self.assertNotVote(twobie, c, "gs;consent")
+
+    def test_44_pages(self):
+        newbie = User(name="newbie")
+        g = Guild(name="very long guild")
+        c = g._add_channel("main")
+        g._add_member(newbie)
+        g._add_member(alpha)
+        g._add_member(instance.user)
+
+        def assertPage(message, title):
+            self.assertEqual(message.author.id, instance.user.id)
+            self.assertNotEqual(len(message.embeds), 0)
+            self.assertEqual(message.embeds[0].title, title)
+
+        for i in range(24):
+            self.assertVote(newbie, c, f"gs;m new mask{i}")
+            interact(c[-1], newbie, "no")
+        send(newbie, c, "gs;p")
+        assertPage(c[-1], "Proxies of newbie:")
+        self.assertNotEqual(len(c[-1].reactions), 5)
+        c[-1]._react(gestalt.REACT_NEXT, newbie)
+        assertPage(c[-1], "Proxies of newbie:")
+        self.assertIn(newbie.id, c[-1].reactions[gestalt.REACT_NEXT])
+
+        self.assertVote(newbie, c, f"gs;m new mask24")
+        interact(c[-1], newbie, "no")
+        send(newbie, c, "gs;p")
+        assertPage(c[-1], "[1/2] Proxies of newbie:")
+        self.assertEqual(len(c[-1].reactions), 5)
+        self.assertEqual(len(c[-1].embeds[0].description.split("\n")), 25)
+        c[-1]._react(gestalt.REACT_NEXT, newbie)
+        self.assertEqual(len(c[-1].embeds[0].description.split("\n")), 1)
+
+        for i in range(25, 75):
+            self.assertVote(newbie, c, f"gs;m new mask{i}")
+            interact(c[-1], newbie, "no")
+        send(newbie, c, "gs;p")
+        assertPage(c[-1], "[1/4] Proxies of newbie:")
+
+        timestamp = None
+        for react, index, edit in [
+            (gestalt.REACT_FIRST, 1, False),
+            (gestalt.REACT_PREV, 1, False),
+            (gestalt.REACT_NEXT, 2, True),
+            (gestalt.REACT_LAST, 4, True),
+            (gestalt.REACT_NEXT, 4, False),
+            (gestalt.REACT_LAST, 4, False),
+            (gestalt.REACT_PREV, 3, True),
+            (gestalt.REACT_FIRST, 1, True),
+        ]:
+            prev = c[-1].embeds[0].title
+            c[-1]._react(react, alpha)
+            self.assertIn(instance.user.id, c[-1].reactions[react])
+            assertPage(c[-1], prev)
+            c[-1].reactions[react].remove(alpha.id)
+
+            c[-1]._react(react, newbie)
+            assertPage(c[-1], f"[{index}/4] Proxies of newbie:")
+            run(instance.cleanup())
+            self.assertIn(instance.user.id, c[-1].reactions[react])
+            self.assertNotIn(newbie.id, c[-1].reactions[react])
+            if edit:
+                timestamp = warptime.now()
+            self.assertTrue(
+                c[-1].edited_at == timestamp
+                or (timestamp - c[-1].edited_at) < timedelta(milliseconds=1)
+            )
+            warptime.warp += 1
+
+        warptime.warp += gestalt.TIMEOUT_PAGES - int(
+            (warptime.now() - c[-1].created_at).total_seconds() + 1
+        )
+        run(instance.cleanup())
+        for react in instance.Pages.CONTROLS:
+            self.assertIn(instance.user.id, c[-1].reactions[react])
+        warptime.warp += 2
+        run(instance.cleanup())
+        for react in instance.Pages.CONTROLS:
+            self.assertNotIn(react, c[-1].reactions)
+
+        send(newbie, newbie.dm_channel, "gs;p")
+        newbie.dm_channel[-1]._react(gestalt.REACT_NEXT, newbie)
+        assertPage(newbie.dm_channel[-1], "[2/4] Proxies of newbie:")
+        warptime.warp += gestalt.TIMEOUT_PAGES
+        run(instance.cleanup())
+        for react in instance.Pages.CONTROLS:
+            self.assertNotIn(instance.user.id, c[-1].reactions[react])
+
+        sydney = User(name="sydney", bot=True)
+        g._add_member(sydney)
+        role = g._add_role("sentient")
+        g.get_member(sydney.id)._add_role(role)
+        gestalt.ALLOWED_BOT_ROLES = [role.id]
+        sydney._onboard(c)
+        send(sydney, c, "gs;p")
+        assertPage(c[-1], "Proxies of sydney:")
+        self.assertNotEqual(len(c[-1].reactions), 5)
+        for i in range(25):
+            self.assertVote(sydney, c, f"gs;m new mask{i}")
+            send(sydney, c, "no")
+        send(sydney, c, "gs;p")
+        assertPage(c[-1], "[2/2] Proxies of sydney:")
+        assertPage(c[-2], "[1/2] Proxies of sydney:")
+        self.assertNotEqual(len(c[-1].reactions), 5)
+        self.assertNotEqual(len(c[-2].reactions), 5)
 
 
 def main():

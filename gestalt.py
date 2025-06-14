@@ -196,7 +196,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             "create table if not exists taken(" "id text unique collate nocase" ")"
         )
 
-        self.expected_pk_errors = {}  # chanid: message?
+        self.active_pages = {}  # msgid: Pages
+        self.expected_pk_errors = {}  # chanid: message | None
         self.last_message_cache = self.LastMessageCache()
         self.ignore_delete_cache = set()
         self.load()
@@ -225,10 +226,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         return self.cur.execute(*args).fetchall()
 
     def has_perm(self, channel, **kwargs):
-        if not channel.guild:
-            return True
-        member = channel.guild.get_member(self.user.id)
-        return discord.Permissions(**kwargs).is_subset(channel.permissions_for(member))
+        return discord.Permissions(**kwargs).is_subset(
+            channel.permissions_for(channel.guild.me if channel.guild else self.user)
+        )
 
     async def setup_hook(self):
         self.log("Logged in as %s, id %d!", self.user, self.user.id)
@@ -278,6 +278,13 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         self.votes = {
             msgid: vote for msgid, vote in self.votes.items() if not vote.inactive
         }
+
+        for pages in list(filter(self.Pages.is_expired, self.active_pages.values())):
+            try:
+                await pages.deactivate(self)
+            except:
+                pass
+            del self.active_pages[pages.message.id]
 
     def can_use_gestalt(self, member):
         if member.bot:
@@ -368,6 +375,88 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             await self.try_add_reaction(msg, REACT_DELETE)
             self.mkhistory(msg, replyto.author.id)
         return msg
+
+    class Pages:
+        CONTROLS = {
+            REACT_FIRST: -math.inf,
+            REACT_PREV: -1,
+            REACT_NEXT: 1,
+            REACT_LAST: math.inf,
+        }
+
+        def __init__(self, message, embed, pages):
+            (self.message, self.embed, self.pages) = (message, embed, pages)
+            self.index = 0
+
+        @staticmethod
+        def make_page(embed, pages, index=0):
+            page = embed.copy()
+            page.description = pages[index]
+            if len(pages) > 1:
+                page.title = f"[{index+1}/{len(pages)}] {page.title or ''}"
+            return page
+
+        @classmethod
+        async def reply(cls, bot, replyto, embed, lines, limit):
+            pages = [[]]
+            for line in lines:
+                if (
+                    len(pages[-1]) == limit
+                    or sum(map(len, pages[-1])) + len(line) > 2048
+                ):
+                    pages.append([])
+                pages[-1].append(line)
+            pages = list(map("\n".join, pages))
+
+            if replyto.author.bot:
+                for index in range(len(pages)):
+                    await bot.reply(
+                        replyto, embeds=[cls.make_page(embed, pages, index)]
+                    )
+                return
+
+            if (
+                msg := await bot.reply(replyto, embeds=[cls.make_page(embed, pages)])
+            ) and len(pages) > 1:
+                for control in cls.CONTROLS.keys():
+                    await bot.try_add_reaction(msg, control)
+                return cls(msg, embed, pages)
+
+        def is_expired(self):
+            return (
+                discord.utils.utcnow() - self.message.created_at
+            ).total_seconds() > TIMEOUT_PAGES
+
+        async def on_control(self, bot, reaction, reactor):
+            if delta := self.CONTROLS.get(reaction):
+                index = max(0, min(self.index + delta, len(self.pages) - 1))
+                if self.index != index:
+                    try:
+                        await self.message.edit(
+                            embeds=[self.make_page(self.embed, self.pages, index)]
+                        )
+                        self.index = index
+                    except discord.NotFound:
+                        return
+                if reactor and bot.has_perm(self.message.channel, manage_messages=True):
+                    try:
+                        await self.message.remove_reaction(reaction, reactor)
+                    except discord.NotFound:
+                        pass
+
+        async def deactivate(self, bot):
+            clear = self.message.guild and bot.has_perm(
+                self.message.channel, manage_messages=True
+            )
+            for emoji in reversed(self.CONTROLS):
+                if clear:
+                    await self.message.clear_reaction(emoji)
+                else:
+                    await self.message.remove_reaction(emoji, bot.user)
+
+    async def reply_lines(self, replyto, embed, lines, limit=25):
+        if pages := await self.Pages.reply(self, replyto, embed, lines, limit):
+            self.active_pages[pages.message.id] = pages
 
     def gen_id(self):
         while True:
@@ -616,9 +705,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if not logchan:
             return
 
-        embed = discord.Embed(
-            description=message.content, timestamp=discord.utils.snowflake_time(orig.id)
-        )
+        embed = discord.Embed(description=message.content, timestamp=orig.created_at)
         embed.set_author(
             name="%s#%s: %s"
             % (
@@ -979,6 +1066,8 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             return
         if msgid in self.votes:
             del self.votes[msgid]
+        if msgid in self.active_pages:
+            del self.active_pages[msgid]
         self.execute("delete from history where msgid = ?", (msgid,))
         self.last_message_cache.delete(payload)
 
@@ -1013,11 +1102,18 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         else:
             if emoji == REACT_DELETE and payload.message_author_id == self.user.id:
                 await message.delete()
+            if pages := self.active_pages.get(message.id):
+                await pages.on_control(self, emoji, None)
             return
 
         reactor = channel.guild.get_member(payload.user_id)
         if not self.can_use_gestalt(reactor):
             return
+
+        if payload.user_id == row["authid"] and (
+            pages := self.active_pages.get(message.id)
+        ):
+            await pages.on_control(self, emoji, reactor)
 
         if emoji == REACT_QUERY:
             try:

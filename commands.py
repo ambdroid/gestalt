@@ -185,7 +185,7 @@ class GestaltCommands:
 
         memberauth = guild.get_member(message.author.id)
         memberbot = guild.get_member(self.user.id)
-        lines = [f"**{guild.name}**:"]
+        lines = []
         for chan in guild.channels:
             if chan.type not in ALLOWED_CHANNELS:
                 continue
@@ -203,7 +203,11 @@ class GestaltCommands:
             errors = REACT_CONFIRM if errors == [] else ", ".join(errors)
             lines.append(f"{chan.mention}: {errors}")
 
-        await self.reply(message, "\n".join(lines))
+        await self.reply_lines(
+            message,
+            discord.Embed(title=f"Permission check for {escape(guild.name)}"),
+            lines,
+        )
 
     def proxy_string(self, proxy):
         line = "%s[`%s`] " % (ProxySymbol[proxy["type"]], proxy["proxid"])
@@ -266,10 +270,19 @@ class GestaltCommands:
             elif line := self.proxy_string(proxy):
                 lines.append(line)
 
-        if omit:
-            lines.append("Proxies in other servers have been omitted.")
-            lines.append("To view all proxies, use `proxy list -all`.")
-        await self.reply(message, "\n".join(lines))
+        await self.reply_lines(
+            message,
+            discord.Embed(
+                title=f"Proxies of {escape(message.author.display_name)}:"
+            ).set_footer(
+                text=(
+                    "Proxies in other servers have been omitted.\nTo view all proxies, use the -all flag."
+                    if omit
+                    else None
+                )
+            ),
+            lines,
+        )
 
     def get_cards_proxy(self, proxy, recurse=True):
         embed = discord.Embed()
