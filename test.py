@@ -88,9 +88,7 @@ class User(Object):
     def mutual_guilds(self):
         return list(
             filter(
-                lambda guild: (
-                    guild.get_member(self.id) and guild.get_member(instance.user.id)
-                ),
+                lambda guild: guild.get_member(self.id) and guild.me,
                 Guild.guilds.values(),
             )
         )
@@ -604,7 +602,7 @@ class Guild(Object):
         # NOTE: does on_member_update get called here? probably not but idk
         if user.id == instance.user.id:
             run(instance.on_guild_join(self))
-        elif self.get_member(instance.user.id):
+        elif self.me:
             run(instance.on_member_join(member))
         return self  # for chaining
 

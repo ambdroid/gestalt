@@ -182,7 +182,6 @@ class GestaltCommands:
             raise UserError("That guild is unknown or you are not a member.")
 
         memberauth = guild.get_member(message.author.id)
-        memberbot = guild.get_member(self.user.id)
         lines = []
         for chan in guild.channels:
             if chan.type not in ALLOWED_CHANNELS:
@@ -192,7 +191,7 @@ class GestaltCommands:
 
             errors = []
             for p in PERMS:  # p = ('name', bool)
-                if p[1] and not p in list(chan.permissions_for(memberbot)):
+                if p[1] and not p in list(chan.permissions_for(guild.me)):
                     errors += [p[0]]
 
             # lack of access implies lack of other perms, so leave them out
