@@ -146,8 +146,11 @@ VALID_MIME_TYPES = [
 
 ALLOWED_CHANNELS = (
     discord.ChannelType.text,
-    discord.ChannelType.private,
     discord.ChannelType.voice,
+    discord.ChannelType.private,
+    discord.ChannelType.news,
+    discord.ChannelType.stage_voice,
+    discord.ChannelType.news_thread,
     discord.ChannelType.public_thread,
     discord.ChannelType.private_thread,
 )
