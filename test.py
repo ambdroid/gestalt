@@ -26,7 +26,6 @@ defs.DEFAULT_PREFS &= ~defs.Prefs.errors
 import gestalt
 import gesp
 
-
 # this test harness reimplements most relevant parts of the discord API, offline
 # the alternative involves maintaining *4* separate bots
 # and either threading (safety not guaranteed) or switching between them (sloow)
@@ -123,7 +122,7 @@ class User(Object):
 class Member:
     # don't set roles immediately; let bot process role events later
     def __init__(self, user, guild, perms=discord.Permissions.all()):
-        (self.user, self.guild, self.guild_permissions) = (user, guild, perms)
+        self.user, self.guild, self.guild_permissions = (user, guild, perms)
         self.roles = []
 
     def __str__(self):
@@ -159,6 +158,10 @@ class Member:
     @property
     def bot(self):
         return self.user.bot
+
+    @property
+    def mention(self):
+        return self.user.mention
 
     @property
     def name(self):
@@ -313,7 +316,7 @@ class Message(Object):
 
 class PartialMessage:
     def __init__(self, *, channel, id):
-        (self.channel, self.id, self.guild) = (channel, id, channel.guild)
+        self.channel, self.id, self.guild = (channel, id, channel.guild)
         self._truemsg = discord.utils.get(channel._messages, id=id)
 
     @property
@@ -357,7 +360,7 @@ class Webhook(Object):
     def __init__(self, channel, name):
         super().__init__()
         self._deleted = False
-        (self._channel, self.name) = (channel, name)
+        self._channel, self.name = (channel, name)
         self.token = "t0k3n" + str(self.id)
         Webhook.hooks[self.id] = self
 
@@ -654,7 +657,7 @@ class Attachment(Object):
 
 class Interaction:
     def __init__(self, message, user, button):
-        (self.message, self.user) = (message, user)
+        self.message, self.user = (message, user)
         self.data = {"custom_id": button}
         # TODO check that the message actuall has the buttons
 
@@ -1099,14 +1102,14 @@ class GestaltTest(unittest.TestCase):
 
         # test echo
         self.assertCommand(alpha, chan, f"gs;p {proxid} echo on")
-        (msg, proxied) = (self.assertNotDeleted(alpha, chan, "e:echo!"), chan[-1])
+        msg, proxied = (self.assertNotDeleted(alpha, chan, "e:echo!"), chan[-1])
         self.assertGreater(proxied.id, msg.id)
         self.assertIsNotNone(proxied.webhook_id)
         self.assertEqual(proxied.content, "echo!")
 
         # echo and keepproxy
         self.assertCommand(alpha, chan, f"gs;p {proxid} keepproxy on")
-        (msg, proxied) = (self.assertNotDeleted(alpha, chan, "e:echo!"), chan[-1])
+        msg, proxied = (self.assertNotDeleted(alpha, chan, "e:echo!"), chan[-1])
         self.assertGreater(proxied.id, msg.id)
         self.assertIsNotNone(proxied.webhook_id)
         self.assertEqual(proxied.content, "e:echo!")
@@ -1150,8 +1153,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(deleteme, chan, "gs;p deleteme tags e:text")
         msg = send(deleteme, chan, "e:reaction test")
         msg._react(gestalt.REACT_QUERY, beta)
-        token = discord.utils.escape_markdown(str(deleteme))
-        self.assertIn(token, beta.dm_channel[-1].content)
+        self.assertIn(deleteme.mention, beta.dm_channel[-1].content)
 
         msg._react(gestalt.REACT_DELETE, beta)
         self.assertEqual(len(msg.reactions), 0)
@@ -1167,7 +1169,7 @@ class GestaltTest(unittest.TestCase):
             run(instance.fetch_user(deleteme.id))
         send(beta, beta.dm_channel, "buffer")
         msg._react(gestalt.REACT_QUERY, beta)
-        self.assertIn(token, beta.dm_channel[-1].content)
+        self.assertIn(deleteme.mention, beta.dm_channel[-1].content)
 
         # in swaps, sender or swapee may delete message
         self.assertCommand(alpha, chan, f"gs;swap open {beta.mention} swap:text")
@@ -1430,6 +1432,7 @@ class GestaltTest(unittest.TestCase):
                 self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
 
     def test_12_username_change(self):
+        """
         chan = g["main"]
         old = (alpha.name, alpha.discriminator)
         # first, make sure the existing entry is up to date
@@ -1461,6 +1464,7 @@ class GestaltTest(unittest.TestCase):
         # done, set things back
         (alpha.name, alpha.discriminator) = old
         # run(instance.on_member_update(None, g.get_member(alpha.id)))
+        """
 
     def test_13_latch(self):
         chan = g["main"]
@@ -2817,7 +2821,7 @@ class GestaltTest(unittest.TestCase):
             g := reduce(Guild._add_member, members, Guild(name=name)),
             g._add_channel("main"),
         )
-        (g, c) = mkguild("dramatic guild", instance.user, alpha)
+        g, c = mkguild("dramatic guild", instance.user, alpha)
         g._add_member(beta)
 
         # TODO this is why unit tests usually don't have shared state
@@ -2857,7 +2861,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIn("**mask**", self.desc(c[-1]))
         self.assertCommand(alpha, c, "gs;ap off")
 
-        (_, c2) = mkguild("other guild", instance.user, alpha)
+        _, c2 = mkguild("other guild", instance.user, alpha)
         send(alpha, c2, "gs;proxy list")
         self.assertNotIn("**mask**", self.desc(c2[-1]))
         self.assertNotProxied(alpha, c2, "mask:test")
@@ -2872,8 +2876,8 @@ class GestaltTest(unittest.TestCase):
         interact(alpha.dm_channel[-1], alpha, "no")
         self.assertCommand(alpha, c2, "gs;p nowhere tags nowhere:text")
         # test both user and gestalt joining a guild
-        (_, c3) = mkguild("other guild", instance.user, alpha)
-        (_, c4) = mkguild("late guild", alpha, instance.user)
+        _, c3 = mkguild("other guild", instance.user, alpha)
+        _, c4 = mkguild("late guild", alpha, instance.user)
         self.assertProxied(alpha, c3, "mask:test")
         self.assertProxied(alpha, c2, "mask:test")
         self.assertProxied(alpha, c4, "mask:test")
@@ -2903,7 +2907,7 @@ class GestaltTest(unittest.TestCase):
         self.assertTrue(instance.is_member_of(maaskid, beta.id))
         self.assertNotVote(alpha, c, f"gs;m maask invite {beta.mention}")
         self.assertCommand(beta, c, "gs;p maask autoadd true")
-        (gb, cb) = mkguild("beta guild", instance.user, beta)
+        gb, cb = mkguild("beta guild", instance.user, beta)
         self.assertCommand(beta, cb, "gs;p maask tags maask:text")
         self.assertNotVote(beta, cb, "gs;m maask add")
         self.assertCommand(beta, cb, "gs;p maask autoadd true")
@@ -3107,7 +3111,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, c, "gs;m invisible leave")
 
         # test initiating message being deleted
-        (g, c) = mkguild("HTTPException", instance.user, alpha, beta, gamma)
+        g, c = mkguild("HTTPException", instance.user, alpha, beta, gamma)
         self.assertVote(alpha, c, "gs;m new replies")
         interact(c[-1], alpha, "no")
         self.assertCommand(alpha, c, "gs;m replies rules unanimous")
@@ -3652,6 +3656,51 @@ class GestaltTest(unittest.TestCase):
         assertPage(c[-2], "[1/2] Proxies of sydney:")
         self.assertNotEqual(len(c[-1].reactions), 5)
         self.assertNotEqual(len(c[-2].reactions), 5)
+
+    def test_45_consent_required(self):
+        user = User(name="gestaltlover1987")
+        newbie = User(name="newbie", onboard=False)
+        g = Guild(name="consent guild")
+        c = g._add_channel("main")
+        g._add_member(instance.user)
+        g._add_member(user)
+        g._add_member(newbie)
+
+        vriska = {
+            "id": "vriska",
+            "uuid": "88888888-8888-8888-8888-888888888888",
+            "system": "serket",
+            "name": "Vriska",
+        }
+        instance.session._pk("/members/" + vriska["id"], json.dumps(vriska))
+        instance.session._pk("/members/" + vriska["uuid"], json.dumps(vriska))
+        instance.session._pk("/systems/" + str(user.id), '{"id": "serket"}')
+
+        send(newbie, c, "gs;help")
+        self.assertEqual(len(c[-1].embeds), 1)
+
+        self.assertVote(user, c, "gs;m new masky")
+        interact(c[-1], user, "yes")
+
+        self.assertNotCommand(user, c, f"gs;swap open {newbie.mention}")
+        with self.assertRaises(gestalt.UserError):
+            run(instance.cmd_swap_open(None, newbie, None))
+
+        self.assertNotVote(user, c, f"gs;pk swap {newbie.mention} vriska")
+        with self.assertRaises(gestalt.UserError):
+            run(instance.cmd_pk_swap(None, newbie, None))
+
+        self.assertNotVote(user, c, f"gs;m masky invite {newbie.mention}")
+        with self.assertRaises(gestalt.UserError):
+            run(instance.cmd_mask_invite(None, None, newbie))
+
+        newbie._onboard(c)
+        self.assertCommand(newbie, c, f"gs;swap open {user.mention}")
+        self.assertNotCommand(user, c, "gs;ap newbie")
+        self.assertCommand(user, c, f"gs;swap open {newbie.mention}")
+        self.assertCommand(user, c, "gs;ap newbie")
+        self.assertVote(user, c, f"gs;pk swap {newbie.mention} vriska")
+        self.assertVote(user, c, f"gs;m masky invite {newbie.mention}")
 
 
 def main():

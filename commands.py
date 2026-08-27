@@ -92,7 +92,7 @@ class CommandReader:
     def read_remainder(self):
         if quote := self.try_read_quote():
             return quote
-        (ret, self.cmd) = (self.cmd, "")
+        ret, self.cmd = (self.cmd, "")
         return ret
 
     # discord.ext includes a MemberConverter
@@ -165,6 +165,10 @@ class GestaltCommands:
             raise UserError("You have multiple proxies with that name/ID.")
 
         return proxies[0]
+
+    def verify_user_consented(self, user):
+        if not self.fetchone("select 1 from users where userid = ?", (user.id,)):
+            raise UserError(f"{user.mention} must use `{COMMAND_PREFIX}consent` first.")
 
     async def cmd_help(self, message, topic):
         await self.reply(message, HELPMSGS.get(topic, HELPMSGS[""]))
@@ -426,7 +430,7 @@ class GestaltCommands:
 
     async def cmd_proxy_view(self, message, proxy):
         embeds = list(self.get_cards_proxy(proxy))
-        (now, later) = (
+        now, later = (
             (embeds[:-1], embeds[-1])
             if asyncio.iscoroutine(embeds[-1])
             else (embeds, [])
@@ -437,7 +441,7 @@ class GestaltCommands:
                 await reply.edit(embeds=now)
 
     async def cmd_proxy_tags(self, message, proxy, tags):
-        (prefix, postfix) = (None, None) if tags is CLEAR else parse_tags(tags)
+        prefix, postfix = (None, None) if tags is CLEAR else parse_tags(tags)
         if prefix is not None and self.get_tags_conflict(
             message.author.id, (prefix, postfix)
         ) not in ([proxy["proxid"]], []):
@@ -563,7 +567,7 @@ class GestaltCommands:
         await self.mark_success(message, True)
 
     def make_or_activate_swap(self, auth, other, tags):
-        (prefix, postfix) = parse_tags(tags) if tags else (None, None)
+        prefix, postfix = parse_tags(tags) if tags else (None, None)
         if self.fetchone(
             "select state from proxies " "where (userid, otherid, type) = (?, ?, ?)",
             (auth.id, other.id, ProxyType.swap),
@@ -598,6 +602,7 @@ class GestaltCommands:
         return True
 
     async def cmd_swap_open(self, message, member, tags):
+        self.verify_user_consented(member)
         if self.make_or_activate_swap(message.author, member, tags):
             await self.mark_success(message, True)
 
@@ -674,6 +679,7 @@ class GestaltCommands:
             await self.mark_success(message, True)
 
     async def cmd_mask_invite(self, message, maskid, member):
+        self.verify_user_consented(member)
         await self.initiate_vote(
             gesp.VotePreinvite(
                 mask=maskid,
@@ -890,6 +896,8 @@ class GestaltCommands:
             raise UserError("Could not reach PluralKit API.")
 
     async def cmd_pk_swap(self, message, user, pkhid):
+        self.verify_user_consented(user)
+
         authid = message.author.id
         async with self.in_progress(message):
             system = await self.pk_api_get("/systems/" + str(authid))

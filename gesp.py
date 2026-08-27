@@ -55,11 +55,11 @@ def parse_args(args, pairs, offset):
         end = pairs[offset] + 1 - offset
         parsed = parse_paren(args[:end], pairs, offset)
     elif m := re.match('"([^"]+)"', args):
-        (parsed, end) = (m[1], len(m[0]))
+        parsed, end = (m[1], len(m[0]))
     elif m := re.match("[0-9]+", args):
-        (parsed, end) = (int(m[0]), len(m[0]))
+        parsed, end = (int(m[0]), len(m[0]))
     elif m := re.match("true|false", args):
-        (parsed, end) = (m[0] == "true", len(m[0]))
+        parsed, end = (m[0] == "true", len(m[0]))
     else:
         raise ValueError("Syntax error")
     stripped = args[end:].lstrip()
@@ -145,7 +145,7 @@ ProgramState = namedtuple("ProgramState", ["program", "pc", "stack"])
 
 
 def run(state, context=None):
-    (_, pc, stack) = state
+    _, pc, stack = state
     while pc < len(state.program):
         op = state.program[pc]
         if op == "jp":
@@ -479,8 +479,7 @@ class RulesDictator(Rules, _type=RuleType.dictator):
 
 
 class RulesHandsOff(RulesDictator, _type=RuleType.handsoff):
-    rule_voting = parse_full(
-        """
+    rule_voting = parse_full("""
         (vote-approval
             (add
                 (floor
@@ -495,8 +494,7 @@ class RulesHandsOff(RulesDictator, _type=RuleType.handsoff):
             1)
             (members)
         )
-        """
-    )[0]
+        """)[0]
     rule_immune = parse_full("(neq (candidate) (named 0))")[0]
 
     def for_action(self, atype):
@@ -515,8 +513,7 @@ class RulesHandsOff(RulesDictator, _type=RuleType.handsoff):
         )
 
 
-rule_solo = parse_full(
-    """
+rule_solo = parse_full("""
     (and
         (eq
             (size-of
@@ -528,13 +525,11 @@ rule_solo = parse_full(
             (members)
         )
     )
-    """
-)[0]
+    """)[0]
 
 
 class RulesMajority(Rules, _type=RuleType.majority):
-    rule = parse_full(
-        """
+    rule = parse_full("""
         (vote-approval
             (add
                 (floor
@@ -547,8 +542,7 @@ class RulesMajority(Rules, _type=RuleType.majority):
             1)
             (members)
         )
-        """
-    )[0]
+        """)[0]
 
     def for_action(self, atype):
         return Exp("or", (rule_solo, self.rule))
@@ -647,7 +641,7 @@ class Vote(metaclass=serializable):
                 else:
                     desc = self.VOTE_REABSTAIN
             else:
-                (dest, src) = either((self.yes, self.no), (self.no, self.yes))
+                dest, src = either((self.yes, self.no), (self.no, self.yes))
                 if userid in dest:
                     desc = either(self.VOTE_REYES, self.VOTE_RENO)
                 else:
@@ -968,8 +962,8 @@ class VoteNewUser(VoteConfirm, _type=VoteType.new_user):
         user = bot.get_user(self.get_user())
         try:
             bot.execute(
-                'insert into users values (?, ?, ?, "", NULL)',
-                (user.id, str(user), DEFAULT_PREFS),
+                'insert into users values (?, ?, "", NULL)',
+                (user.id, DEFAULT_PREFS),
             )
             bot.mkproxy(user.id, ProxyType.override)
         except sqlite.IntegrityError:

@@ -6,7 +6,6 @@ import discord
 
 from config import *
 
-
 # from discord markdown parser
 LINK_REGEX = re.compile(r'<?(https?:\/\/[^\s<]+[^<.,:;"\')\]\s])>?')
 # only match links that expire since cdn has valid non expiring images

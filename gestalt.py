@@ -83,7 +83,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         self.execute(
             "create table if not exists users("
             "userid integer primary key,"
-            "username text,"
             "prefs integer,"
             "tag text,"  # reserved
             "color text)"
@@ -192,9 +191,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             "msgid integer primary key,"
             "state text)"
         )
-        self.execute(
-            "create table if not exists taken(" "id text unique collate nocase" ")"
-        )
+        self.execute("create table if not exists taken(id text unique collate nocase)")
 
         self.active_pages = {}  # msgid: Pages
         self.expected_pk_errors = {}  # chanid: message | None
@@ -385,7 +382,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         }
 
         def __init__(self, message, embed, pages):
-            (self.message, self.embed, self.pages) = (message, embed, pages)
+            self.message, self.embed, self.pages = (message, embed, pages)
             self.index = 0
 
         @staticmethod
@@ -511,7 +508,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     ):
         chanid = parentid = guildid = 0
         if channel:
-            (chanid, guildid) = (channel.id, channel.guild.id)
+            chanid, guildid = (channel.id, channel.guild.id)
             if type(channel) == discord.Thread:
                 parentid = channel.parent.id
         self.execute(
@@ -549,7 +546,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             )
 
     def get_tags_conflict(self, userid, pair):
-        (prefix, postfix) = pair
+        prefix, postfix = pair
         return [
             proxy["proxid"]
             for proxy in self.fetchall(
@@ -747,7 +744,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     def should_pad(self, channel, proxy, present):
         if not (last := self.last_message_cache.last(channel)):
             return False
-        (lastmsg, lastproxy) = last
+        lastmsg, lastproxy = last
         nick = lastmsg.author.display_name
         if pad := nick.endswith(MERGE_PADDING):
             nick = nick.removesuffix(MERGE_PADDING)
@@ -980,7 +977,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             except:
                 pass
 
-        (match, stripped, tags) = self.get_proxy_match(message) or (None, None, None)
+        match, stripped, tags = self.get_proxy_match(message) or (None, None, None)
 
         # note: pkswaps with own account are intentionally allowed
         if mandatory and (
@@ -1052,12 +1049,6 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 # an uninit'd user shouldn't ever get errors, but just in case
                 if ((user and user["prefs"]) or DEFAULT_PREFS) & Prefs.errors:
                     await self.reply(message, e.args[0])
-            # do this after because it's less important than proxying
-            if user and user["username"] != str(message.author):
-                self.execute(
-                    "update users set username = ? where userid = ?",
-                    (str(message.author), authid),
-                )
 
     # these are needed for gs;edit to work
     async def on_raw_message_delete(self, payload):
@@ -1092,7 +1083,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if channel.guild:
             # make sure this is one of ours
             row = self.fetchone(
-                "select authid, otherid, username "
+                "select authid, otherid "
                 "from history left join users on userid = authid "
                 "where msgid = ?",
                 (payload.message_id,),
@@ -1117,17 +1108,9 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
         if emoji == REACT_QUERY:
             try:
-                author = str(
-                    self.get_user(row["authid"]) or await self.fetch_user(row["authid"])
-                )
-            except discord.errors.NotFound:
-                author = row["username"]
-
-            try:
                 # this can fail depending on user's DM settings & prior messages
                 await reactor.send(
-                    "Message sent by %s (id %d)"
-                    % (discord.utils.escape_markdown(author), row["authid"])
+                    "Message sent by <@%i> (id %d)" % (row["authid"], row["authid"])
                 )
                 await message.remove_reaction(emoji, reactor)
             except discord.errors.Forbidden:
