@@ -1083,9 +1083,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if channel.guild:
             # make sure this is one of ours
             row = self.fetchone(
-                "select authid, otherid "
-                "from history left join users on userid = authid "
-                "where msgid = ?",
+                "select authid, otherid from history where msgid = ?",
                 (payload.message_id,),
             )
             if row == None:
