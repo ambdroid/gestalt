@@ -1109,9 +1109,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if emoji == REACT_QUERY:
             try:
                 # this can fail depending on user's DM settings & prior messages
-                await reactor.send(
-                    "Message sent by <@%i> (id %d)" % (row["authid"], row["authid"])
-                )
+                await reactor.send(f"Message sent by <@{row['authid']}>")
                 await message.remove_reaction(emoji, reactor)
             except discord.errors.Forbidden:
                 pass
