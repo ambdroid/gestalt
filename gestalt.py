@@ -138,6 +138,14 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             "msgcount integer)"
         )
         self.execute(
+            "create table if not exists log_uploads("
+            "msgid integer primary key,"
+            "authid integer,"
+            "maskid text,"
+            "url text,"
+            "local text)"
+        )
+        self.execute(
             "create trigger if not exists mask_proxy_create "
             "after insert on proxies when (new.type = %i) begin "
             "update masks set members = members + 1 "

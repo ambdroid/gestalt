@@ -391,7 +391,11 @@ class ActionChange(VotableAction, _type=ActionType.change):
                 except:
                     return
                 self.value = await asyncio.to_thread(self.save_avatar, bot, image)
-                bot.log("%i: saved %s", self.message, self.value)
+                bot.execute(
+                    "update log_uploads set local = ? where msgid = ?",
+                    (self.value, self.message),
+                )
+                bot.conn.commit()  # important to save this
             if self.value != prev and bot.is_hosted_avatar(prev):
                 os.remove(bot.hosted_avatar_local_path(prev))
         bot.execute(

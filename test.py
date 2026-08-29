@@ -1402,17 +1402,28 @@ class GestaltTest(unittest.TestCase):
 
         def attachment(content, sha):
             attach = Attachment(content, content_type="image/png")
-            name = r"[a-z]{5}_%s\.png" % sha
-            self.assertCommand(alpha, chan, "gs;m temp avatar", files=[attach])
+            cmd = self.assertCommand(alpha, chan, "gs;m temp avatar", files=[attach])
             display = self.assertProxied(alpha, chan, "temp:temp").author.display_avatar
             self.assertIsNotNone(re.fullmatch(gestalt.LINK_REGEX, display))
-            self.assertIsNotNone(
-                re.fullmatch(re.escape(gestalt.AVATAR_URL_BASE) + name, display)
-            )
             embed(display)
-            files = os.listdir(gestalt.AVATAR_DIRECTORY)
-            self.assertEqual(len(files), 1)
-            self.assertIsNotNone(re.fullmatch(name, files[0]))
+            maskid = chan[-1].embeds[0].footer.text[9:14].lower()
+            filename = f"{maskid}_{sha}.png"
+            self.assertEqual(display, gestalt.AVATAR_URL_BASE + filename)
+            self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [filename])
+            self.assertEqual(
+                dict(
+                    instance.fetchone(
+                        "select * from log_uploads where msgid = ?", (cmd.id,)
+                    )
+                ),
+                {
+                    "msgid": cmd.id,
+                    "authid": alpha.id,
+                    "maskid": maskid,
+                    "url": attach.url,
+                    "local": filename,
+                },
+            )
 
         attachment1 = partial(
             attachment, b"a real cat", "5efbe0334783d12a60d190d24724fa469618278d"

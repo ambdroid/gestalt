@@ -718,15 +718,9 @@ class GestaltCommands:
                 await self.try_auto_add(author.id, guild.id, proxy["maskid"])
 
     async def cmd_mask_avatar_attachment(self, message, maskid, attach):
-        self.log(
-            "%i: %i changing %s avatar to %s (%ib, %ix%i)",
-            message.id,
-            message.author.id,
-            maskid,
-            attach.url,
-            attach.size,
-            attach.width,
-            attach.height,
+        self.execute(
+            "insert into log_uploads values (?, ?, ?, ?, NULL)",
+            (message.id, message.author.id, maskid, attach.url),
         )
         if await self.initiate_action(
             gesp.ProgramContext.from_message(message),
