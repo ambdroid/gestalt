@@ -490,7 +490,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         if prefix is not None and self.get_tags_conflict(userid, (prefix, postfix)):
             raise UserError(ERROR_TAGS)
         self.execute(
-            "insert into proxies values " "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            "insert into proxies values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
             (
                 proxid := self.gen_id(),
                 cmdname,
@@ -537,7 +537,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     def init_member(self, member):
         self.execute(
-            "insert or ignore into members values " "(?, ?, NULL, 0, 1.0)",
+            "insert or ignore into members values (?, ?, NULL, 0, 1.0)",
             (member.id, member.guild.id),
         )
 
@@ -550,7 +550,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         )
         if latch is not None:
             self.execute(
-                "update members set latch = ? " "where (userid, guildid) = (?, ?)",
+                "update members set latch = ? where (userid, guildid) = (?, ?)",
                 (latch, member.id, member.guild.id),
             )
 
@@ -585,7 +585,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     async def on_member_join(self, member):
         if self.can_use_gestalt(member):
             for maskid, flags in self.fetchall(
-                "select maskid, flags from proxies " "where (userid, type) = (?, ?)",
+                "select maskid, flags from proxies where (userid, type) = (?, ?)",
                 (member.id, ProxyType.mask),
             ):
                 # NOTE: this may block for a while with lots of masks

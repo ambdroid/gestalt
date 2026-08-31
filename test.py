@@ -790,7 +790,7 @@ class GestaltTest(unittest.TestCase):
     def get_proxid(self, user, other=None, name=None):
         if name:
             row = instance.fetchall(
-                "select proxid from proxies " "where (userid, cmdname) = (?, ?)",
+                "select proxid from proxies where (userid, cmdname) = (?, ?)",
                 (user.id, name),
             )
             self.assertLess(len(row), 2)
@@ -802,12 +802,12 @@ class GestaltTest(unittest.TestCase):
             )
         elif type(other) == str:
             row = instance.fetchone(
-                "select proxid from proxies " "where (userid, maskid) = (?, ?)",
+                "select proxid from proxies where (userid, maskid) = (?, ?)",
                 (user.id, other),
             )
         else:
             row = instance.fetchone(
-                "select proxid from proxies " "where (userid, otherid) is (?, ?)",
+                "select proxid from proxies where (userid, otherid) is (?, ?)",
                 (user.id, other.id),
             )
         return row[0] if row else None
@@ -1341,7 +1341,7 @@ class GestaltTest(unittest.TestCase):
     def test_10_replacements(self):
         chan = g["main"]
         before = (
-            "I am myself. i wasn't and i was and am. " "I'm. im. am I? I me my mine."
+            "I am myself. i wasn't and i was and am. I'm. im. am I? I me my mine."
         )
         after = (
             "We are Ourselves. We weren't and We were and are. "

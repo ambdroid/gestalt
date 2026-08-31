@@ -325,7 +325,7 @@ class ActionRemove(VotableAction, _type=ActionType.remove):
 
     def execute(self, bot):
         bot.execute(
-            "delete from proxies " "where (userid, maskid, type) = (?, ?, ?)",
+            "delete from proxies where (userid, maskid, type) = (?, ?, ?)",
             (self.candidate, self.mask, ProxyType.mask),
         )
 
@@ -754,7 +754,7 @@ class VoteCreate(VoteConfirm, _type=VoteType.create):
 
     async def on_done(self, bot):
         bot.execute(
-            "insert into masks values " "(?, ?, NULL, NULL, NULL, ?, 0, 0)",
+            "insert into masks values (?, ?, NULL, NULL, NULL, ?, 0, 0)",
             ((maskid := bot.gen_id()), self.name, time.time()),
         )
         user = self.get_user()

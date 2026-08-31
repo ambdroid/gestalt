@@ -570,7 +570,7 @@ class GestaltCommands:
     def make_or_activate_swap(self, auth, other, tags):
         prefix, postfix = parse_tags(tags) if tags else (None, None)
         if self.fetchone(
-            "select state from proxies " "where (userid, otherid, type) = (?, ?, ?)",
+            "select state from proxies where (userid, otherid, type) = (?, ?, ?)",
             (auth.id, other.id, ProxyType.swap),
         ):
             return False
@@ -953,14 +953,14 @@ class GestaltCommands:
             raise UserError("That member has no Gestalt proxies.")
 
         mask = self.fetchone(
-            "select color, updated from guildmasks " "where (maskid, guildid) = (?, ?)",
+            "select color, updated from guildmasks where (maskid, guildid) = (?, ?)",
             (pkuuid, message.guild.id),
         )
         if mask and mask["updated"] > ref.id:
             raise UserError("Please use a more recent proxied message.")
 
         self.execute(
-            "insert or replace into guildmasks values " "(?, ?, ?, ?, ?, ?, ?, ?)",
+            "insert or replace into guildmasks values (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 pkuuid,
                 message.guild.id,
