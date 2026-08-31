@@ -262,6 +262,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     async def on_ready(self):
         self.log("In %i guild(s).", len(self.guilds))
+        self.log("Visible by %i users.", sum(int(not user.bot) for user in self.users))
         info = await self.application_info()
         if info.team:
             self.admins = [
