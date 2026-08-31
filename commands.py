@@ -2,7 +2,7 @@ from functools import cache
 import json
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 import os
 import re
 
@@ -31,6 +31,10 @@ def unparse_tags(prefix, postfix):
             "``", "`\N{ZWNBSP}`"
         )
     )
+
+
+def friendly_date(timestamp):
+    return datetime.fromtimestamp(int(timestamp), UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class CommandReader:
@@ -344,10 +348,7 @@ class GestaltCommands:
             % (
                 proxy["proxid"],
                 (
-                    (
-                        " | Created on %s UTC"
-                        % datetime.utcfromtimestamp(int(proxy["created"]))
-                    )
+                    f" | Created on {friendly_date(proxy['created'])} UTC"
                     if proxy["created"]
                     else ""
                 ),
@@ -656,10 +657,7 @@ class GestaltCommands:
             % (
                 mask["maskid"].upper(),
                 (
-                    (
-                        " | Created on %s UTC"
-                        % datetime.utcfromtimestamp(int(mask["created"]))
-                    )
+                    f" | Created on {friendly_date(mask['created'])} UTC"
                     if mask["created"]
                     else ""
                 ),

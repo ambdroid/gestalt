@@ -206,7 +206,7 @@ class Message(Object):
         if self.content:
             return [
                 Channel.channels[int(mention)]
-                for mention in re.findall("(?<=\<#)[0-9]+(?=\>)", self.content)
+                for mention in re.findall("(?<=<#)[0-9]+(?=>)", self.content)
             ]
         return []
 
@@ -226,7 +226,7 @@ class Message(Object):
         # also you can always force a link to someone not present
         # but it isn't included in the actual mentions property
         if self.guild and self.content:
-            mentions = map(int, re.findall("\<\@\!?([0-9]+)\>", self.content))
+            mentions = map(int, re.findall("<@!?([0-9]+)>", self.content))
             if self.guild:
                 mentions = map(self.guild.get_member, mentions)
             return list(mentions)
@@ -237,7 +237,7 @@ class Message(Object):
         if self.content:
             return [
                 Role.roles[int(mention)]
-                for mention in re.findall("\<\@\&([0-9]+)\>", self.content)
+                for mention in re.findall("<@&([0-9]+)>", self.content)
             ]
         return []
 
@@ -1490,7 +1490,7 @@ class GestaltTest(unittest.TestCase):
         # test \escape and \\unlatch
         self.assertProxied(alpha, chan, "e: proxy, no auto")
         self.assertProxied(alpha, chan, "no proxy, auto")
-        self.assertNotProxied(alpha, chan, "\escape")
+        self.assertNotProxied(alpha, chan, "\\escape")
         self.assertProxied(alpha, chan, "no proxy, auto")
         self.assertNotProxied(alpha, chan, "\\\\unlatch")
         self.assertNotProxied(alpha, chan, "no proxy, no auto")
@@ -1498,7 +1498,7 @@ class GestaltTest(unittest.TestCase):
 
         self.assertCommand(alpha, chan, "gs;ap test")
         self.assertProxied(alpha, chan, "no proxy, auto")
-        self.assertNotProxied(alpha, chan, "\escape")
+        self.assertNotProxied(alpha, chan, "\\escape")
         self.assertProxied(alpha, chan, "no proxy, auto")
         self.assertNotProxied(alpha, chan, "\\\\unlatch")
         self.assertProxied(alpha, chan, "no proxy, auto")
@@ -2406,7 +2406,7 @@ class GestaltTest(unittest.TestCase):
         self.assertIn("However,", text)
         self.assertNotIn("Become", text)
         self.assertProxied(alpha, c1, "b: beta")
-        self.assertNotProxied(alpha, c1, "\escape")
+        self.assertNotProxied(alpha, c1, "\\escape")
         self.assertProxied(alpha, c1, "beta")
         self.assertNotProxied(alpha, c1, "\\\\unlatch")
         send(alpha, c1, "gs;ap")
@@ -3231,12 +3231,15 @@ class GestaltTest(unittest.TestCase):
         g._add_member(beta)
         g._add_member(instance.user)
 
+        created_timestamp = 40 * 3600 + 3
+        created_str = "Created on 1970-01-02 16:00:03 UTC"
+
         self.assertVote(alpha, c, "gs;m new cards")
         interact(c[-1], alpha, "no")
         for avatar in (None, "http://avatar.png"):
             # attachment avatars have already been tested
             for color in (None, "#b536da"):
-                for created in (None, 1):
+                for created in (None, created_timestamp):
                     self.assertCommand(
                         alpha, c, "gs;m cards avatar %s" % (avatar or "-clear")
                     )
@@ -3244,7 +3247,7 @@ class GestaltTest(unittest.TestCase):
                         alpha, c, "gs;m cards color %s" % (color or "-clear")
                     )
                     instance.execute(
-                        "update masks set created = ? " 'where nick = "cards"',
+                        "update masks set created = ? where nick = 'cards'",
                         (created,),
                     )
 
@@ -3252,9 +3255,7 @@ class GestaltTest(unittest.TestCase):
                     embed = c[-1].embeds[0]
                     self.assertEqual(str(embed.color), str(color))
                     if created:
-                        self.assertIn(
-                            "Created on 1970-01-01 00:00:01 UTC", embed.footer.text
-                        )
+                        self.assertIn(created_str, embed.footer.text)
                     else:
                         self.assertNotIn("Created on", embed.footer.text)
                     send(alpha, c, "gs;p cards")
@@ -3305,6 +3306,18 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(beta, c, "gs;p cards tags a`text")
         send(beta, c, "gs;p cards")
         self.assertEqual(field(c[-1], 0, "Tags").value, "``a`text``")
+
+        instance.execute(
+            "update proxies set created = NULL where cmdname = 'cards'",
+        )
+        send(alpha, c, "gs;p cards")
+        self.assertNotIn("Created on", c[-1].embeds[0].footer.text)
+        instance.execute(
+            "update proxies set created = ? where cmdname = 'cards'",
+            (created_timestamp,),
+        )
+        send(alpha, c, "gs;p cards")
+        self.assertIn(created_str, c[-1].embeds[0].footer.text)
 
         self.assertCommand(beta, c, "gs;m cards leave")
         self.assertCommand(alpha, c, "gs;m cards leave")
