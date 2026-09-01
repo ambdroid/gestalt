@@ -612,6 +612,12 @@ class Guild(Object):
     def _remove_member(self, user):
         del self._members[user.id]
 
+    async def fetch_member(self, user_id):
+        member = self.get_member(user_id)
+        if not member:
+            raise NotFound()
+        return member
+
     def get_member(self, user_id):
         return self._members.get(user_id)
 
@@ -1340,9 +1346,7 @@ class GestaltTest(unittest.TestCase):
     # by far the most ominous test
     def test_10_replacements(self):
         chan = g["main"]
-        before = (
-            "I am myself. i wasn't and i was and am. I'm. im. am I? I me my mine."
-        )
+        before = "I am myself. i wasn't and i was and am. I'm. im. am I? I me my mine."
         after = (
             "We are Ourselves. We weren't and We were and are. "
             "We're. We're. are We? We Us Our Ours."
@@ -3725,6 +3729,25 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(user, c, "gs;ap newbie")
         self.assertVote(user, c, f"gs;pk swap {newbie.mention} vriska")
         self.assertVote(user, c, f"gs;m masky invite {newbie.mention}")
+
+    def test_46_weird_member_error(self):
+        user = User(name="wtf")
+        g = Guild(name="error guild")
+        c = g._add_channel("main")
+        g._add_member(instance.user)
+        g._add_member(user)
+
+        send(user, c, "gs;help")
+        msg = c[-1]
+        msg._react(gestalt.REACT_DELETE, user)
+        self.assertTrue(msg._deleted)
+
+        # mainly just test that this doesn't raise an error
+        send(user, c, "gs;help")
+        g._remove_member(user)
+        msg = c[-1]
+        msg._react(gestalt.REACT_DELETE, user)
+        self.assertFalse(msg._deleted)
 
 
 def main():

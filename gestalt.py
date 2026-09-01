@@ -1105,6 +1105,17 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             return
 
         reactor = channel.guild.get_member(payload.user_id)
+        if not reactor:
+            # this somehow raised an error once
+            self.log("Reaction from non-member")
+            try:
+                reactor = await channel.guild.fetch_member(payload.user_id)
+            except discord.errors.NotFound:
+                pass
+            if not reactor:
+                self.log("Member could not be fetched")
+                return
+
         if not self.can_use_gestalt(reactor):
             return
 
