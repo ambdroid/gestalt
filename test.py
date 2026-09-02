@@ -3751,7 +3751,7 @@ class GestaltTest(unittest.TestCase):
         self.assertFalse(msg._deleted)
 
     def test_47_purge_guests(self):
-        guest = User(name="pkforlife1986", onboard = False)
+        guest = User(name="pkforlife1986", onboard=False)
         g = Guild(name="pk guild")
         c = g._add_channel("main")
         log = g._add_channel("log")
@@ -3794,7 +3794,7 @@ class GestaltTest(unittest.TestCase):
         msg._react(gestalt.REACT_DELETE, guest)
         self.assertTrue(msg._deleted)
 
-        user = User(name="tempuser", onboard = False)
+        user = User(name="tempuser", onboard=False)
         g._add_member(user)
         send(user, c, "gs;consent")
         msg = c[-1]
@@ -3824,6 +3824,16 @@ class GestaltTest(unittest.TestCase):
         warptime.warp += 2 * day - 1
         run(instance.cleanup())
         msg._react(gestalt.REACT_DELETE, user)
+        self.assertTrue(msg._deleted)
+
+        gestalt.PURGE_GUESTS = False
+        guest = User(name="tempuser.1", onboard=False)
+        g._add_member(guest)
+        send(guest, c, "gs;help")
+        msg = c[-1]
+        warptime.warp += day + 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, guest)
         self.assertTrue(msg._deleted)
 
 
