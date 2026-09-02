@@ -22,6 +22,7 @@ defs.AVATAR_URL_BASE = "https://gestalt.gov/"
 defs.BECOME_MAX = 1
 # don't spam the channels with error messages
 defs.DEFAULT_PREFS &= ~defs.Prefs.errors
+defs.PURGE_GUESTS = True
 
 import gestalt
 import gesp
@@ -3748,6 +3749,82 @@ class GestaltTest(unittest.TestCase):
         msg = c[-1]
         msg._react(gestalt.REACT_DELETE, user)
         self.assertFalse(msg._deleted)
+
+    def test_47_purge_guests(self):
+        guest = User(name="pkforlife1986", onboard = False)
+        g = Guild(name="pk guild")
+        c = g._add_channel("main")
+        log = g._add_channel("log")
+        g._add_member(instance.user)
+        g._add_member(guest)
+
+        day = 60 * 60 * 24
+
+        send(guest, c, "gs;help")
+        msg = c[-1]
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, guest)
+        self.assertTrue(msg._deleted)
+
+        send(guest, c, "gs;help")
+        msg = c[-1]
+        warptime.warp += day - 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, guest)
+        self.assertTrue(msg._deleted)
+
+        send(guest, c, "gs;help")
+        msg = c[-1]
+        warptime.warp += day + 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, guest)
+        self.assertFalse(msg._deleted)
+
+        send(guest, c, "gs;help")
+        msg = c[-1]
+        warptime.warp += 2 * day - 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, guest)
+        self.assertFalse(msg._deleted)
+
+        send(guest, guest.dm_channel, "gs;help")
+        msg = guest.dm_channel[-1]
+        warptime.warp += day + 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, guest)
+        self.assertTrue(msg._deleted)
+
+        user = User(name="tempuser", onboard = False)
+        g._add_member(user)
+        send(user, c, "gs;consent")
+        msg = c[-1]
+        interact(msg, user, "yes")
+        warptime.warp += day + 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, user)
+        self.assertTrue(msg._deleted)
+
+        send(user, c, "gs;help")
+        msg = c[-1]
+        warptime.warp += 2 * day - 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, user)
+        self.assertTrue(msg._deleted)
+
+        self.assertVote(user, c, "gs;m new mask")
+        interact(c[-1], user, "yes")
+        self.assertCommand(user, c, "gs;ap mask")
+        msg = self.assertProxied(user, c, "this is a message")
+        warptime.warp += day + 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, user)
+        self.assertTrue(msg._deleted)
+
+        msg = self.assertProxied(user, c, "this is another message")
+        warptime.warp += 2 * day - 1
+        run(instance.cleanup())
+        msg._react(gestalt.REACT_DELETE, user)
+        self.assertTrue(msg._deleted)
 
 
 def main():

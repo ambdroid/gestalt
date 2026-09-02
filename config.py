@@ -62,6 +62,9 @@ BECOME_MAX = 50
 
 CLEANUP_TIMEOUT = 1200  # in seconds
 
+# should users who haven't gs;consented have their message ownership data expire?
+PURGE_GUESTS = False
+
 LAST_MESSAGE_CACHE_SIZE = 20
 MERGE_PADDING = "\N{HAIR SPACE}\N{KHMER VOWEL INHERENT AA}"
 

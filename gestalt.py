@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from collections import defaultdict
+from datetime import timedelta
 from functools import reduce
 import sqlite3 as sqlite
 import asyncio
@@ -70,6 +71,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             "create index if not exists history_chanid_authid "
             "on history(chanid, authid) where chanid != 0"
         )
+        if PURGE_GUESTS:
+            self.execute(
+                "create index if not exists history_msgid_authid_commands "
+                "on history(msgid, authid) where chanid = 0"
+            )
         self.execute(
             "create table if not exists members("
             "userid integer,"
@@ -279,6 +285,20 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         await super().close()
 
     async def cleanup(self):
+        if PURGE_GUESTS:
+            self.execute(
+                "delete from history "
+                "where msgid in ("
+                "select msgid from history "
+                "left join users on history.authid = users.userid "
+                "where users.userid is null and msgid < ? and chanid = 0"
+                ")",
+                (
+                    discord.utils.time_snowflake(
+                        discord.utils.utcnow() - timedelta(days=1)
+                    ),
+                ),
+            )
         self.conn.commit()
         self.ignore_delete_cache.clear()
         self.votes = {
