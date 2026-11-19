@@ -662,22 +662,52 @@ class Attachment(Object):
         return self
 
 
+class InteractionResponse:
+    def __init__(self, interaction):
+        self._interaction = interaction
+        self._fired = False
+        self._deferred = False
+
+    async def defer(self, ephemeral, thinking):
+        assert not self._fired
+        assert ephemeral
+        self._fired = True
+        self._deferred = True
+        self._interaction.followup._expecting = True
+
+    def is_done(self):
+        return self._fired
+
+    async def send_message(self, ephemeral, **kwargs):
+        assert not self._fired
+        assert ephemeral
+        self._fired = True
+        # response messages are ephemeral and invisible to us; do nothing
+
+
+class InteractionFollowup:
+    def __init__(self, interaction):
+        self._interaction = interaction
+        self._expecting = False
+
+    async def send(self, ephemeral, **kwargs):
+        assert self._expecting
+        assert ephemeral
+        self._expecting = False
+        # followup messages are ephemeral and invisible to us; do nothing
+
+
 class Interaction:
     def __init__(self, message, user, button):
         self.message, self.user = (message, user)
         self.data = {"custom_id": button}
-        # TODO check that the message actuall has the buttons
+        self.response = InteractionResponse(self)
+        self.followup = InteractionFollowup(self)
+        # TODO check that the message actually has the buttons
 
     @property
     def channel(self):
         return self.message.channel
-
-    @property
-    def response(self):
-        return self  # lol
-
-    async def send_message(self, **kwargs):
-        pass  # only used for ephemeral messages; bot never sees those
 
 
 invites = {}
@@ -788,7 +818,11 @@ def send(user, channel, content, reference=None, files=[], orig=False, **kwargs)
 
 
 def interact(message, user, button):
-    run(instance.on_interaction(Interaction(message, user, button)))
+    # assert message.components
+    interaction = Interaction(message, user, button)
+    run(instance.on_interaction(interaction))
+    assert interaction.response.is_done()
+    assert not interaction.followup._expecting
 
 
 class GestaltTest(unittest.TestCase):
@@ -3835,6 +3869,74 @@ class GestaltTest(unittest.TestCase):
         run(instance.cleanup())
         msg._react(gestalt.REACT_DELETE, guest)
         self.assertTrue(msg._deleted)
+
+    def test_48_interaction_deferred(self):
+        # there's only one situation (so far) where an interaction might be deferred
+        # due to its potential to take longer than 3 seconds to complete
+        # by downloading an attachment. this actually happened. so let's test it!
+        uploader = User(name="avatar2009")
+        voter = User(name="bluewave2026")
+        g = Guild(name="avatar guild")
+        c = g._add_channel("main")
+        g._add_member(uploader)
+        g._add_member(voter)
+        g._add_member(instance.user)
+
+        self.assertVote(uploader, c, "gs;m new mask")
+        interact(c[-1], uploader, "yes")
+        self.assertCommand(uploader, c, "gs;m mask rules unanimous")
+        self.assertVote(uploader, c, f"gs;m mask invite {voter.mention}")
+        interact(c[-1], voter, "yes")
+        self.assertCommand(uploader, c, "gs;ap mask")
+        self.assertCommand(voter, c, "gs;ap mask")
+        attach = Attachment(b"kitty", content_type="image/png")
+        self.assertProxied(uploader, c, "yay mask")
+        self.assertIsNone(c[-1].author.display_avatar)
+        self.assertVote(uploader, c, "gs;m mask avatar", files=[attach])
+
+        # interact(c[-1], uploader, "yes")
+        interaction = Interaction(c[-1], uploader, "yes")
+        run(instance.on_interaction(interaction))
+        self.assertFalse(interaction.response._deferred)
+        self.assertFalse(interaction.followup._expecting)
+
+        # interact(c[-1], voter, "yes")
+        interaction = Interaction(c[-1], voter, "yes")
+        run(instance.on_interaction(interaction))
+        self.assertTrue(interaction.response._deferred)
+        self.assertFalse(interaction.followup._expecting)
+
+        self.assertProxied(uploader, c, "yay mask")
+        self.assertTrue(c[-1].author.display_avatar.startswith(gestalt.AVATAR_URL_BASE))
+
+        # will this ever happen? should I even give a shit? idk. let's test it anyways
+        sydney = User(name="sydney", bot=True)
+        claude = User(name="claude", bot=True)
+        g._add_member(sydney)
+        g._add_member(claude)
+        role = g._add_role("sentient")
+        g.get_member(sydney.id)._add_role(role)
+        g.get_member(claude.id)._add_role(role)
+        gestalt.ALLOWED_BOT_ROLES = [role.id]
+        sydney._onboard(c)
+        claude._onboard(c)
+
+        self.assertVote(sydney, c, "gs;m new bots")
+        send(sydney, c, "yes")
+        self.assertCommand(sydney, c, "gs;m bots rules unanimous")
+        self.assertVote(sydney, c, f"gs;m bots invite {claude.mention}")
+        send(claude, c, "yes")
+        self.assertCommand(sydney, c, "gs;ap bots")
+        self.assertCommand(claude, c, "gs;ap bots")
+        self.assertProxied(sydney, c, "yay mask")
+        self.assertIsNone(c[-1].author.display_avatar)
+        self.assertVote(sydney, c, "gs;m bots avatar", files=[attach])
+
+        send(sydney, c, "yes")
+        send(claude, c, "yes")
+
+        self.assertProxied(sydney, c, "yay mask")
+        self.assertTrue(c[-1].author.display_avatar.startswith(gestalt.AVATAR_URL_BASE))
 
 
 def main():

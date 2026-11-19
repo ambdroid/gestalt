@@ -268,6 +268,10 @@ class VotableAction(metaclass=serializable):
     def add_context(self, context):
         pass
 
+    # when this Action is triggered by a completed Vote, should the final interaction be deferred?
+    def should_defer_on_execute(self):
+        return False
+
     def execute(self, bot):
         raise NotImplementedError()
 
@@ -284,11 +288,14 @@ class Rules(metaclass=serializable):
         raise NotImplementedError()
 
     async def eval(self, bot, context, action):
-        return await bot.step_program(
+        coro, execute = bot.step_program(
             ProgramState(comp(self.for_action(action.get_type())), 0, []),
             context,
             action,
         )
+        if coro:
+            await coro
+        return execute
 
 
 @dc.dataclass
@@ -372,6 +379,9 @@ class ActionChange(VotableAction, _type=ActionType.change):
         with open(bot.hosted_avatar_local_path(name), "wb") as f:
             f.write(image)
         return name
+
+    def should_defer_on_execute(self):
+        return self.which == "avatar" and bool(self.ext)
 
     async def execute(self, bot):
         if self.which == "avatar":
@@ -680,7 +690,7 @@ class Vote(metaclass=serializable):
             > timedelta(days=1, seconds=-10)
         )
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, interaction):
         raise NotImplementedError()
 
     def description(self):
@@ -722,7 +732,7 @@ class VoteConfirm(Vote):
     def complete(self):
         return bool(self.yes or self.no)
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, _):
         self.context.answer = bool(self.yes)
 
     def view(self, disabled=False):
@@ -752,7 +762,7 @@ class VoteConfirm(Vote):
 class VoteCreate(VoteConfirm, _type=VoteType.create):
     name: str = None
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, _):
         bot.execute(
             "insert into masks values (?, ?, NULL, NULL, NULL, ?, 0, 0)",
             ((maskid := bot.gen_id()), self.name, time.time()),
@@ -788,7 +798,7 @@ class VotePreinvite(VoteConfirm, _type=VoteType.preinvite):
             raise ValueError("Mask is required")
         super().__post_init__(user=user)
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, _):
         if self.yes:
             await bot.initiate_action(
                 self.context, ActionInvite(self.mask, self.get_user())
@@ -815,8 +825,12 @@ class VoteProgram(Vote):
         if not (self.state and self.action):
             raise ValueError()
 
-    async def on_done(self, bot):
-        await bot.step_program(self.state, self.context, self.action)
+    async def on_done(self, bot, interaction):
+        coro, execute = bot.step_program(self.state, self.context, self.action)
+        if execute and self.action.should_defer_on_execute():
+            await interaction.response.defer(ephemeral=True, thinking=True)
+        if coro:
+            await coro
 
     @classmethod
     def class_dict(cls, _dict):
@@ -834,12 +848,12 @@ class VoteApproval(VoteProgram, _type=VoteType.approval):
     def complete(self):
         return len(self.yes) >= self.threshold
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, interaction):
         # no other possibility except vote simply expiring
         # however, this might change so that expiry = False
         # therefore still pass it through context for forward compatibility
         self.context.answer = True
-        await super().on_done(bot)
+        await super().on_done(bot, interaction)
 
     def description(self):
         return "**%i**/**%i** votes needed" % (len(self.yes), self.threshold)
@@ -870,10 +884,10 @@ class VoteConsensus(VoteProgram, _type=VoteType.consensus):
     def complete(self):
         return len(self.yes) + len(self.no) >= self.threshold
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, interaction):
         self.context.yes = frozenset(self.yes)
         self.context.no = frozenset(self.no)
-        await super().on_done(bot)
+        await super().on_done(bot, interaction)
 
     def view(self, disabled=False):
         view = discord.ui.View()
@@ -931,7 +945,7 @@ class VotePkswap(VoteConfirm, _type=VoteType.pkswap):
                     state=ProxyState.inactive,
                 )
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, _):
         if self.yes:
             self.execute(bot)
 
@@ -962,7 +976,7 @@ class VotePkswap(VoteConfirm, _type=VoteType.pkswap):
 class VoteNewUser(VoteConfirm, _type=VoteType.new_user):
     VOTE_YES = "Welcome to Gestalt!"
 
-    async def on_done(self, bot):
+    async def on_done(self, bot, _):
         user = bot.get_user(self.get_user())
         try:
             bot.execute(
@@ -990,9 +1004,10 @@ class VoteNewUser(VoteConfirm, _type=VoteType.new_user):
 
 
 async def respond(interaction, content):
-    await interaction.response.send_message(
-        embed=discord.Embed(description=content), ephemeral=True
-    )
+    embed = discord.Embed(description=content)
+    if interaction.response.is_done():
+        return await interaction.followup.send(embed=embed, ephemeral=True)
+    return await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class GestaltVoting:
@@ -1084,14 +1099,15 @@ class GestaltVoting:
         rules.named = [nominee if i == nominator else i for i in rules.named]
         ActionRules(maskid, rules).execute(self)
 
-    async def step_program(self, program, context, action):
+    # returns (Optional[coroutine], does this coroutine execute the action?)
+    def step_program(self, program, context, action):
         result = run(program, context)
         if isinstance(result, partial):
             if context.channel:  # None in case of auto-add (no channel)
-                await self.initiate_vote(result(action=action))
+                return self.initiate_vote(result(action=action)), False
         elif result == True:
-            await discord.utils.maybe_coroutine(action.execute, self)
-            return True
+            return discord.utils.maybe_coroutine(action.execute, self), True
+        return None, False
 
     # the docs discourage using this
     # but it's easier than using the callbacks across reboots
@@ -1104,7 +1120,7 @@ class GestaltVoting:
         coro = vote.on_interaction(interaction, self)
         if vote.complete:
             del self.votes[msgid]
-            await vote.on_done(self)
+            await vote.on_done(self, interaction)
         await coro
 
     async def on_bot_interaction(self, message):
@@ -1114,9 +1130,19 @@ class GestaltVoting:
                 self.bot, self.trigger, self.message = bot, trigger, msg
                 self.data = {"custom_id": trigger.content.lower()}
                 self.response = self
+                self.followup = self
                 self.user = trigger.author
 
-            async def send_message(self, embed, ephemeral):
+            async def defer(self, ephemeral, thinking):
+                # as InteractionResponse, do nothing
+                pass
+
+            def is_done(self):
+                # as InteractionResponse, always fall through to send() as followup
+                return True
+
+            async def send(self, embed, ephemeral):
+                # as followup, send a non-ephemeral message
                 await self.bot.reply(self.trigger, embeds=[embed])
 
         button = message.content.lower()
