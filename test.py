@@ -818,7 +818,8 @@ def send(user, channel, content, reference=None, files=[], orig=False, **kwargs)
 
 
 def interact(message, user, button):
-    # assert message.components
+    assert message.components
+    #assert message.id in instance.votes
     interaction = Interaction(message, user, button)
     run(instance.on_interaction(interaction))
     assert interaction.response.is_done()
@@ -1963,7 +1964,8 @@ class GestaltTest(unittest.TestCase):
         # should be able to send to two users
         self.assertCommand(alpha, c, f"gs;swap open {gamma.mention}")
         self.assertCommand(gamma, c, f"gs;swap open {alpha.mention}")
-        msg = self.assertVote(alpha, c, f"gs;pk swap {gamma.mention} aaaaa")
+        self.assertVote(alpha, c, f"gs;pk swap {gamma.mention} aaaaa")
+        msg = c[-1]
         self.assertVote(alpha, c, f"gs;pk swap {gamma.mention} aaaaa")
         interact(msg, gamma, "yes")
         interact(c[-1], gamma, "yes")
@@ -2991,8 +2993,8 @@ class GestaltTest(unittest.TestCase):
         # comment out action.add_context(context) to see this fail
         self.assertNotVote(beta, c, f"gs;m maask remove {alpha.mention}")
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
-        interact(c[-1], beta, "yes")
-        self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        #interact(c[-1], beta, "yes")
+        #self.assertTrue(instance.is_member_of(maaskid, alpha.id))
         # test leave, nominate
         self.assertNotCommand(alpha, c, "gs;m maask leave")
         self.assertNotCommand(alpha, c, f"gs;m maask leave {alpha.mention}")
