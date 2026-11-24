@@ -765,7 +765,7 @@ class VoteCreate(VoteConfirm, _type=VoteType.create):
     async def on_done(self, bot, _):
         bot.execute(
             "insert into masks values (?, ?, NULL, NULL, NULL, ?, 0, 0)",
-            ((maskid := bot.gen_id()), self.name, time.time()),
+            ((maskid := bot.gen_id()), self.name, int(time.time())),
         )
         user = self.get_user()
         autoadd = bool(self.yes)
@@ -977,13 +977,13 @@ class VoteNewUser(VoteConfirm, _type=VoteType.new_user):
     VOTE_YES = "Welcome to Gestalt!"
 
     async def on_done(self, bot, _):
-        user = bot.get_user(self.get_user())
+        user = self.get_user()
         try:
             bot.execute(
                 'insert into users values (?, ?, "", NULL)',
-                (user.id, DEFAULT_PREFS),
+                (user, DEFAULT_PREFS),
             )
-            bot.mkproxy(user.id, ProxyType.override)
+            bot.mkproxy(user, ProxyType.override)
         except sqlite.IntegrityError:
             return  # already registered; this is harmless
 

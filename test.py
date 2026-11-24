@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from functools import reduce, partial
 from collections import defaultdict
 from datetime import timedelta
+from random import shuffle
 import unittest
 import asyncio
 import json
@@ -201,6 +202,8 @@ class Message(Object):
         self.guild = None
         self.poll = None
         super().__init__(**kwargs)
+        if self.guild and isinstance(self.author, User):
+            raise TypeError("guild message sent with plain User author")
 
     @property
     def channel_mentions(self):
@@ -230,7 +233,13 @@ class Message(Object):
             mentions = map(int, re.findall("<@!?([0-9]+)>", self.content))
             if self.guild:
                 mentions = map(self.guild.get_member, mentions)
-            return list(mentions)
+            mentions = list(mentions)
+            if self.reference:
+                if (pinged := self.reference.message.author) not in mentions:
+                    mentions.append(pinged)
+            # discord API does not return mentions in any particular order
+            shuffle(mentions)
+            return mentions
         return []
 
     @property
@@ -318,7 +327,7 @@ class Message(Object):
 class PartialMessage:
     def __init__(self, *, channel, id):
         self.channel, self.id, self.guild = (channel, id, channel.guild)
-        self._truemsg = discord.utils.get(channel._messages, id=id)
+        self._truemsg = channel._get_message(id)
 
     @property
     def jump_url(self):
@@ -421,6 +430,7 @@ class Channel(Object):
 
     def __init__(self, **kwargs):
         self._messages = []
+        self._deleted = False
         self.name = ""
         self.guild = None
         super().__init__(**kwargs)
@@ -452,6 +462,8 @@ class Channel(Object):
         return discord.ChannelType.text
 
     async def _add(self, msg):
+        if self._deleted:
+            raise NotFound()
         msg.channel = self
         if self.guild:
             msg.guild = self.guild
@@ -463,19 +475,28 @@ class Channel(Object):
     async def create_webhook(self, name):
         return Webhook(self, name)
 
+    def _delete(self):
+        self.guild.channels.remove(self)
+        self._deleted = True
+
+    def _get_message(self, msgid):
+        return discord.utils.get(self._messages, id=msgid)
+
     async def fetch_message(self, msgid):
-        msg = discord.utils.get(self._messages, id=msgid)
-        if not msg:
+        msg = self._get_message(msgid)
+        if self._deleted or not msg:
             raise NotFound()
         return msg
 
     def get_partial_message(self, msgid):
         return PartialMessage(channel=self, id=msgid)
 
-    def permissions_for(self, user):
+    def permissions_for(self, member):
+        if self.guild and (isinstance(member, User) or member.guild != self.guild):
+            raise TypeError("Undefined behavior: User or wrong guild member")
         if self.guild:
             # TODO need channel-level permissions
-            return self.guild.get_member(user.id).guild_permissions
+            return member.guild_permissions
         perms = discord.Permissions.text()
         perms.update(manage_messages=False)
         return perms
@@ -735,6 +756,14 @@ class TestBot(gestalt.Gestalt):
     def get_user(self, id):
         return User.users.get(id)
 
+    async def fetch_channel(self, id):
+        # assume that the local cache is out of date for some reason
+        # this only comes up once so why not
+        chan = self.get_channel(id)
+        if chan._deleted:
+            raise NotFound()
+        return chan
+
     async def fetch_invite(self, code, **_):
         if code in invites:
             return Object(guild=invites[code])
@@ -819,7 +848,7 @@ def send(user, channel, content, reference=None, files=[], orig=False, **kwargs)
 
 def interact(message, user, button):
     assert message.components
-    #assert message.id in instance.votes
+    # assert message.id in instance.votes
     interaction = Interaction(message, user, button)
     run(instance.on_interaction(interaction))
     assert interaction.response.is_done()
@@ -916,9 +945,7 @@ class GestaltTest(unittest.TestCase):
         return msg
 
     def assertEditedContent(self, message, content):
-        self.assertEqual(
-            run(message.channel.fetch_message(message.id)).content, content
-        )
+        self.assertEqual(message.channel._get_message(message.id).content, content)
 
     def desc(self, msg):
         self.assertNotEqual(msg.embeds, [])
@@ -1162,6 +1189,13 @@ class GestaltTest(unittest.TestCase):
         self.assertNotCommand(alpha, chan, f"gs;p {proxid} tags")
         self.assertNotCommand(alpha, chan, f"gs;p {proxid} tags text")
         self.assertNotCommand(alpha, chan, f"gs;p {proxid} tags txet")
+
+        # test newlines in tags
+        self.assertCommand(alpha, chan, f"gs;p {proxid} tags nl:\ntext")
+        self.assertCommand(alpha, chan, f"gs;p '{proxid}' tags nlnl:\ntext")
+        self.assertProxied(alpha, chan, "nlnl:\ntext")
+        self.assertNotProxied(alpha, chan, "nlnl:text")
+        self.assertCommand(alpha, chan, f"gs;p {proxid} tags e:text")
 
         # test autoproxy without tags
         # also test proxies added on role add
@@ -1633,6 +1667,12 @@ class GestaltTest(unittest.TestCase):
         self.assertEditedContent(second, '"quote" unquote')
         self.assertDeleted(alpha, chan, f"gs;edit {second.jump_url} new\nline")
         self.assertEditedContent(second, "new\nline")
+        url = second.jump_url.replace("discord", "ptb.discord")
+        self.assertDeleted(alpha, chan, f"gs;edit {url} public test build")
+        self.assertEditedContent(second, "public test build")
+        url = second.jump_url.replace("discord", "canary.discord")
+        self.assertDeleted(alpha, chan, f"gs;edit {url} chirp chirp")
+        self.assertEditedContent(second, "chirp chirp")
 
         # make sure that the correct most recent msgid is pulled from db
         self.assertVote(beta, chan, "gs;m new edit")
@@ -1727,9 +1767,7 @@ class GestaltTest(unittest.TestCase):
                             {
                                 "inline": False,
                                 "name": "Old message",
-                                "value": run(
-                                    origin.fetch_message(msg.id)
-                                )._prev.content,
+                                "value": origin._get_message(msg.id)._prev.content,
                             }
                         ],
                         "flags": 0,
@@ -1740,6 +1778,38 @@ class GestaltTest(unittest.TestCase):
                         "description": f"<{content}>",
                     },
                 )
+
+        # test empty original message content
+        msg = self.assertProxied(alpha, c1, "e:", files=[Attachment("hi")])
+        deleted = self.assertDeleted(alpha, c1, "gs;e hello")
+        self.assertEqual(
+            log[-1].embeds[0].to_dict(),
+            {
+                "footer": {
+                    "text": f"Sender: {str(alpha)} ({alpha.id}) | Message ID: {msg.id} | Original Message ID: {deleted.id}"
+                },
+                "author": {"name": f"[Edited] #{c1.name}: test"},
+                "fields": [
+                    {
+                        "inline": False,
+                        "name": "Old message",
+                        "value": "*no message content*",
+                    }
+                ],
+                "flags": 0,
+                "timestamp": discord.utils.snowflake_time(deleted.id).isoformat(),
+                "type": "rich",
+                "description": "hello",
+            },
+        )
+        # fields have a length limit
+        spam = "A" * 2000
+        msg = self.assertProxied(alpha, c1, "e:" + spam)
+        self.assertEqual(log[-1].embeds[0].description, spam)
+        deleted = self.assertDeleted(alpha, c1, "gs;e ah...")
+        self.assertEqual(
+            log[-1].embeds[0].fields[0].value, spam[:1023] + gestalt.REPLY_CUTOFF
+        )
 
         self.assertNotDeleted(
             alpha, alpha.dm_channel, f"gs;edit {c1[-1].jump_url}9999999999999 overflow"
@@ -1762,6 +1832,9 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(alpha, chan, f"gs;become {proxid}")
         self.assertNotProxied(alpha, chan, "not proxied")
         self.assertProxied(alpha, chan, "proxied")
+
+        self.assertNotCommand(alpha, alpha.dm_channel, f"gs;become {proxid}")
+
         self.assertCommand(alpha, chan, f"gs;swap close {proxid}")
 
     def test_19_swap_close(self):
@@ -1821,6 +1894,12 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertProxied(alpha, c, "[", files=[Attachment("hi")])
         self.assertEqual(msg.content, "")
         self.assertEqual(len(msg.files), 1)
+        # one file, autoproxied
+        self.assertCommand(alpha, c, "gs;ap attachments")
+        msg = self.assertProxied(alpha, c, "", files=[Attachment("hi")])
+        self.assertEqual(msg.content, "")
+        self.assertEqual(len(msg.files), 1)
+        self.assertCommand(alpha, c, "gs;ap off")
         # two files, no content
         msg = self.assertProxied(
             alpha,
@@ -1900,6 +1979,13 @@ class GestaltTest(unittest.TestCase):
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(c[-1], "guild")
         self.assertCommand(beta, c, "gs;m guildy leave")
+
+        # a mask whose name starts with "new" must not be mistaken for `gs;m new`
+        self.assertVote(alpha, c, "gs;m new newbie")
+        interact(c[-1], alpha, "no")
+        self.assertNotVote(alpha, c, "gs;m newbie")
+        self.assertEqual(c[-1].embeds[0].author.name, "newbie")
+        self.assertCommand(alpha, c, "gs;m newbie leave")
 
         # With names, users can infer *and control* names of hidden proxies.
         # We must ensure that hidden proxies can't be used in commands.
@@ -2038,6 +2124,10 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertProxied(beta, c, "[test]", MessageReference(new, False))
         self.assertEqual(msg.embeds[0].color, None)
 
+        # deleted message shouldn't raise
+        run(new.delete())
+        self.assertNotCommand(beta, c, "gs;pk sync", MessageReference(new, False))
+
         # test closing specific pkswap
         # first by receipt
         instance.get_user_proxy(send(beta, c, "a"), "member!")
@@ -2094,11 +2184,16 @@ class GestaltTest(unittest.TestCase):
         )
         self.assertEqual(len(log), 3)
 
+        log._delete()
+        self.assertProxied(alpha, c, "g:freedom at last!")
+        log = g1._add_channel("log 2")
+        self.assertCommand(alpha, c, f"gs;log channel {log.mention} ")
+
         self.assertCommand(alpha, c, "gs;log disable")
         self.assertProxied(alpha, c, "g:secret message!")
-        self.assertEqual(len(log), 3)
+        self.assertEqual(len(log), 0)
         self.assertDeleted(alpha, c, "gs;edit spooky message")
-        self.assertEqual(len(log), 3)
+        self.assertEqual(len(log), 0)
 
         self.assertCommand(alpha, c, "gs;m logged leave")
 
@@ -2157,7 +2252,7 @@ class GestaltTest(unittest.TestCase):
         msg = self.assertProxied(alpha, th, "beta:logg")
         self.assertEqual(len(log), 1)
         # make sure it's the thread and not the parent channel
-        url = Message(id=msg.id, channel=th, guild=g1).jump_url
+        url = Message(id=msg.id, channel=th, guild=g1, author=msg.author).jump_url
         self.assertEqual(log[0].content, url)
         self.assertDeleted(alpha, th, "gs;edit log")
         self.assertEqual(len(log), 2)
@@ -2993,8 +3088,8 @@ class GestaltTest(unittest.TestCase):
         # comment out action.add_context(context) to see this fail
         self.assertNotVote(beta, c, f"gs;m maask remove {alpha.mention}")
         self.assertTrue(instance.is_member_of(maaskid, alpha.id))
-        #interact(c[-1], beta, "yes")
-        #self.assertTrue(instance.is_member_of(maaskid, alpha.id))
+        # interact(c[-1], beta, "yes")
+        # self.assertTrue(instance.is_member_of(maaskid, alpha.id))
         # test leave, nominate
         self.assertNotCommand(alpha, c, "gs;m maask leave")
         self.assertNotCommand(alpha, c, f"gs;m maask leave {alpha.mention}")
@@ -3503,6 +3598,10 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(len(pkmsgs), 4)
         self.assertEqual(c[-1].id, proxied.id)
 
+        # old regex didn't include a word boundary, oops
+        self.assertNotDeleted(alpha, c, "pk;export", MessageReference(proxied, False))
+        self.assertEditedContent(proxied, "test!!!")
+
         self.assertCommand(alpha, c, "gs;m notpk leave")
 
     def test_41_polls(self):
@@ -3939,6 +4038,45 @@ class GestaltTest(unittest.TestCase):
 
         self.assertProxied(sydney, c, "yay mask")
         self.assertTrue(c[-1].author.display_avatar.startswith(gestalt.AVATAR_URL_BASE))
+
+    def test_49_read_member(self):
+        guild = Guild(name="ping guild")
+        c = guild._add_channel("main")
+        sender = User(name="reply guy")
+        replied = User(name="replied")
+        intended = User(name="intended")
+        guild._add_member(sender)
+        guild._add_member(replied)
+        guild._add_member(intended)
+        guild._add_member(instance.user)
+
+        target = send(replied, c, "hello")
+
+        # replying with no mention in the command must not target the replied-to user
+        self.assertNotCommand(
+            sender, c, "gs;swap open", MessageReference(target, False)
+        )
+        self.assertIsNone(self.get_proxid(sender, replied))
+
+        for i in range(20):  # overkill to account for undefined order
+            # replying with an explicit mention must target the mention
+            self.assertCommand(
+                sender,
+                c,
+                f"gs;swap open {intended.mention} i:text",
+                MessageReference(target, False),
+            )
+            self.assertIsNotNone(self.get_proxid(sender, intended))
+            self.assertIsNone(self.get_proxid(sender, replied))
+            self.assertCommand(sender, c, f"gs;swap close intended")
+
+        self.assertCommand(
+            sender,
+            c,
+            f"gs;swap open {replied.mention}",
+            MessageReference(target, False),
+        )
+        self.assertIsNotNone(self.get_proxid(sender, replied))
 
 
 def main():

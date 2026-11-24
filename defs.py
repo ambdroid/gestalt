@@ -13,7 +13,7 @@ LINK_REGEX = re.compile(r'<?(https?:\/\/[^\s<]+[^<.,:;"\')\]\s])>?')
 # but reuploading is trivial so there isn't much point to blocking that
 CDN_REGEX = re.compile(r".*ex=[0-9a-f]+&is=[0-9a-f]+&hm=[0-9a-f]+&?")
 MESSAGE_LINK_REGEX = re.compile(
-    r"https://discord\.com/channels/[0-9]+/([0-9]+)/([0-9]+)"
+    r"https://(?:canary\.|ptb\.)?discord\.com/channels/[0-9]+/([0-9]+)/([0-9]+)"
 )
 
 
@@ -241,6 +241,7 @@ class RuleType(enum.IntEnum):
     unanimous = 5
 
 
+COMMAND_PREFIX = re.compile(COMMAND_PREFIX, re.IGNORECASE)
 PK_EDIT = re.compile(PK_EDIT, re.IGNORECASE)
 BE_REGEX = re.compile(r"\\?> ?Be (.*?)\.?", re.IGNORECASE)
 # convert into dict of single opening char : regex matching all ending chars
@@ -254,7 +255,8 @@ QUOTE_REGEXES = reduce(
                     opening,
                     "".join(tup[1]),
                     ("%s" if len(tup[1]) == 1 else "[%s]") % "".join(tup[1]),
-                )
+                ),
+                re.DOTALL,
             )
             for opening in tup[0]
         },

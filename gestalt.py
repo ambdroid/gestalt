@@ -339,7 +339,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             try:
                 await message.add_reaction(reaction)
                 return True
-            except discord.errors.NotFound:
+            except (discord.NotFound, discord.Forbidden):
                 pass
 
     async def mark_success(self, message, success):
@@ -659,7 +659,10 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
     def fix_content(self, author, channel, content, proxy=None):
         embedded = (
             content
-            if channel.permissions_for(author).embed_links
+            # permissions_for on non-member is UB
+            if channel.permissions_for(
+                channel.guild.get_member(author.id) or author
+            ).embed_links
             else LINK_REGEX.sub(
                 lambda match: (
                     match.group(0)
@@ -725,10 +728,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
 
     async def make_log_message(self, message, orig, proxy=None, old=None):
         # for edits, command might be sent from different guild
-        logchan = self.fetchone(
-            "select logchan from guilds where guildid = ?", ((old or orig).guild.id,)
+        guildid = (old or orig).guild.id
+        chanid = self.fetchone(
+            "select logchan from guilds where guildid = ?", (guildid,)
         )
-        if not logchan:
+        if not chanid:
             return
 
         embed = discord.Embed(description=message.content, timestamp=orig.created_at)
@@ -742,7 +746,11 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
             icon_url=message.author.display_avatar,
         )
         if old:
-            embed.add_field(name="Old message", value=old.content, inline=False)
+            embed.add_field(
+                name="Old message",
+                value=self.truncate(old.content or "*no message content*", 1023),
+                inline=False,
+            )
         embed.set_thumbnail(url=message.author.display_avatar)
         footer = "Sender: %s (%i) | Message ID: %i | Original Message ID: %i" % (
             str(orig.author),
@@ -760,15 +768,22 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
                 + "Proxy ID: %s | " % proxy["proxid"]
             ) + footer
         embed.set_footer(text=footer)
-        await self.send(
-            self.get_channel(logchan[0]),
-            plain=
-            # jump_url doesn't work in messages from webhook.send()
-            # (and .channel can be PartialMessageable)
-            # (that was annoying)
-            message.channel.get_partial_message(message.id).jump_url,
-            embeds=[embed],
-        )
+        try:
+            channel = self.get_channel(chanid[0])
+            if channel == None:
+                channel = await self.fetch_channel(chanid[0])
+            await self.send(
+                channel,
+                plain=
+                # jump_url doesn't work in messages from webhook.send()
+                # (and .channel can be PartialMessageable)
+                # (that was annoying)
+                message.channel.get_partial_message(message.id).jump_url,
+                embeds=[embed],
+            )
+        except discord.NotFound:
+            # TODO update this if we store more guild-wide data
+            self.execute("delete from guilds where guildid = ?", (guildid,))
 
     def should_pad(self, channel, proxy, present):
         if not (last := self.last_message_cache.last(channel)):
@@ -1003,7 +1018,7 @@ class Gestalt(discord.Client, commands.GestaltCommands, gesp.GestaltVoting):
         ):
             try:
                 return await self.cmd_autoproxy_set(message, match[1], True)
-            except:
+            except UserError:
                 pass
 
         match, stripped, tags = self.get_proxy_match(message) or (None, None, None)

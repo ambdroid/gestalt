@@ -11,7 +11,7 @@ PK_USER_AGENT = "Gestalt Vulpine Cooperation Initiative"
 PK_RATELIMIT = 10
 PK_WINDOW = 1.0
 PK_DASH = "https://dash.pluralkit.me/profile/m/%s"
-PK_EDIT = r"pk;\s*e(dit)?"
+PK_EDIT = r"pk;\s*e(dit)?\b"
 PK_EDIT_ERROR = "\N{CROSS MARK} This is not a message proxied by PluralKit."
 
 # list of role IDs for bots that are allowed to use Gestalt
@@ -120,7 +120,7 @@ HELPMSGS = {
     "`{p}proxy (id/name) replace (on/off)`: convert singular pronouns to "
     "plural",
     "swap": "**Swaps**: (shortcut `{p}s`)\n"
-    "To open a Swap, both users must use the `{p}open` command.\n"
+    "To open a Swap, both users must use the `{p}swap open` command.\n"
     "\n"
     "`{p}swap open (@user) [optional tags]`: open a Swap\n"
     "`{p}swap close (id/name)`: unilaterally closes the Swap\n",

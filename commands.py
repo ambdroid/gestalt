@@ -50,9 +50,12 @@ class CommandReader:
     }
 
     def from_message(message):
-        reader = CommandReader(message)
-        if reader.read_token(COMMAND_PREFIX) or not message.guild:
-            return reader
+        content = message.content
+        if match := COMMAND_PREFIX.match(content):
+            content = content.removeprefix(match[0]).strip()
+        elif message.guild:
+            return
+        return CommandReader(message, content)
 
     def __init__(self, message, command=None):
         self.msg = message
@@ -64,7 +67,9 @@ class CommandReader:
     @staticmethod
     @cache
     def get_token_regex(token):
-        return re.compile(re.escape(token) + r"\s*(.*)", re.DOTALL | re.IGNORECASE)
+        return re.compile(
+            re.escape(token) + r"(?:\s+|$)(.*)", re.DOTALL | re.IGNORECASE
+        )
 
     def read_token(self, token):
         if match := self.get_token_regex(token).fullmatch(self.cmd):
@@ -102,10 +107,9 @@ class CommandReader:
     # discord.ext includes a MemberConverter
     # but that's only available whem using discord.ext Command
     def read_member(self):
-        if self.msg.mentions:
-            # consume the text of the mention
-            _ = self.read_word()
-            return self.msg.mentions[0]
+        if match := re.match("<@!?([0-9]+)>", self.cmd):
+            self.cmd = self.cmd.removeprefix(match[0]).strip()
+            return discord.utils.get(self.msg.mentions, id=int(match[1]))
 
     def read_channel(self):
         _ = self.read_word()  # discard
@@ -766,11 +770,9 @@ class GestaltCommands:
         elif authid in gesp.Rules.from_json(mask["rules"]).named:
             if not member:
                 raise UserError(
-                    "You are named in the rules of this mask and must "
+                    f"You are named in the rules of this mask and must "
                     "nominate someone to take your place. Please try "
-                    "again with `{p}mask (id/name) leave @member`.".format(
-                        p=COMMAND_PREFIX
-                    )
+                    "again with `{COMMAND_PREFIX}mask (id/name) leave @member`."
                 )
             self.nominate(maskid, authid, member.id)
         gesp.ActionRemove(maskid, authid).execute(self)
@@ -788,7 +790,7 @@ class GestaltCommands:
             except OverflowError:  # malformed message link
                 raise UserError("That message link is invalid.")
             if not proxied or proxied["authid"] != message.author.id:
-                return UserError("You did not proxy that message.")
+                raise UserError("You did not proxy that message.")
         else:
             proxied = self.fetchone(
                 # redundant chanid != 0 to enable use of index
@@ -827,8 +829,13 @@ class GestaltCommands:
                     if type(channel) == discord.Thread
                     else discord.utils.MISSING
                 ),
+                # channel.permissions_for() seems to work fine in practice with a bare User
+                # or different guild's Member (for cross-guild edits)
+                # but this is probably Undefined Behavior so prefer to use the right Member...
                 allowed_mentions=discord.AllowedMentions(
-                    everyone=channel.permissions_for(message.author).mention_everyone
+                    everyone=channel.permissions_for(
+                        channel.guild.get_member(message.author.id) or message.author
+                    ).mention_everyone
                 ),
             )
         except discord.errors.NotFound:
@@ -843,6 +850,8 @@ class GestaltCommands:
         await self.make_log_message(edited, message, old=target)
 
     async def cmd_become(self, message, proxy):
+        if not message.guild:
+            raise UserError(ERROR_DM)
         self.set_autoproxy(message.author, proxy["proxid"], become=0.0)
         await self.mark_success(message, True)
 
@@ -934,7 +943,12 @@ class GestaltCommands:
 
     async def cmd_pk_sync(self, message):
         ref = message.reference
-        ref = ref.cached_message or await message.channel.fetch_message(ref.message_id)
+        try:
+            ref = ref.cached_message or await message.channel.fetch_message(
+                ref.message_id
+            )
+        except discord.NotFound:
+            raise UserError("That message no longer exists.")
         if not (ref and ref.webhook_id):
             raise UserError("Please reply to a proxied message.")
 
