@@ -759,23 +759,18 @@ class GestaltCommands:
         self.nominate(mask["maskid"], authid, member.id)
         await self.mark_success(message, True)
 
-    async def cmd_mask_leave(self, message, maskid, member):
+    async def cmd_mask_leave(self, message, mask, member):
         authid = message.author.id
-        # avoid potential race conditions if a user joins at the same time
-        mask = self.fetchone("select * from masks where maskid = ?", (maskid,))
-        if mask["members"] == 1:
-            # triggers will delete mask and guildmasks
-            if self.is_hosted_avatar(mask["avatar"]):
-                os.remove(self.hosted_avatar_local_path(mask["avatar"]))
-        elif authid in gesp.Rules.from_json(mask["rules"]).named:
+        # a plain await doesn't yield, so no concern of race conditions here
+        if mask["members"] > 1 and authid in gesp.Rules.from_json(mask["rules"]).named:
             if not member:
                 raise UserError(
-                    f"You are named in the rules of this mask and must "
+                    "You are named in the rules of this mask and must "
                     "nominate someone to take your place. Please try "
-                    "again with `{COMMAND_PREFIX}mask (id/name) leave @member`."
+                    f"again with `{COMMAND_PREFIX}mask (id/name) leave @member`."
                 )
-            self.nominate(maskid, authid, member.id)
-        gesp.ActionRemove(maskid, authid).execute(self)
+            self.nominate(mask["maskid"], authid, member.id)
+        gesp.ActionRemove(mask["maskid"], authid).execute(self)
         await self.mark_success(message, True)
 
     async def cmd_edit(self, message, target, content):
@@ -1212,7 +1207,7 @@ class GestaltCommands:
                 row = self.fetchone("select * from masks where maskid = ?", (maskid,))
                 if not row:
                     raise UserError("Mask not found.")
-                maskid = maskid.lower()  # TODO rules cache requires this...
+                maskid = maskid.lower()
 
                 if action == "":
                     return await self.cmd_mask_view(message, row)
@@ -1333,7 +1328,7 @@ class GestaltCommands:
                             raise UserError("That user is not a member.")
                         if member.id == authid:
                             raise UserError(ERROR_CURSED)
-                    return await self.cmd_mask_leave(message, maskid, member)
+                    return await self.cmd_mask_leave(message, row, member)
 
         elif arg in ["edit", "e"]:
             return await self.cmd_edit(message, reader.read_message(self), reader.cmd)

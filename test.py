@@ -1516,6 +1516,31 @@ class GestaltTest(unittest.TestCase):
                 self.assertCommand(alpha, chan, "gs;m temp leave")
                 self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
 
+        # test self-removal
+        self.assertVote(alpha, chan, "gs;m new temp")
+        interact(chan[-1], alpha, "no")
+        self.assertCommand(alpha, chan, "gs;p temp tags temp:text")
+        attachment1()
+        self.assertCommand(alpha, chan, f"gs;m temp remove {alpha.mention}")
+        self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
+
+        # and mutual removal (until former members can't vote)
+        self.assertVote(alpha, chan, "gs;m new temp")
+        interact(chan[-1], alpha, "no")
+        self.assertCommand(alpha, chan, "gs;p temp tags temp:text")
+        attachment1()
+        self.assertVote(alpha, chan, f"gs;m temp invite {beta.mention}")
+        interact(chan[-1], beta, "yes")
+        self.assertCommand(alpha, chan, "gs;m temp rules unanimous")
+        self.assertVote(alpha, chan, f"gs;m temp remove {beta.mention}")
+        self.assertVote(beta, chan, f"gs;m temp remove {alpha.mention}")
+        interact(chan[-1], alpha, "yes")
+        interact(chan[-1], beta, "yes")
+        self.assertNotEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
+        interact(chan[-3], alpha, "yes")
+        interact(chan[-3], beta, "yes")
+        self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
+
     def test_12_username_change(self):
         """
         chan = g["main"]

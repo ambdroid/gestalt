@@ -331,10 +331,16 @@ class ActionRemove(VotableAction, _type=ActionType.remove):
         context.candidate = self.candidate
 
     def execute(self, bot):
+        mask = bot.fetchone(
+            "select avatar, members from masks where maskid = ?", (self.mask,)
+        )
+        if mask["members"] == 1 and bot.is_hosted_avatar(mask["avatar"]):
+            os.remove(bot.hosted_avatar_local_path(mask["avatar"]))
         bot.execute(
             "delete from proxies where (userid, maskid, type) = (?, ?, ?)",
             (self.candidate, self.mask, ProxyType.mask),
         )
+        # triggers will delete mask and guildmasks
 
 
 @dc.dataclass
