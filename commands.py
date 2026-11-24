@@ -51,7 +51,7 @@ class CommandReader:
 
     def from_message(message):
         content = message.content
-        if match := COMMAND_PREFIX.match(content):
+        if match := COMMAND_REGEX.match(content):
             content = content.removeprefix(match[0]).strip()
         elif message.guild:
             return

@@ -241,7 +241,7 @@ class RuleType(enum.IntEnum):
     unanimous = 5
 
 
-COMMAND_PREFIX = re.compile(COMMAND_PREFIX, re.IGNORECASE)
+COMMAND_REGEX = re.compile(COMMAND_PREFIX, re.IGNORECASE)
 PK_EDIT = re.compile(PK_EDIT, re.IGNORECASE)
 BE_REGEX = re.compile(r"\\?> ?Be (.*?)\.?", re.IGNORECASE)
 # convert into dict of single opening char : regex matching all ending chars
