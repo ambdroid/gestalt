@@ -939,7 +939,8 @@ class GestaltCommands:
                 "or (userid, maskid) = (?, ?)",  # uses index; faster
                 (proxy["proxid"], proxy["otherid"], proxy["proxid"]),
             )
-        self.execute("delete from guildmasks where maskid = ?", (pkuuid,))
+        if not self.fetchone("select 1 from proxies where maskid = ?", (pkuuid,)):
+            self.execute("delete from guildmasks where maskid = ?", (pkuuid,))
 
         await self.mark_success(message, True)
 

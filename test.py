@@ -1516,7 +1516,7 @@ class GestaltTest(unittest.TestCase):
                 self.assertCommand(alpha, chan, "gs;m temp leave")
                 self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
 
-        # and mutual removal (until former members can't vote)
+        # test mutual removal (until former members can't vote)
         self.assertVote(alpha, chan, "gs;m new temp")
         interact(chan[-1], alpha, "no")
         self.assertCommand(alpha, chan, "gs;p temp tags temp:text")
@@ -2155,13 +2155,7 @@ class GestaltTest(unittest.TestCase):
         instance.get_user_proxy(send(beta, c, "a"), "member!")
         instance.get_user_proxy(send(alpha, c, "a"), "test-beta's member!")
         self.assertNotCommand(alpha, c, 'gs;p "test-beta\'s member!" tags zzzztext')
-        self.assertRowExists(
-            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
-        )
         self.assertCommand(alpha, c, 'gs;pk close "test-beta\'s member!"')
-        self.assertRowNotExists(
-            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
-        )
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, "a"), "member!")
         with self.assertRaises(gestalt.UserError):
@@ -2172,13 +2166,7 @@ class GestaltTest(unittest.TestCase):
         interact(c[-1], beta, "yes")
         self.assertCommand(beta, c, "gs;pk sync", MessageReference(new, False))
         instance.get_user_proxy(send(beta, c, "a"), "member!")
-        self.assertRowExists(
-            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
-        )
         self.assertCommand(beta, c, "gs;pk close member!")
-        self.assertRowNotExists(
-            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
-        )
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, "a"), "member!")
         with self.assertRaises(gestalt.UserError):
@@ -2195,6 +2183,37 @@ class GestaltTest(unittest.TestCase):
         self.assertVote(alpha, c, f"gs;pk swap {beta.mention} lon-gid")
         interact(c[-1], beta, "yes")
         self.assertCommand(beta, c, "gs;pk close long")
+
+        # test guildmask deletion
+        instance.session._pk(
+            "/members/hahah",
+            '{"system": "exmpl", "uuid": "h-a-h-a-h", "name": "unmember", '
+            '"color": "123456"}',
+        )
+        self.assertVote(alpha, c, f"gs;pk swap {beta.mention} hahah")
+        interact(c[-1], beta, "yes")
+        self.assertVote(alpha, c, f"gs;pk swap {gamma.mention} hahah")
+        interact(c[-1], gamma, "yes")
+        new = run(pkhook.send("unmember", avatar, content="sync me"))
+        instance.session._pk(
+            "/messages/" + str(new.id),
+            '{"member": {"uuid": "h-a-h-a-h", "color": null}}',
+        )
+        self.assertRowNotExists(
+            "select 1 from guildmasks where maskid = ?", ("h-a-h-a-h",)
+        )
+        self.assertCommand(alpha, c, "gs;pk sync", MessageReference(new, False))
+        self.assertRowExists(
+            "select 1 from guildmasks where maskid = ?", ("h-a-h-a-h",)
+        )
+        self.assertCommand(alpha, c, 'gs;pk close "test-beta\'s unmember"')
+        self.assertRowExists(
+            "select 1 from guildmasks where maskid = ?", ("h-a-h-a-h",)
+        )
+        self.assertCommand(gamma, c, 'gs;pk close "unmember"')
+        self.assertRowNotExists(
+            "select 1 from guildmasks where maskid = ?", ("h-a-h-a-h",)
+        )
 
     def test_24_logs(self):
         g1 = Guild(name="logged guild")
