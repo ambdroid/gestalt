@@ -4065,6 +4065,9 @@ class GestaltTest(unittest.TestCase):
         self.assertProxied(uploader, c, "yay mask")
         self.assertTrue(c[-1].author.display_avatar.startswith(gestalt.AVATAR_URL_BASE))
 
+        self.assertCommand(uploader, c, "gs;m mask leave")
+        self.assertCommand(voter, c, "gs;m mask leave")
+
         # will this ever happen? should I even give a shit? idk. let's test it anyways
         sydney = User(name="sydney", bot=True)
         claude = User(name="claude", bot=True)
@@ -4093,6 +4096,9 @@ class GestaltTest(unittest.TestCase):
 
         self.assertProxied(sydney, c, "yay mask")
         self.assertTrue(c[-1].author.display_avatar.startswith(gestalt.AVATAR_URL_BASE))
+
+        self.assertCommand(sydney, c, "gs;m bots leave")
+        self.assertCommand(claude, c, "gs;m bots leave")
 
     def test_49_read_member(self):
         guild = Guild(name="ping guild")
@@ -4132,6 +4138,77 @@ class GestaltTest(unittest.TestCase):
             MessageReference(target, False),
         )
         self.assertIsNotNone(self.get_proxid(sender, replied))
+
+    # turns out, when there are two ways for someone to leave a mask, and one is deferred,
+    # and it might delete the whole mask, that creates a lot of annoying edge cases
+    def test_50_stale_removal(self):
+        remover = User(name="remover")
+        removed = User(name="removed")
+        g = Guild(name="the guild that you join to get removed")
+        c = g._add_channel("main")
+        g._add_member(remover)
+        g._add_member(removed)
+        g._add_member(instance.user)
+
+        def invite():
+            self.assertVote(remover, c, f"gs;m stale invite {removed.mention}")
+            interact(c[-1], removed, "yes")
+            self.assertTrue(instance.is_member_of(maskid, removed.id))
+
+        def assertIntact():
+            self.assertFalse(instance.is_member_of(maskid, removed.id))
+            self.assertTrue(instance.is_member_of(maskid, remover.id))
+            self.assertRowExists("select 1 from masks where maskid = ?", (maskid,))
+            self.assertTrue(instance.is_mask_in(maskid, g.id))
+            self.assertProxied(remover, c, "stale:test")
+            self.assertNotEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
+
+        self.assertVote(remover, c, "gs;m new stale")
+        interact(c[-1], remover, "yes")
+        self.assertCommand(remover, c, "gs;p stale tags stale:text")
+        maskid = instance.fetchone(
+            'select maskid from proxies where cmdname = "stale"'
+        )[0]
+        self.assertCommand(
+            remover,
+            c,
+            "gs;m stale avatar",
+            files=[Attachment(b"do not perceive me!", content_type="image/png")],
+        )
+        self.assertCommand(remover, c, "gs;m stale rules unanimous")
+        assertIntact()
+
+        # candidate leaves before the vote passes
+        invite()
+        self.assertVote(remover, c, f"gs;m stale remove {removed.mention}")
+        vote = c[-1]
+        self.assertCommand(removed, c, "gs;m stale leave")
+        assertIntact()
+        interact(vote, remover, "yes")
+        assertIntact()
+
+        # candidate is removed by another vote
+        invite()
+        self.assertVote(remover, c, f"gs;m stale remove {removed.mention}")
+        vote1 = c[-1]
+        self.assertVote(remover, c, f"gs;m stale remove {removed.mention}")
+        vote2 = c[-1]
+        interact(vote1, remover, "yes")
+        assertIntact()
+        interact(vote2, remover, "yes")
+        assertIntact()
+
+        # everyone leaves before the vote passes. should not raise an error
+        invite()
+        self.assertVote(remover, c, f"gs;m stale remove {removed.mention}")
+        vote = c[-1]
+        self.assertCommand(removed, c, "gs;m stale leave")
+        assertIntact()
+        self.assertCommand(remover, c, "gs;m stale leave")
+        interact(vote, remover, "yes")
+        self.assertRowNotExists("select 1 from masks where maskid = ?", (maskid,))
+        self.assertFalse(instance.is_mask_in(maskid, g.id))
+        self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
 
 
 def main():

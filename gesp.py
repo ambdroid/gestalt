@@ -331,6 +331,8 @@ class ActionRemove(VotableAction, _type=ActionType.remove):
         context.candidate = self.candidate
 
     def execute(self, bot):
+        if not bot.is_member_of(self.mask, self.candidate):
+            return
         mask = bot.fetchone(
             "select avatar, members from masks where maskid = ?", (self.mask,)
         )
