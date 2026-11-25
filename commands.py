@@ -1249,6 +1249,8 @@ class GestaltCommands:
                         raise UserError("Please @mention someone.")
                     if not self.is_member_of(maskid, member.id):
                         raise UserError("That user is not a member.")
+                    if authid == member.id:
+                        raise UserError("Just use `leave`.")
                     return await self.cmd_mask_remove(message, maskid, member)
 
                 if action == "add":

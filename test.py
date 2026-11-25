@@ -1516,14 +1516,6 @@ class GestaltTest(unittest.TestCase):
                 self.assertCommand(alpha, chan, "gs;m temp leave")
                 self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
 
-        # test self-removal
-        self.assertVote(alpha, chan, "gs;m new temp")
-        interact(chan[-1], alpha, "no")
-        self.assertCommand(alpha, chan, "gs;p temp tags temp:text")
-        attachment1()
-        self.assertCommand(alpha, chan, f"gs;m temp remove {alpha.mention}")
-        self.assertEqual(os.listdir(gestalt.AVATAR_DIRECTORY), [])
-
         # and mutual removal (until former members can't vote)
         self.assertVote(alpha, chan, "gs;m new temp")
         interact(chan[-1], alpha, "no")
@@ -3103,6 +3095,7 @@ class GestaltTest(unittest.TestCase):
         self.assertCommand(beta, cb, "gs;p maask autoadd true")
         self.assertNotProxied(beta, cb, "maask:text")
         self.assertProxied(beta, c, "maask:text")
+        self.assertNotCommand(alpha, c, f"gs;m maask remove {alpha.mention}")
         self.assertCommand(alpha, c, f"gs;m maask remove {beta.mention}")
         self.assertFalse(instance.is_member_of(maaskid, beta.id))
         self.assertNotVote(alpha, c, f"gs;m maask remove {beta.mention}")
