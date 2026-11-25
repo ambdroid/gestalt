@@ -923,16 +923,23 @@ class GestaltCommands:
 
     async def cmd_pk_close(self, message, proxy):
         if proxy["type"] == ProxyType.pkreceipt:
+            # maskid holds the proxid of the proxy that holds the pkuuid
+            # database design is my passion
+            pkuuid = self.fetchone(
+                "select maskid from proxies where proxid = ?", (proxy["maskid"],)
+            )[0]
             self.execute(
                 "delete from proxies where proxid in (?, ?)",
                 (proxy["proxid"], proxy["maskid"]),
             )
         else:  # pkswap
+            pkuuid = proxy["maskid"]
             self.execute(
                 "delete from proxies where (proxid = ?) "
                 "or (userid, maskid) = (?, ?)",  # uses index; faster
                 (proxy["proxid"], proxy["otherid"], proxy["proxid"]),
             )
+        self.execute("delete from guildmasks where maskid = ?", (pkuuid,))
 
         await self.mark_success(message, True)
 

@@ -2150,15 +2150,26 @@ class GestaltTest(unittest.TestCase):
         self.assertEqual(msg.embeds[0].color, None)
 
         # deleted message shouldn't raise
-        run(new.delete())
-        self.assertNotCommand(beta, c, "gs;pk sync", MessageReference(new, False))
+        deleted = run(pkhook.send("member!", avatar, content="new message"))
+        instance.session._pk(
+            "/messages/" + str(deleted.id),
+            '{"member": {"uuid": "a-a-a-a-a", "color": null}}',
+        )
+        run(deleted.delete())
+        self.assertNotCommand(beta, c, "gs;pk sync", MessageReference(deleted, False))
 
         # test closing specific pkswap
         # first by receipt
         instance.get_user_proxy(send(beta, c, "a"), "member!")
         instance.get_user_proxy(send(alpha, c, "a"), "test-beta's member!")
         self.assertNotCommand(alpha, c, 'gs;p "test-beta\'s member!" tags zzzztext')
+        self.assertRowExists(
+            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
+        )
         self.assertCommand(alpha, c, 'gs;pk close "test-beta\'s member!"')
+        self.assertRowNotExists(
+            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
+        )
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, "a"), "member!")
         with self.assertRaises(gestalt.UserError):
@@ -2167,8 +2178,15 @@ class GestaltTest(unittest.TestCase):
         # then by pkswap
         self.assertVote(alpha, c, f"gs;pk swap {beta.mention} aaaaa")
         interact(c[-1], beta, "yes")
+        self.assertCommand(beta, c, "gs;pk sync", MessageReference(new, False))
         instance.get_user_proxy(send(beta, c, "a"), "member!")
+        self.assertRowExists(
+            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
+        )
         self.assertCommand(beta, c, "gs;pk close member!")
+        self.assertRowNotExists(
+            "select 1 from guildmasks where maskid = ?", ("a-a-a-a-a",)
+        )
         with self.assertRaises(gestalt.UserError):
             instance.get_user_proxy(send(beta, c, "a"), "member!")
         with self.assertRaises(gestalt.UserError):
